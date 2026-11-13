@@ -235,6 +235,20 @@
       "date": "2026-10-23",
       "proposalLink": "jjx-docs/history/material-master-normalization-design-dev-20261023-005.md",
       "reason": "物料品类必填字段规则表（品类×字段）：品类决定材料/型号/颜色/规格/品牌的必填口径，配置化避免写死代码；用户 2026-10-23 在物料主数据规范化方案中授权建表，迁移 300 已执行。"
+    },
+    {
+      "table": "bom_change_request",
+      "taskCode": "dev-20261112-009",
+      "date": "2026-11-13",
+      "proposalLink": "jjx-docs/sql/migrations/applied/366_bom_change_request.sql",
+      "reason": "BOM变更单（ECN-lite）主表：多层BOM打包提审与统一生效；用户2026-11-13任务卡明确新建"
+    },
+    {
+      "table": "bom_change_request_item",
+      "taskCode": "dev-20261112-009",
+      "date": "2026-11-13",
+      "proposalLink": "jjx-docs/sql/migrations/applied/366_bom_change_request.sql",
+      "reason": "BOM变更单明细：一张变更单打包多张BOM，含版本与逐张校验结果快照；用户2026-11-13任务卡明确新建"
     }
   ],
   "typeSuffixAllowlist": [

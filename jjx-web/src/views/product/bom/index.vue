@@ -181,8 +181,9 @@
               @click="handleApprove(row)"
               >审核</el-button
             >
+            <!-- dev-20261112-009：生效统一走 BOM 变更单，先隐藏「设为现行」；后端接口保留。 -->
             <el-button
-              v-if="row.approveStatus === BomStatusEnum.APPROVED.value && !row.isCurrent"
+              v-if="false"
               v-hasPermi="['engineering:bom:edit']"
               link
               size="small"
