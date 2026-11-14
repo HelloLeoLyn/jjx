@@ -87,7 +87,16 @@ for (const domain of ['bom', 'route'] as const)
       await flushPromises()
       expect(s.versions.value).toHaveLength(3)
       expect(calls.at(-1)?.params).toEqual({ outputType: 'PRODUCT', outputId: 2 })
-      expect(template).not.toMatch(/tree-props|:lazy|type="selection"/)
+      expect(template).not.toMatch(/tree-props|:lazy/)
+      if (domain === 'bom') {
+        // 产品BOM页签支持勾选多个产品做整套送审/审核；路由列表仍不允许勾选。
+        expect(template).toContain('type="selection"')
+        expect(template).toContain('批量送审')
+        expect(template).toContain('批量审核')
+        expect(template).toContain('材料BOM')
+      } else {
+        expect(template).not.toContain('type="selection"')
+      }
       expect(template).toContain('当前版本（生效日）')
     })
     it('复制请求默认版本号；设为当前携带已观察到的当前版本，失败保留复制输入', async () => {

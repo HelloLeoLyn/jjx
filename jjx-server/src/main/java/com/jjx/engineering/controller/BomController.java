@@ -118,6 +118,80 @@ public class BomController extends BaseController {
         return Result.success(productBomService.getBomListPage(query));
     }
 
+    /** 整套范围预览（只读）：产品侧勾选多个产品后，逐产品展示实际引用方案与问题。 */
+    @Operation(summary = "产品BOM整套范围预览")
+    @PostMapping("/review/package/plan")
+    @SaCheckPermission("engineering:bom:view")
+    public Result<List<com.jjx.product.domain.vo.BomReviewPackageVO>> planReviewPackages(
+            @RequestParam String action, @RequestBody List<Long> rootBomIds) {
+        if (rootBomIds == null || rootBomIds.isEmpty()) {
+            return Result.error("请选择至少一个产品BOM");
+        }
+        List<com.jjx.product.domain.vo.BomReviewPackageVO> plans = new ArrayList<>();
+        for (Long rootBomId : rootBomIds) {
+            if (rootBomId == null) continue;
+            try {
+                plans.add(productBomService.planReviewPackage(rootBomId, action));
+            } catch (com.jjx.common.exception.BusinessException ex) {
+                com.jjx.product.domain.vo.BomReviewPackageVO plan =
+                        new com.jjx.product.domain.vo.BomReviewPackageVO();
+                plan.setRootBomId(rootBomId);
+                plan.setExecutable(false);
+                plan.setReason(ex.getMessage());
+                com.jjx.product.domain.vo.BomReviewPackageVO.Issue issue =
+                        new com.jjx.product.domain.vo.BomReviewPackageVO.Issue();
+                issue.setBomId(rootBomId);
+                issue.setField("package");
+                issue.setMessage(ex.getMessage());
+                plan.getBlockingIssues().add(issue);
+                plans.add(plan);
+            }
+        }
+        return Result.success(plans);
+    }
+
+    /** 产品侧整套送审：草稿/已驳回根方案连同本次实际引用的未批准下层方案一起送审。 */
+    @Operation(summary = "产品BOM整套送审")
+    @PostMapping("/review/package/submit")
+    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE, bizType = "'bom'", action = "整套送审")
+    @SaCheckPermission("engineering:bom:edit")
+    public Result<com.jjx.product.domain.vo.BomReviewBatchResultVO> submitReviewPackages(
+            @Validated @RequestBody com.jjx.product.domain.dto.BomReviewPackageRequest request) {
+        request.setAction("SUBMIT");
+        return Result.success(productBomService.executeReviewPackages(request));
+    }
+
+    /** 产品侧整套通过：正常场景一次确认待审明细与本次待审方案，不再逐行/逐子BOM点击。 */
+    @Operation(summary = "产品BOM整套通过")
+    @PostMapping("/review/package/approve")
+    @Log(module = "产品BOM管理", businessType = BusinessType.APPROVE, bizType = "'bom'", action = "整套审核通过")
+    @SaCheckPermission("engineering:bom:approve")
+    public Result<com.jjx.product.domain.vo.BomReviewBatchResultVO> approveReviewPackages(
+            @Validated @RequestBody com.jjx.product.domain.dto.BomReviewPackageRequest request) {
+        request.setAction("APPROVE");
+        return Result.success(productBomService.executeReviewPackages(request));
+    }
+
+    /** 产品侧整套驳回：只退回该产品根方案，不连带驳回公共下层方案。 */
+    @Operation(summary = "产品BOM整套驳回")
+    @PostMapping("/review/package/reject")
+    @Log(module = "产品BOM管理", businessType = BusinessType.APPROVE, bizType = "'bom'", action = "整套审核驳回")
+    @SaCheckPermission("engineering:bom:reject")
+    public Result<com.jjx.product.domain.vo.BomReviewBatchResultVO> rejectReviewPackages(
+            @Validated @RequestBody com.jjx.product.domain.dto.BomReviewPackageRequest request) {
+        request.setAction("REJECT");
+        return Result.success(productBomService.executeReviewPackages(request));
+    }
+
+    /** 材料/公共子方案被驳回或独立审批前的影响范围（引用它的上层方案与产品根方案）。 */
+    @Operation(summary = "方案引用影响范围")
+    @GetMapping("/{bomId}/references")
+    @SaCheckPermission("engineering:bom:view")
+    public Result<List<com.jjx.product.domain.vo.BomReviewPackageVO.ReferenceImpact>> referenceImpact(
+            @PathVariable Long bomId) {
+        return Result.success(productBomService.getReferenceImpact(bomId));
+    }
+
     @GetMapping("/versions")
     public Result<List<EngineeringBomVO>> versions(@RequestParam String bomCode) {
         return Result.success(productBomService.getBomVersions(bomCode));

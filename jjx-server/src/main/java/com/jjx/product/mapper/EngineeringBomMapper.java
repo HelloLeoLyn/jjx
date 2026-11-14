@@ -40,6 +40,7 @@ public interface EngineeringBomMapper extends BaseMapper<EngineeringBom> {
         "FROM engineering_bom b LEFT JOIN product p ON COALESCE(b.output_type,'PRODUCT')='PRODUCT' AND p.product_id=COALESCE(b.output_id,b.product_id)",
         "LEFT JOIN inventory_material m ON b.output_type='MATERIAL' AND m.material_id=b.output_id",
         "WHERE COALESCE(b.output_id,b.product_id) IS NOT NULL",
+        "<if test='query.outputType != null and query.outputType != &quot;&quot;'>AND COALESCE(b.output_type,'PRODUCT')=#{query.outputType}</if>",
         "<if test='query.productId != null'>AND b.product_id=#{query.productId}</if>",
         "<if test='query.productCode != null and query.productCode != &quot;&quot;'>AND (CASE WHEN b.output_type='MATERIAL' THEN m.material_code ELSE p.product_code END) LIKE CONCAT('%',#{query.productCode},'%')</if>",
         "<if test='query.productName != null and query.productName != &quot;&quot;'>AND (CASE WHEN b.output_type='MATERIAL' THEN m.material_name ELSE p.product_name END) LIKE CONCAT('%',#{query.productName},'%')</if>",

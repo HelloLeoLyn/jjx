@@ -94,6 +94,8 @@ export interface ManufacturingSchemeChoice {
 }
 export interface EngineeringBomQueryParams extends PageQuery {
   showAllVersions?: boolean
+  /** PRODUCT=产品BOM页签（默认），MATERIAL=材料BOM页签。 */
+  outputType?: ManufacturingOutputType
   bomCode?: string
   bomName?: string
   productCode?: string
@@ -378,6 +380,165 @@ export enum BomSaveLogResult {
 export type BomOriginalValues = Record<string, { materialName?: string | null; specification?: string | null }>
 
 /** BOM 编辑占用会话（GET/POST/PUT/DELETE /engineering/bom/{bomId}/edit-session）。 */
+/** 产品/材料BOM聚合行（GET /engineering/bom/product-page）。 */
+export interface ProductBomRow {
+  outputType: ManufacturingOutputType
+  outputId: number
+  productId?: number
+  productCode?: string
+  productName?: string
+  specification?: string
+  currentId?: number
+  currentVersion?: string
+  currentEffectiveDate?: string
+  currentStatus?: number
+  latestId?: number
+  latestVersion?: string
+  latestStatus?: number
+  versionCount: number
+  hasDraft: boolean
+  hasPending: boolean
+  /** 最新维护版本实际引用（sub_bom_id）摘要：编码 版本（状态）。 */
+  subBomSummary?: string
+  subBomCount?: number
+  /** 最新维护版本整套送审预检问题数量；-1 表示预检失败需人工核查。 */
+  issueCount?: number
+  itemCount?: number
+  updateTime?: string
+}
+
+/** 整套范围里的单行明细（只读展示，不参与前端拼审核图）。 */
+export interface BomReviewPackageItem {
+  itemId?: number
+  parentMaterialId?: number
+  materialId?: number
+  materialCode?: string
+  materialName?: string
+  specification?: string
+  unit?: string
+  quantity?: number
+  reviewStatus?: number
+  removeConfirmed?: boolean
+  subBomId?: number
+  subBomLabel?: string
+}
+
+export interface BomReviewPackageIssue {
+  bomId?: number
+  itemId?: number
+  field?: string
+  message: string
+}
+
+export interface BomReviewPackageNode {
+  bomId: number
+  bomCode?: string
+  bomName?: string
+  bomVersion?: string
+  status?: number
+  outputType?: ManufacturingOutputType
+  outputId?: number
+  outputCode?: string
+  outputName?: string
+  packageRevision?: string
+  contentRevision?: string
+  reuse?: boolean
+  pendingReuse?: boolean
+  plannedAction?: 'SUBMIT' | 'APPROVE' | 'REJECT' | 'REUSE' | 'REUSE_PENDING' | 'BLOCKED'
+  itemCount?: number
+  pendingItemCount?: number
+  approvedItemCount?: number
+  items?: BomReviewPackageItem[]
+  issues?: BomCheckIssue[]
+}
+
+/** 整套范围预览（POST /engineering/bom/review/package/plan）。 */
+export interface BomReviewPackage {
+  rootBomId: number
+  rootBomCode?: string
+  rootBomVersion?: string
+  rootStatus?: number
+  outputType?: ManufacturingOutputType
+  outputId?: number
+  productId?: number
+  productCode?: string
+  productName?: string
+  specification?: string
+  actionCount: number
+  reuseCount: number
+  pendingReuseCount: number
+  executable: boolean
+  reason?: string
+  blockingIssues: BomReviewPackageIssue[]
+  nodes: BomReviewPackageNode[]
+}
+
+export interface BomReviewNodeScope {
+  bomId: number
+  version: string
+  status: number
+  packageRevision: string
+}
+
+export interface BomReviewProductScope {
+  rootBomId: number
+  expectedVersion: string
+  expectedNodes: BomReviewNodeScope[]
+}
+
+export interface BomReviewPackageRequest {
+  action: 'SUBMIT' | 'APPROVE' | 'REJECT'
+  products: BomReviewProductScope[]
+  remark?: string
+}
+
+export interface BomReviewBatchNodeResult {
+  bomId: number
+  bomCode?: string
+  bomVersion?: string
+  action: string
+  statusBefore?: number
+  statusAfter?: number
+}
+
+export interface BomReviewBatchResult {
+  action: string
+  successes: Array<{
+    rootBomId: number
+    rootBomVersion?: string
+    productCode?: string
+    productName?: string
+    message?: string
+    nodes: BomReviewBatchNodeResult[]
+  }>
+  failures: Array<{
+    rootBomId?: number
+    productCode?: string
+    productName?: string
+    reason: string
+  }>
+  sharedNodes: Array<{
+    bomId: number
+    bomCode?: string
+    bomVersion?: string
+    action: string
+    products: string[]
+    message?: string
+  }>
+}
+
+export interface BomReferenceImpact {
+  bomId: number
+  bomCode?: string
+  bomVersion?: string
+  status?: number
+  outputType?: ManufacturingOutputType
+  outputId?: number
+  outputCode?: string
+  outputName?: string
+  root: boolean
+}
+
 export interface BomEditSession {
   /** 占用服务是否可用；false 时必须只读，禁止保存。 */
   leaseAvailable: boolean

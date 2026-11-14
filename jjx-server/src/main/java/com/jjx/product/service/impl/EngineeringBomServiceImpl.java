@@ -22,6 +22,9 @@ import com.jjx.engineering.domain.entity.EngineeringBom;
 import com.jjx.engineering.domain.entity.EngineeringBomItem;
 import com.jjx.product.domain.query.EngineeringBomQuery;
 import com.jjx.product.domain.vo.EngineeringBomVO;
+import com.jjx.product.domain.vo.BomReviewPackageVO;
+import com.jjx.product.domain.vo.BomReviewBatchResultVO;
+import com.jjx.product.domain.dto.BomReviewPackageRequest;
 import com.jjx.product.enums.ProductEnums;
 import com.jjx.product.enums.ManufacturingOutputType;
 import com.jjx.product.mapper.EngineeringBomItemMapper;
@@ -134,6 +137,20 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
      * 客户端不得计算或提供权威版本号。
      */
     public static String computeContentRevision(EngineeringBom bom, List<EngineeringBomItem> items) {
+        return computeContentRevisionInternal(bom, items, true);
+    }
+
+    /**
+     * 整套审核范围指纹：只含业务内容，不含父/行审核状态。
+     * 同一方案在预览后仅审核状态推进（草稿→审核中→已批准）时指纹不变；
+     * 物料、用量、单位、下层引用等内容被改则指纹变化，整套操作必须重新预览。
+     */
+    public static String computePackageContentRevision(EngineeringBom bom, List<EngineeringBomItem> items) {
+        return computeContentRevisionInternal(bom, items, false);
+    }
+
+    private static String computeContentRevisionInternal(EngineeringBom bom, List<EngineeringBomItem> items,
+                                                         boolean includeReviewState) {
         StringBuilder sb = new StringBuilder(4096);
         sb.append("BOM|");
         if (bom != null) {
@@ -149,7 +166,9 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             putHashed(sb, bom.getEffectiveDate() == null ? null : bom.getEffectiveDate().getTime());
             putHashed(sb, bom.getExpiryDate() == null ? null : bom.getExpiryDate().getTime());
             putHashed(sb, bom.getRemark());
-            putHashed(sb, bom.getApproveStatus());
+            if (includeReviewState) {
+                putHashed(sb, bom.getApproveStatus());
+            }
         }
         sb.append("ITEMS|");
         if (items != null) {
@@ -183,9 +202,11 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 putHashed(sb, it.getUnitFactorBasis());
                 putHashed(sb, it.getUnitFactorSource());
                 putHashed(sb, it.getItemOrder());
-                putHashed(sb, it.getReviewStatus());
-                putHashed(sb, it.getRemoveConfirmed());
-                putHashed(sb, it.getApprovedFingerprint());
+                if (includeReviewState) {
+                    putHashed(sb, it.getReviewStatus());
+                    putHashed(sb, it.getRemoveConfirmed());
+                    putHashed(sb, it.getApprovedFingerprint());
+                }
             }
         }
         return sha256Hex(sb.toString());
@@ -270,10 +291,37 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             var versions = productBomMapper.selectList(new LambdaQueryWrapper<EngineeringBom>()
                     .apply("COALESCE(output_type,'PRODUCT')={0}", row.getOutputType())
                     .apply("COALESCE(output_id,product_id)={0}", row.getOutputId()));
-            versions.stream().max((a,b) -> {
+            EngineeringBom latest = versions.stream().max((a,b) -> {
                 int result = IEngineeringBomService.compareVersions(a.getBomVersion(), b.getBomVersion());
                 return result != 0 ? result : a.getBomId().compareTo(b.getBomId());
-            }).ifPresent(latest -> { row.setLatestId(latest.getBomId()); row.setLatestVersion(latest.getBomVersion()); });
+            }).orElse(null);
+            if (latest != null) {
+                row.setLatestId(latest.getBomId());
+                row.setLatestVersion(latest.getBomVersion());
+                row.setLatestStatus(latest.getApproveStatus());
+                List<EngineeringBomItem> latestItems = productBomItemMapper.selectList(
+                        new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, latest.getBomId()));
+                row.setItemCount(latestItems == null ? 0 : latestItems.size());
+                java.util.LinkedHashSet<Long> subIds = new java.util.LinkedHashSet<>();
+                if (latestItems != null) {
+                    for (EngineeringBomItem item : latestItems) {
+                        if (item.getSubBomId() != null
+                                && ProductEnums.BomItemReviewStatus.fromValue(item.getReviewStatus())
+                                != ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
+                            subIds.add(item.getSubBomId());
+                        }
+                    }
+                }
+                row.setSubBomCount(subIds.size());
+                row.setSubBomSummary(summarizeSubBoms(subIds));
+                // 已批准版本不重复审核：问题数按 0；其余按整套送审预检（含实际下层递归）计数。
+                if (Objects.equals(latest.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())) {
+                    row.setIssueCount(0);
+                } else {
+                    try { row.setIssueCount(countPackageIssues(latest.getBomId())); }
+                    catch (BusinessException ex) { row.setIssueCount(-1); }
+                }
+            }
             EngineeringBom current = null;
             if ("PRODUCT".equals(row.getOutputType())) {
                 // 无资格版本是正常空摘要；其余数据库异常继续向上传播。
@@ -289,6 +337,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             if (current != null) {
                 row.setCurrentId(current.getBomId()); row.setCurrentVersion(current.getBomVersion());
                 row.setCurrentEffectiveDate(current.getEffectiveDate());
+                row.setCurrentStatus(current.getApproveStatus());
             }
         }
         return PageResult.of(page, page.getRecords());
@@ -1624,6 +1673,856 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         return updated;
     }
 
+    // ==================== 产品侧整套送审/审核（dev-20261114-011）====================
+
+    private static final String PACKAGE_ACTION_SUBMIT = "SUBMIT";
+    private static final String PACKAGE_ACTION_APPROVE = "APPROVE";
+    private static final String PACKAGE_ACTION_REJECT = "REJECT";
+
+    /**
+     * 整套范围上下文。allowedNodes 只包含本次沿实际 sub_bom_id 递归得到的方案；
+     * 范围外未批准方案仍然阻断，不会因“整套”而全局放宽。
+     */
+    private static final class PackageContext {
+        private final Set<Long> allowedNodes;
+        /** true=送审：允许草稿/驳回/审核中节点；false=批准：只允许审核中/已批准。 */
+        private final boolean submitMode;
+        private final boolean allowPendingRows;
+
+        private PackageContext(Set<Long> allowedNodes, boolean submitMode, boolean allowPendingRows) {
+            this.allowedNodes = allowedNodes == null ? Set.of() : allowedNodes;
+            this.submitMode = submitMode;
+            this.allowPendingRows = allowPendingRows;
+        }
+    }
+
+    private boolean contextAllowsUnapproved(PackageContext ctx, EngineeringBom child) {
+        if (ctx == null || child == null || child.getBomId() == null || !ctx.allowedNodes.contains(child.getBomId())) {
+            return false;
+        }
+        ProductEnums.BomStatus status = ProductEnums.BomStatus.fromValue(child.getApproveStatus());
+        if (status == ProductEnums.BomStatus.OBSOLETE) {
+            return false;
+        }
+        if (ctx.submitMode) {
+            return status == ProductEnums.BomStatus.DRAFT
+                    || status == ProductEnums.BomStatus.REJECT
+                    || status == ProductEnums.BomStatus.REVIEWING
+                    || status == ProductEnums.BomStatus.APPROVED;
+        }
+        return status == ProductEnums.BomStatus.REVIEWING
+                || status == ProductEnums.BomStatus.APPROVED;
+    }
+
+    private static String normalizePackageAction(String action) {
+        String normalized = action == null ? "" : action.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!PACKAGE_ACTION_SUBMIT.equals(normalized)
+                && !PACKAGE_ACTION_APPROVE.equals(normalized)
+                && !PACKAGE_ACTION_REJECT.equals(normalized)) {
+            throw new BusinessException("整套动作只允许 SUBMIT/APPROVE/REJECT");
+        }
+        return normalized;
+    }
+
+    private String summarizeSubBoms(Set<Long> subBomIds) {
+        if (subBomIds == null || subBomIds.isEmpty()) {
+            return "";
+        }
+        List<EngineeringBom> children = productBomMapper.selectBatchIds(subBomIds);
+        if (children == null || children.isEmpty()) {
+            return "";
+        }
+        Map<Long, EngineeringBom> byId = new HashMap<>();
+        for (EngineeringBom child : children) {
+            if (child != null && child.getBomId() != null) byId.put(child.getBomId(), child);
+        }
+        java.util.List<String> labels = new java.util.ArrayList<>();
+        for (Long id : subBomIds) {
+            EngineeringBom child = byId.get(id);
+            if (child == null) {
+                labels.add("#" + id + "（不存在）");
+                continue;
+            }
+            labels.add((child.getBomCode() == null ? "#" + id : child.getBomCode())
+                    + " " + (child.getBomVersion() == null ? "" : child.getBomVersion())
+                    + "（" + ProductEnums.BomStatus.fromValue(child.getApproveStatus()).getLabel() + "）");
+        }
+        return String.join("；", labels);
+    }
+
+    /** 产品列表问题数：按整套送审预检汇总（含实际下层递归），只读。 */
+    private int countPackageIssues(Long rootBomId) {
+        PackageScan scan = collectPackage(rootBomId, false);
+        int count = scan.errors.size();
+        if (!scan.nodes.isEmpty()) {
+            PackageContext ctx = new PackageContext(scan.nodes.keySet(), true, false);
+            for (EngineeringBom bom : scan.nodes.values()) {
+                count += checkBom(bom.getBomId(), false, ctx).size();
+            }
+        }
+        return count;
+    }
+
+    private static final class PackageScan {
+        private final EngineeringBom root;
+        /** 后序（下层在前），共享节点只出现一次。 */
+        private final java.util.LinkedHashMap<Long, EngineeringBom> nodes = new java.util.LinkedHashMap<>();
+        private final Map<Long, List<EngineeringBomItem>> items = new HashMap<>();
+        private final java.util.List<String> errors = new java.util.ArrayList<>();
+
+        private PackageScan(EngineeringBom root) {
+            this.root = root;
+        }
+    }
+
+    private static final class PackageFrame {
+        private final Long bomId;
+        private final java.util.List<Long> children;
+        private int next;
+
+        private PackageFrame(Long bomId, java.util.List<Long> children) {
+            this.bomId = bomId;
+            this.children = children;
+        }
+    }
+
+    private List<EngineeringBomItem> packageItems(Long bomId, boolean lock) {
+        if (lock && editContractActive()) {
+            return lockedItems(bomId);
+        }
+        if (lock) {
+            return productBomItemMapper.selectByBomIdForUpdate(bomId);
+        }
+        return productBomItemMapper.selectList(
+                new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bomId));
+    }
+
+    private java.util.List<Long> packageChildIds(List<EngineeringBomItem> items) {
+        java.util.LinkedHashSet<Long> ids = new java.util.LinkedHashSet<>();
+        if (items != null) {
+            for (EngineeringBomItem item : items) {
+                if (item == null || item.getSubBomId() == null) continue;
+                if (ProductEnums.BomItemReviewStatus.fromValue(item.getReviewStatus())
+                        == ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
+                    continue;
+                }
+                ids.add(item.getSubBomId());
+            }
+        }
+        return new java.util.ArrayList<>(ids);
+    }
+
+    /**
+     * 只沿工程BOM行实际 sub_bom_id 递归展开：共享 DAG 去重、三色防环，不按固定层数截断。
+     * 返回后序节点表（下层在前），供整套批准从下层到上层落地。
+     */
+    private PackageScan collectPackage(Long rootBomId, boolean lockItems) {
+        EngineeringBom root = productBomMapper.selectById(rootBomId);
+        PackageScan scan = new PackageScan(root);
+        if (root == null) {
+            scan.errors.add("BOM不存在（bomId=" + rootBomId + "）");
+            return scan;
+        }
+        Map<Long, EngineeringBom> cache = new HashMap<>();
+        cache.put(root.getBomId(), root);
+        Map<Long, Integer> color = new HashMap<>(); // 1=访问中，2=已完成
+        scan.items.put(root.getBomId(), packageItems(root.getBomId(), lockItems));
+        color.put(root.getBomId(), 1);
+        java.util.Deque<PackageFrame> stack = new java.util.ArrayDeque<>();
+        stack.push(new PackageFrame(root.getBomId(), packageChildIds(scan.items.get(root.getBomId()))));
+        while (!stack.isEmpty()) {
+            PackageFrame frame = stack.peek();
+            if (frame.next >= frame.children.size()) {
+                scan.nodes.put(frame.bomId, cache.get(frame.bomId));
+                color.put(frame.bomId, 2);
+                stack.pop();
+                continue;
+            }
+            Long childId = frame.children.get(frame.next++);
+            if (childId == null) continue;
+            if (Objects.equals(rootBomId, childId)) {
+                scan.errors.add("BOM_CYCLE：显式制造关系形成环（bomId=" + rootBomId + "）");
+                continue;
+            }
+            Integer state = color.get(childId);
+            if (state != null && state == 2) continue;
+            if (state != null && state == 1) {
+                scan.errors.add("BOM_CYCLE：显式制造关系形成环（bomId=" + childId + "）");
+                continue;
+            }
+            EngineeringBom child = cache.get(childId);
+            if (child == null) {
+                child = productBomMapper.selectById(childId);
+                if (child == null) {
+                    scan.errors.add("SUB_BOM_NOT_FOUND：下层方案不存在（bomId=" + childId + "）");
+                    continue;
+                }
+                cache.put(childId, child);
+            }
+            scan.items.put(childId, packageItems(childId, lockItems));
+            color.put(childId, 1);
+            stack.push(new PackageFrame(childId, packageChildIds(scan.items.get(childId))));
+        }
+        return scan;
+    }
+
+    private BomReviewPackageVO.Node toPackageNode(EngineeringBom bom, List<EngineeringBomItem> items,
+                                                  PackageContext ctx, boolean forApprove) {
+        BomReviewPackageVO.Node node = new BomReviewPackageVO.Node();
+        node.setBomId(bom.getBomId());
+        node.setBomCode(bom.getBomCode());
+        node.setBomName(bom.getBomName());
+        node.setBomVersion(bom.getBomVersion());
+        node.setStatus(bom.getApproveStatus());
+        String type = ManufacturingOutputType.normalize(bom.getOutputType()).name();
+        Long outputId = bom.getOutputId() != null ? bom.getOutputId() : bom.getProductId();
+        node.setOutputType(type);
+        node.setOutputId(outputId);
+        String[] output = outputDisplay(outputId, type);
+        node.setOutputCode(output[0]);
+        node.setOutputName(output[1]);
+        node.setPackageRevision(computePackageContentRevision(bom, items));
+        node.setContentRevision(computeContentRevision(bom, items));
+        int pending = 0;
+        int approved = 0;
+        java.util.LinkedHashSet<Long> subIds = new java.util.LinkedHashSet<>();
+        if (items != null) {
+            for (EngineeringBomItem item : items) {
+                BomReviewPackageVO.Item row = new BomReviewPackageVO.Item();
+                row.setItemId(item.getItemId());
+                row.setParentMaterialId(item.getParentMaterialId());
+                row.setMaterialId(item.getMaterialId());
+                row.setMaterialCode(item.getMaterialCode());
+                row.setMaterialName(item.getMaterialName());
+                row.setSpecification(item.getSpecification());
+                row.setUnit(item.getUnit());
+                row.setQuantity(item.getQuantity());
+                row.setReviewStatus(item.getReviewStatus());
+                row.setRemoveConfirmed(item.getRemoveConfirmed());
+                row.setSubBomId(item.getSubBomId());
+                node.getItems().add(row);
+                ProductEnums.BomItemReviewStatus rowStatus =
+                        ProductEnums.BomItemReviewStatus.fromValue(item.getReviewStatus());
+                if (rowStatus == ProductEnums.BomItemReviewStatus.PENDING) pending++;
+                if (rowStatus == ProductEnums.BomItemReviewStatus.APPROVED) approved++;
+                if (item.getSubBomId() != null && rowStatus != ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
+                    subIds.add(item.getSubBomId());
+                }
+            }
+        }
+        node.setItemCount(items == null ? 0 : items.size());
+        node.setPendingItemCount(pending);
+        node.setApprovedItemCount(approved);
+        if (!subIds.isEmpty()) {
+            node.setItems(node.getItems());
+        }
+        node.setIssues(checkBom(bom.getBomId(), forApprove, ctx));
+        return node;
+    }
+
+    private BomReviewPackageVO.Node toRejectNode(EngineeringBom bom, List<EngineeringBomItem> items) {
+        BomReviewPackageVO.Node node = new BomReviewPackageVO.Node();
+        node.setBomId(bom.getBomId());
+        node.setBomCode(bom.getBomCode());
+        node.setBomName(bom.getBomName());
+        node.setBomVersion(bom.getBomVersion());
+        node.setStatus(bom.getApproveStatus());
+        String type = ManufacturingOutputType.normalize(bom.getOutputType()).name();
+        Long outputId = bom.getOutputId() != null ? bom.getOutputId() : bom.getProductId();
+        node.setOutputType(type);
+        node.setOutputId(outputId);
+        String[] output = outputDisplay(outputId, type);
+        node.setOutputCode(output[0]);
+        node.setOutputName(output[1]);
+        node.setPackageRevision(computePackageContentRevision(bom, items));
+        node.setContentRevision(computeContentRevision(bom, items));
+        node.setItemCount(items == null ? 0 : items.size());
+        return node;
+    }
+
+    /** 返回 {编码, 名称}；产品/材料分别取各自档案，找不到时留空而不伪造。 */
+    private String[] outputDisplay(Long outputId, String outputType) {
+        if (outputId == null) return new String[]{"", ""};
+        if (ManufacturingOutputType.MATERIAL.name().equals(ManufacturingOutputType.normalize(outputType).name())) {
+            com.jjx.inventory.domain.InventoryMaterial material = inventoryMaterialMapper.selectById(outputId);
+            return material == null ? new String[]{"", ""}
+                    : new String[]{nullToEmpty(material.getMaterialCode()), nullToEmpty(material.getMaterialName())};
+        }
+        Product product = productMapper.selectById(outputId);
+        return product == null ? new String[]{"", ""}
+                : new String[]{nullToEmpty(product.getProductCode()), nullToEmpty(product.getProductName())};
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BomReviewPackageVO planReviewPackage(Long rootBomId, String action) {
+        if (rootBomId == null) throw new BusinessException("产品BOM不能为空");
+        String act = normalizePackageAction(action);
+        EngineeringBom root = productBomMapper.selectById(rootBomId);
+        if (root == null) throw new BusinessException("BOM不存在（bomId=" + rootBomId + "）");
+        BomReviewPackageVO vo = new BomReviewPackageVO();
+        vo.setRootBomId(root.getBomId());
+        vo.setRootBomCode(root.getBomCode());
+        vo.setRootBomVersion(root.getBomVersion());
+        vo.setRootStatus(root.getApproveStatus());
+        String rootType = ManufacturingOutputType.normalize(root.getOutputType()).name();
+        Long rootOutputId = root.getOutputId() != null ? root.getOutputId() : root.getProductId();
+        vo.setOutputType(rootType);
+        vo.setOutputId(rootOutputId);
+        vo.setProductId(root.getProductId());
+        String[] rootOutput = outputDisplay(rootOutputId, rootType);
+        vo.setProductCode(rootOutput[0]);
+        vo.setProductName(rootOutput[1]);
+
+        if (PACKAGE_ACTION_REJECT.equals(act)) {
+            List<EngineeringBomItem> items = packageItems(root.getBomId(), false);
+            BomReviewPackageVO.Node node = toRejectNode(root, items);
+            node.setPlannedAction(PACKAGE_ACTION_REJECT);
+            vo.getNodes().add(node);
+            vo.setActionCount(1);
+            if (!Objects.equals(root.getApproveStatus(), ProductEnums.BomStatus.REVIEWING.getValue())) {
+                vo.getBlockingIssues().add(planIssue(root.getBomId(), null, "approveStatus",
+                        "只有审核中的BOM才能驳回"));
+            }
+            vo.setExecutable(vo.getBlockingIssues().isEmpty());
+            vo.setReason(vo.getBlockingIssues().isEmpty() ? "" : vo.getBlockingIssues().get(0).getMessage());
+            return vo;
+        }
+
+        PackageScan scan = collectPackage(rootBomId, false);
+        for (String error : scan.errors) {
+            vo.getBlockingIssues().add(planIssue(rootBomId, null, "package", error));
+        }
+        if (!scan.errors.isEmpty()) {
+            vo.setExecutable(false);
+            vo.setReason(scan.errors.get(0));
+            return vo;
+        }
+        PackageContext ctx = new PackageContext(scan.nodes.keySet(),
+                PACKAGE_ACTION_SUBMIT.equals(act), PACKAGE_ACTION_APPROVE.equals(act));
+
+        ProductEnums.BomStatus rootStatus = ProductEnums.BomStatus.fromValue(root.getApproveStatus());
+        if (PACKAGE_ACTION_SUBMIT.equals(act)
+                && rootStatus != ProductEnums.BomStatus.DRAFT
+                && rootStatus != ProductEnums.BomStatus.REJECT) {
+            vo.getBlockingIssues().add(planIssue(root.getBomId(), null, "approveStatus",
+                    "产品BOM当前为「" + rootStatus.getLabel() + "」，只有草稿或已驳回状态才能送审"));
+        }
+        if (PACKAGE_ACTION_APPROVE.equals(act) && rootStatus != ProductEnums.BomStatus.REVIEWING) {
+            vo.getBlockingIssues().add(planIssue(root.getBomId(), null, "approveStatus",
+                    "产品BOM当前为「" + rootStatus.getLabel() + "」，只有审核中状态才能批准"));
+        }
+
+        int actionCount = 0;
+        int reuseCount = 0;
+        int pendingReuseCount = 0;
+        for (EngineeringBom nodeBom : scan.nodes.values()) {
+            List<EngineeringBomItem> items = scan.items.get(nodeBom.getBomId());
+            ProductEnums.BomStatus status = ProductEnums.BomStatus.fromValue(nodeBom.getApproveStatus());
+            BomReviewPackageVO.Node node;
+            if (PACKAGE_ACTION_APPROVE.equals(act) && status == ProductEnums.BomStatus.APPROVED) {
+                node = toRejectNode(nodeBom, items);
+                node.setPlannedAction("REUSE");
+                node.setReuse(true);
+                reuseCount++;
+            } else {
+                node = toPackageNode(nodeBom, items, ctx, PACKAGE_ACTION_APPROVE.equals(act));
+                if (PACKAGE_ACTION_SUBMIT.equals(act)) {
+                    if (status == ProductEnums.BomStatus.APPROVED) {
+                        node.setPlannedAction("REUSE");
+                        node.setReuse(true);
+                        reuseCount++;
+                    } else if (status == ProductEnums.BomStatus.REVIEWING) {
+                        node.setPlannedAction("REUSE_PENDING");
+                        node.setPendingReuse(true);
+                        pendingReuseCount++;
+                    } else if (status == ProductEnums.BomStatus.DRAFT || status == ProductEnums.BomStatus.REJECT) {
+                        node.setPlannedAction(PACKAGE_ACTION_SUBMIT);
+                        actionCount++;
+                    } else {
+                        node.setPlannedAction("BLOCKED");
+                        vo.getBlockingIssues().add(planIssue(nodeBom.getBomId(), null, "approveStatus",
+                                "方案状态为「" + status.getLabel() + "」，不能送审"));
+                    }
+                } else {
+                    if (status == ProductEnums.BomStatus.REVIEWING) {
+                        node.setPlannedAction(PACKAGE_ACTION_APPROVE);
+                        actionCount++;
+                    } else {
+                        node.setPlannedAction("BLOCKED");
+                        vo.getBlockingIssues().add(planIssue(nodeBom.getBomId(), null, "approveStatus",
+                                "方案状态为「" + status.getLabel() + "」，不能整套批准"));
+                    }
+                }
+            }
+            vo.getNodes().add(node);
+            for (com.jjx.product.domain.vo.BomCheckIssueVO issue : node.getIssues()) {
+                vo.getBlockingIssues().add(planIssue(nodeBom.getBomId(), issue.getItemId(), issue.getField(),
+                        issue.getMessage()));
+            }
+        }
+        vo.setActionCount(actionCount);
+        vo.setReuseCount(reuseCount);
+        vo.setPendingReuseCount(pendingReuseCount);
+        vo.setExecutable(vo.getBlockingIssues().isEmpty() && actionCount > 0);
+        if (!vo.getBlockingIssues().isEmpty()) {
+            vo.setReason(vo.getBlockingIssues().get(0).getMessage());
+        } else if (actionCount == 0) {
+            vo.setReason("整套方案均已批准或无需处理，没有需要本次审核的方案");
+        }
+        return vo;
+    }
+
+    private BomReviewPackageVO.Issue planIssue(Long bomId, Long itemId, String field, String message) {
+        BomReviewPackageVO.Issue issue = new BomReviewPackageVO.Issue();
+        issue.setBomId(bomId);
+        issue.setItemId(itemId);
+        issue.setField(field);
+        issue.setMessage(message);
+        return issue;
+    }
+
+    @Override
+    public BomReviewBatchResultVO executeReviewPackages(BomReviewPackageRequest request) {
+        if (request == null || request.getProducts() == null || request.getProducts().isEmpty()) {
+            throw new BusinessException("请选择至少一个产品BOM");
+        }
+        String action = normalizePackageAction(request.getAction());
+        BomReviewBatchResultVO result = new BomReviewBatchResultVO();
+        result.setAction(action);
+        for (BomReviewPackageRequest.ProductScope scope : request.getProducts()) {
+            if (scope == null || scope.getRootBomId() == null) {
+                BomReviewBatchResultVO.ProductFailure failure = new BomReviewBatchResultVO.ProductFailure();
+                failure.setReason("产品BOM不能为空");
+                result.getFailures().add(failure);
+                continue;
+            }
+            org.springframework.transaction.support.TransactionTemplate transaction =
+                    new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+            transaction.setPropagationBehavior(
+                    org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            try {
+                BomReviewBatchResultVO.ProductResult productResult = transaction.execute(status ->
+                        executeOneProductPackage(action, scope, request.getRemark()));
+                if (productResult != null) result.getSuccesses().add(productResult);
+            } catch (Exception ex) {
+                if (!(ex instanceof BusinessException)) {
+                    log.error("BOM整套" + action + "失败，rootBomId=" + scope.getRootBomId(), ex);
+                }
+                BomReviewBatchResultVO.ProductFailure failure = new BomReviewBatchResultVO.ProductFailure();
+                failure.setRootBomId(scope.getRootBomId());
+                EngineeringBom root = productBomMapper.selectById(scope.getRootBomId());
+                if (root != null) {
+                    String type = ManufacturingOutputType.normalize(root.getOutputType()).name();
+                    Long outputId = root.getOutputId() != null ? root.getOutputId() : root.getProductId();
+                    String[] output = outputDisplay(outputId, type);
+                    failure.setProductCode(output[0]);
+                    failure.setProductName(output[1]);
+                }
+                failure.setReason(ex instanceof BusinessException
+                        ? ex.getMessage() : "整套操作失败，请刷新后重试");
+                result.getFailures().add(failure);
+            }
+        }
+        buildSharedNodeResult(result);
+        return result;
+    }
+
+    private BomReviewBatchResultVO.ProductResult executeOneProductPackage(String action,
+                                                                          BomReviewPackageRequest.ProductScope scope,
+                                                                          String remark) {
+        // 与保存/审批同一锁协议：显式下层引用变更与整套审核共用全局图锁。
+        // 必须是本事务第一条数据库语句，固定 bom_id 顺序，跨实例有效。
+        productBomMapper.lockGraphForMutation();
+        EngineeringBom root = productBomMapper.selectById(scope.getRootBomId());
+        if (root == null) throw new BusinessException("BOM不存在（bomId=" + scope.getRootBomId() + "）");
+        if (PACKAGE_ACTION_REJECT.equals(action)) {
+            return executeRejectPackage(root, scope, remark);
+        }
+        PackageScan scan = collectPackage(scope.getRootBomId(), true);
+        if (!scan.errors.isEmpty()) throw new BusinessException(scan.errors.get(0));
+        assertExpectedPackage(scan, scope, action);
+        PackageContext ctx = new PackageContext(scan.nodes.keySet(),
+                PACKAGE_ACTION_SUBMIT.equals(action), PACKAGE_ACTION_APPROVE.equals(action));
+
+        // 预检：所有节点先整体校验，任何一个节点失败都回滚本产品，不出现半套通过。
+        java.util.List<String> blocking = new java.util.ArrayList<>();
+        for (EngineeringBom nodeBom : scan.nodes.values()) {
+            boolean reuse = PACKAGE_ACTION_APPROVE.equals(action)
+                    && ProductEnums.BomStatus.fromValue(nodeBom.getApproveStatus())
+                    == ProductEnums.BomStatus.APPROVED;
+            if (reuse) continue;
+            List<com.jjx.product.domain.vo.BomCheckIssueVO> issues =
+                    checkBom(nodeBom.getBomId(), PACKAGE_ACTION_APPROVE.equals(action), ctx);
+            for (com.jjx.product.domain.vo.BomCheckIssueVO issue : issues) {
+                blocking.add("[" + (nodeBom.getBomCode() == null ? nodeBom.getBomId() : nodeBom.getBomCode()) + "] "
+                        + issue.getMessage());
+            }
+        }
+        if (!blocking.isEmpty()) {
+            throw new BusinessException("整套范围不满足" + (PACKAGE_ACTION_SUBMIT.equals(action) ? "送审" : "批准")
+                    + "条件：\n" + formatBlocking(blocking));
+        }
+
+        BomReviewBatchResultVO.ProductResult productResult = new BomReviewBatchResultVO.ProductResult();
+        productResult.setRootBomId(root.getBomId());
+        productResult.setRootBomVersion(root.getBomVersion());
+        String type = ManufacturingOutputType.normalize(root.getOutputType()).name();
+        Long outputId = root.getOutputId() != null ? root.getOutputId() : root.getProductId();
+        String[] output = outputDisplay(outputId, type);
+        productResult.setProductCode(output[0]);
+        productResult.setProductName(output[1]);
+
+        for (EngineeringBom nodeBom : scan.nodes.values()) {
+            List<EngineeringBomItem> items = scan.items.get(nodeBom.getBomId());
+            ProductEnums.BomStatus before = ProductEnums.BomStatus.fromValue(nodeBom.getApproveStatus());
+            BomReviewBatchResultVO.NodeResult nodeResult = new BomReviewBatchResultVO.NodeResult();
+            nodeResult.setBomId(nodeBom.getBomId());
+            nodeResult.setBomCode(nodeBom.getBomCode());
+            nodeResult.setBomVersion(nodeBom.getBomVersion());
+            nodeResult.setStatusBefore(before.getValue());
+            if (PACKAGE_ACTION_SUBMIT.equals(action)) {
+                if (before == ProductEnums.BomStatus.APPROVED) {
+                    nodeResult.setAction("REUSE");
+                    nodeResult.setStatusAfter(before.getValue());
+                } else if (before == ProductEnums.BomStatus.REVIEWING) {
+                    nodeResult.setAction("REUSE_PENDING");
+                    nodeResult.setStatusAfter(before.getValue());
+                } else if (before == ProductEnums.BomStatus.DRAFT || before == ProductEnums.BomStatus.REJECT) {
+                    submitPackageNode(nodeBom, items, scope, Objects.equals(nodeBom.getBomId(), root.getBomId()));
+                    nodeResult.setAction(PACKAGE_ACTION_SUBMIT);
+                    nodeResult.setStatusAfter(ProductEnums.BomStatus.REVIEWING.getValue());
+                } else {
+                    throw new BusinessException("方案状态为「" + before.getLabel() + "」，不能送审（bomId="
+                            + nodeBom.getBomId() + "）");
+                }
+            } else {
+                if (before == ProductEnums.BomStatus.APPROVED) {
+                    nodeResult.setAction("REUSE");
+                    nodeResult.setStatusAfter(before.getValue());
+                } else if (before == ProductEnums.BomStatus.REVIEWING) {
+                    approvePackageNode(nodeBom, items, scope, remark);
+                    nodeResult.setAction(PACKAGE_ACTION_APPROVE);
+                    nodeResult.setStatusAfter(ProductEnums.BomStatus.APPROVED.getValue());
+                } else {
+                    throw new BusinessException("方案状态为「" + before.getLabel() + "」，不能整套批准（bomId="
+                            + nodeBom.getBomId() + "）");
+                }
+            }
+            productResult.getNodes().add(nodeResult);
+        }
+        return productResult;
+    }
+
+    private void assertExpectedPackage(PackageScan scan, BomReviewPackageRequest.ProductScope scope, String action) {
+        java.util.LinkedHashMap<Long, BomReviewPackageRequest.NodeScope> expected = new java.util.LinkedHashMap<>();
+        for (BomReviewPackageRequest.NodeScope node : scope.getExpectedNodes()) {
+            if (node == null || node.getBomId() == null) continue;
+            if (expected.put(node.getBomId(), node) != null) {
+                throw new BusinessException("整套范围包含重复方案（bomId=" + node.getBomId() + "）");
+            }
+        }
+        java.util.Set<Long> actual = new java.util.LinkedHashSet<>(scan.nodes.keySet());
+        if (!actual.equals(expected.keySet())) {
+            throw new BusinessException("方案引用范围已变化，请重新预览后再执行");
+        }
+        for (Map.Entry<Long, BomReviewPackageRequest.NodeScope> entry : expected.entrySet()) {
+            EngineeringBom bom = scan.nodes.get(entry.getKey());
+            BomReviewPackageRequest.NodeScope node = entry.getValue();
+            if (bom == null) {
+                throw new BusinessException("方案已不存在（bomId=" + entry.getKey() + "），请重新预览");
+            }
+            if (node.getVersion() == null || !node.getVersion().trim().equalsIgnoreCase(
+                    bom.getBomVersion() == null ? "" : bom.getBomVersion().trim())) {
+                throw new BusinessException("方案版本已变化（bomId=" + entry.getKey() + "），请重新预览");
+            }
+            List<EngineeringBomItem> items = scan.items.get(entry.getKey());
+            String actualRevision = computePackageContentRevision(bom, items);
+            if (node.getPackageRevision() == null || !node.getPackageRevision().equals(actualRevision)) {
+                throw new BusinessException("方案内容已变化（bomId=" + entry.getKey() + "），请重新预览");
+            }
+            assertExpectedNodeStatus(action, Objects.equals(entry.getKey(), scan.root.getBomId()),
+                    node.getStatus(), bom.getApproveStatus(), entry.getKey());
+        }
+    }
+
+    private void assertExpectedNodeStatus(String action, boolean isRoot, Integer expectedStatus,
+                                          Integer actualStatus, Long bomId) {
+        ProductEnums.BomStatus expected = ProductEnums.BomStatus.fromValue(expectedStatus);
+        ProductEnums.BomStatus actual = ProductEnums.BomStatus.fromValue(actualStatus);
+        if (isRoot && !Objects.equals(expected, actual)) {
+            throw new BusinessException("产品BOM状态已变化（当前「" + actual.getLabel() + "」），请刷新后重试");
+        }
+        if (PACKAGE_ACTION_SUBMIT.equals(action)) {
+            if (actual == ProductEnums.BomStatus.OBSOLETE) {
+                throw new BusinessException("方案已作废，不能送审（bomId=" + bomId + "）");
+            }
+            if (expected == ProductEnums.BomStatus.APPROVED && actual != ProductEnums.BomStatus.APPROVED) {
+                throw new BusinessException("已批准方案状态异常（bomId=" + bomId + "），请重新预览");
+            }
+            if (expected == ProductEnums.BomStatus.REVIEWING
+                    && actual != ProductEnums.BomStatus.REVIEWING
+                    && actual != ProductEnums.BomStatus.APPROVED) {
+                throw new BusinessException("方案状态已回退（bomId=" + bomId + "），请重新预览");
+            }
+            return;
+        }
+        if (expected == ProductEnums.BomStatus.APPROVED && actual != ProductEnums.BomStatus.APPROVED) {
+            throw new BusinessException("已批准方案状态异常（bomId=" + bomId + "），请重新预览");
+        }
+        if (expected == ProductEnums.BomStatus.REVIEWING
+                && actual != ProductEnums.BomStatus.REVIEWING
+                && actual != ProductEnums.BomStatus.APPROVED) {
+            throw new BusinessException("方案不在审核中（bomId=" + bomId + "），请重新预览");
+        }
+        if (expected != ProductEnums.BomStatus.REVIEWING && expected != ProductEnums.BomStatus.APPROVED) {
+            throw new BusinessException("方案尚未送审（bomId=" + bomId + "），不能整套批准");
+        }
+    }
+
+    private void submitPackageNode(EngineeringBom bom, List<EngineeringBomItem> items,
+                                   BomReviewPackageRequest.ProductScope scope, boolean rootNode) {
+        if (items == null || items.isEmpty()) {
+            throw new BusinessException("BOM明细不能为空（bomId=" + bom.getBomId() + "）");
+        }
+        for (EngineeringBomItem item : items) {
+            ProductEnums.BomItemReviewStatus status =
+                    ProductEnums.BomItemReviewStatus.fromValue(item.getReviewStatus());
+            if (status == ProductEnums.BomItemReviewStatus.DRAFT
+                    || status == ProductEnums.BomItemReviewStatus.REJECTED) {
+                item.setReviewStatus(ProductEnums.BomItemReviewStatus.PENDING.getValue());
+                item.setRejectReason(null);
+                productBomItemMapper.updateById(item);
+            }
+        }
+        Integer current = bom.getApproveStatus();
+        UpdateBomStatusDTO dto = new UpdateBomStatusDTO();
+        dto.setBomId(bom.getBomId());
+        dto.setCurrent(current);
+        dto.setTarget(ProductEnums.BomStatus.REVIEWING.getValue());
+        boolean updated = updateStatus(dto);
+        if (!updated) throw new BusinessException("BOM状态已变化，送审未生效（bomId=" + bom.getBomId() + "）");
+        reviewFlowService.record("engineering_bom", bom.getBomId(), "SUBMIT", "整套送审",
+                current, dto.getTarget(), "产品整套送审，根方案版本=" + scope.getExpectedVersion(), null);
+        // 统一以产品为入口生成审核待办：下层方案不再各自触发分散待办。
+        if (rootNode) publishBomEvent("bom.submitted", bom);
+    }
+
+    private void approvePackageNode(EngineeringBom bom, List<EngineeringBomItem> items,
+                                    BomReviewPackageRequest.ProductScope scope, String remark) {
+        String operator = currentOperator();
+        LocalDateTime now = LocalDateTime.now();
+        for (EngineeringBomItem item : items) {
+            ProductEnums.BomItemReviewStatus status =
+                    ProductEnums.BomItemReviewStatus.fromValue(item.getReviewStatus());
+            if (status == ProductEnums.BomItemReviewStatus.PENDING) {
+                if (item.getMaterialId() == null || item.getMaterialId() <= 0
+                        || inventoryMaterialMapper.selectById(item.getMaterialId()) == null) {
+                    throw new BusinessException("行尚未关联有效物料，不能整套通过（bomId=" + bom.getBomId()
+                            + "，行#=" + item.getItemId() + "）");
+                }
+                item.setReviewStatus(ProductEnums.BomItemReviewStatus.APPROVED.getValue());
+                item.setApprovedFingerprint(fingerprint(item));
+                item.setApprovedBy(operator);
+                item.setApprovedTime(now);
+                item.setRejectReason(null);
+                item.setRemoveConfirmed(false);
+                productBomItemMapper.updateById(item);
+                reviewFlowService.record("engineering_bom_item", item.getItemId(), "APPROVE",
+                        "行审核通过（整套）", status.getLabel(),
+                        ProductEnums.BomItemReviewStatus.APPROVED.getLabel(),
+                        buildItemReviewComment(item, remark), null);
+            } else if (status == ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
+                // 待移除必须已由审核员明确确认；整套通过不代确认。
+                if (!Boolean.TRUE.equals(item.getRemoveConfirmed())) {
+                    throw new BusinessException("待移除行尚未确认移除，不能整套通过（bomId=" + bom.getBomId()
+                            + "，行#=" + item.getItemId() + "）");
+                }
+            } else if (status != ProductEnums.BomItemReviewStatus.APPROVED) {
+                throw new BusinessException("行状态为「" + status.getLabel() + "」，不能整套通过（bomId="
+                        + bom.getBomId() + "，行#=" + item.getItemId() + "）");
+            }
+        }
+        // 行全部通过后按既有严格口径复检；下层方案已由上到下批准。
+        List<com.jjx.product.domain.vo.BomCheckIssueVO> issues = checkBom(bom.getBomId(), true, null);
+        if (!issues.isEmpty()) {
+            java.util.List<String> messages = new java.util.ArrayList<>();
+            for (com.jjx.product.domain.vo.BomCheckIssueVO issue : issues) messages.add(issue.getMessage());
+            throw new BusinessException("整套批准前复检未通过：\n" + formatBlocking(messages));
+        }
+        for (EngineeringBomItem item : items) {
+            if (ProductEnums.BomItemReviewStatus.fromValue(item.getReviewStatus())
+                    == ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
+                reviewFlowService.record("engineering_bom_item", item.getItemId(), "REMOVE_COMMIT",
+                        "确认移除并删除（整套）",
+                        ProductEnums.BomItemReviewStatus.PENDING_REMOVE.getLabel(), "已删除",
+                        itemOriginalText(item), null);
+                productBomItemMapper.deleteById(item.getItemId());
+            }
+        }
+        UpdateBomStatusDTO dto = new UpdateBomStatusDTO();
+        dto.setBomId(bom.getBomId());
+        dto.setCurrent(ProductEnums.BomStatus.REVIEWING.getValue());
+        dto.setTarget(ProductEnums.BomStatus.APPROVED.getValue());
+        if (!updateStatus(dto)) {
+            throw new BusinessException("BOM状态已变化，整套批准未生效（bomId=" + bom.getBomId() + "）");
+        }
+        reviewFlowService.record("engineering_bom", bom.getBomId(), "APPROVE", "整套审核通过",
+                ProductEnums.BomStatus.REVIEWING.getValue(),
+                ProductEnums.BomStatus.APPROVED.getValue(),
+                "产品整套审核，根方案版本=" + scope.getExpectedVersion(), null);
+        publishBomEvent("bom.approved", bom);
+    }
+
+    private BomReviewBatchResultVO.ProductResult executeRejectPackage(EngineeringBom root,
+                                                                      BomReviewPackageRequest.ProductScope scope,
+                                                                      String remark) {
+        List<EngineeringBomItem> items = packageItems(root.getBomId(), true);
+        if (scope.getExpectedNodes() == null || scope.getExpectedNodes().size() != 1) {
+            throw new BusinessException("驳回范围只允许根产品BOM，请重新预览");
+        }
+        BomReviewPackageRequest.NodeScope expected = scope.getExpectedNodes().get(0);
+        if (expected == null || !Objects.equals(expected.getBomId(), root.getBomId())) {
+            throw new BusinessException("驳回范围与产品BOM不一致，请重新预览");
+        }
+        if (scope.getExpectedVersion() == null
+                || !scope.getExpectedVersion().trim().equalsIgnoreCase(
+                root.getBomVersion() == null ? "" : root.getBomVersion().trim())) {
+            throw new BusinessException("产品BOM版本已变化，请重新预览");
+        }
+        String revision = computePackageContentRevision(root, items);
+        if (expected.getPackageRevision() == null || !expected.getPackageRevision().equals(revision)) {
+            throw new BusinessException("产品BOM内容已变化，请重新预览");
+        }
+        if (!Objects.equals(root.getApproveStatus(), ProductEnums.BomStatus.REVIEWING.getValue())) {
+            throw new BusinessException("只有审核中的BOM才能驳回");
+        }
+        Integer current = root.getApproveStatus();
+        UpdateBomStatusDTO dto = new UpdateBomStatusDTO();
+        dto.setBomId(root.getBomId());
+        dto.setCurrent(current);
+        dto.setTarget(ProductEnums.BomStatus.REJECT.getValue());
+        dto.setRemark(remark);
+        if (!updateStatus(dto)) throw new BusinessException("BOM状态已变化，驳回未生效");
+        reviewFlowService.record("engineering_bom", root.getBomId(), "REJECT", "整套审核驳回",
+                current, dto.getTarget(), remark, null);
+        for (EngineeringBomItem item : items) {
+            if (ProductEnums.BomItemReviewStatus.fromValue(item.getReviewStatus())
+                    == ProductEnums.BomItemReviewStatus.PENDING) {
+                item.setReviewStatus(ProductEnums.BomItemReviewStatus.REJECTED.getValue());
+                item.setRejectReason(trimTo500(remark));
+                productBomItemMapper.updateById(item);
+            }
+        }
+        BomReviewBatchResultVO.ProductResult result = new BomReviewBatchResultVO.ProductResult();
+        result.setRootBomId(root.getBomId());
+        result.setRootBomVersion(root.getBomVersion());
+        String type = ManufacturingOutputType.normalize(root.getOutputType()).name();
+        Long outputId = root.getOutputId() != null ? root.getOutputId() : root.getProductId();
+        String[] output = outputDisplay(outputId, type);
+        result.setProductCode(output[0]);
+        result.setProductName(output[1]);
+        result.setMessage("已驳回该产品BOM；公共下层方案未连带驳回");
+        BomReviewBatchResultVO.NodeResult node = new BomReviewBatchResultVO.NodeResult();
+        node.setBomId(root.getBomId());
+        node.setBomCode(root.getBomCode());
+        node.setBomVersion(root.getBomVersion());
+        node.setAction(PACKAGE_ACTION_REJECT);
+        node.setStatusBefore(current);
+        node.setStatusAfter(ProductEnums.BomStatus.REJECT.getValue());
+        result.getNodes().add(node);
+        return result;
+    }
+
+    private String formatBlocking(java.util.List<String> messages) {
+        StringBuilder sb = new StringBuilder();
+        int max = Math.min(messages.size(), 10);
+        for (int i = 0; i < max; i++) {
+            sb.append("· ").append(messages.get(i)).append("\n");
+        }
+        if (messages.size() > max) sb.append("… 共 ").append(messages.size()).append(" 项");
+        return sb.toString();
+    }
+
+    private void buildSharedNodeResult(BomReviewBatchResultVO result) {
+        Map<Long, BomReviewBatchResultVO.SharedNode> shared = new java.util.LinkedHashMap<>();
+        Map<Long, java.util.LinkedHashSet<String>> products = new HashMap<>();
+        for (BomReviewBatchResultVO.ProductResult product : result.getSuccesses()) {
+            String label = (product.getProductCode() == null ? "" : product.getProductCode())
+                    + (product.getProductName() == null ? "" : " " + product.getProductName());
+            for (BomReviewBatchResultVO.NodeResult node : product.getNodes()) {
+                products.computeIfAbsent(node.getBomId(), k -> new java.util.LinkedHashSet<>()).add(label.trim());
+                if (!shared.containsKey(node.getBomId())) {
+                    BomReviewBatchResultVO.SharedNode entry = new BomReviewBatchResultVO.SharedNode();
+                    entry.setBomId(node.getBomId());
+                    entry.setBomCode(node.getBomCode());
+                    entry.setBomVersion(node.getBomVersion());
+                    entry.setAction(node.getAction());
+                    shared.put(node.getBomId(), entry);
+                } else if ("REUSE".equals(shared.get(node.getBomId()).getAction())
+                        && !"REUSE".equals(node.getAction())) {
+                    shared.get(node.getBomId()).setAction(node.getAction());
+                }
+            }
+        }
+        for (Map.Entry<Long, BomReviewBatchResultVO.SharedNode> entry : shared.entrySet()) {
+            java.util.LinkedHashSet<String> usedBy = products.get(entry.getKey());
+            if (usedBy == null || usedBy.size() <= 1) continue;
+            entry.getValue().getProducts().addAll(usedBy);
+            entry.getValue().setMessage("共享方案只处理一次；其余产品复用其结果");
+            result.getSharedNodes().add(entry.getValue());
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<BomReviewPackageVO.ReferenceImpact> getReferenceImpact(Long bomId) {
+        if (bomId == null) throw new BusinessException("方案不能为空");
+        EngineeringBom origin = productBomMapper.selectById(bomId);
+        if (origin == null) throw new BusinessException("BOM不存在（bomId=" + bomId + "）");
+        java.util.Set<Long> visited = new java.util.LinkedHashSet<>();
+        visited.add(bomId);
+        java.util.LinkedHashMap<Long, EngineeringBom> affected = new java.util.LinkedHashMap<>();
+        java.util.List<Long> frontier = new java.util.ArrayList<>();
+        frontier.add(bomId);
+        while (!frontier.isEmpty()) {
+            java.util.List<Long> parentIds = new java.util.ArrayList<>();
+            for (EngineeringBomItem item : productBomItemMapper.selectList(
+                    new LambdaQueryWrapper<EngineeringBomItem>()
+                            .select(EngineeringBomItem::getBomId)
+                            .in(EngineeringBomItem::getSubBomId, frontier))) {
+                if (item.getBomId() != null && visited.add(item.getBomId())) {
+                    parentIds.add(item.getBomId());
+                }
+            }
+            if (parentIds.isEmpty()) break;
+            for (EngineeringBom parent : productBomMapper.selectBatchIds(parentIds)) {
+                affected.put(parent.getBomId(), parent);
+            }
+            frontier = parentIds;
+        }
+        java.util.List<BomReviewPackageVO.ReferenceImpact> result = new java.util.ArrayList<>();
+        for (EngineeringBom bom : affected.values()) {
+            BomReviewPackageVO.ReferenceImpact impact = new BomReviewPackageVO.ReferenceImpact();
+            impact.setBomId(bom.getBomId());
+            impact.setBomCode(bom.getBomCode());
+            impact.setBomVersion(bom.getBomVersion());
+            impact.setStatus(bom.getApproveStatus());
+            String type = ManufacturingOutputType.normalize(bom.getOutputType()).name();
+            Long outputId = bom.getOutputId() != null ? bom.getOutputId() : bom.getProductId();
+            impact.setOutputType(type);
+            impact.setOutputId(outputId);
+            String[] output = outputDisplay(outputId, type);
+            impact.setOutputCode(output[0]);
+            impact.setOutputName(output[1]);
+            boolean hasParent = productBomItemMapper.exists(new LambdaQueryWrapper<EngineeringBomItem>()
+                    .eq(EngineeringBomItem::getSubBomId, bom.getBomId()));
+            impact.setRoot(!hasParent);
+            result.add(impact);
+        }
+        return result;
+    }
+
     /**
      * EngineeringBomItemDTO 转 EngineeringBomItem 实体
      */
@@ -1737,6 +2636,16 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     }
 
     private List<com.jjx.product.domain.vo.BomCheckIssueVO> checkBom(Long bomId, boolean forApprove) {
+        return checkBom(bomId, forApprove, null);
+    }
+
+    /**
+     * 体检核心。ctx 非空时按“整套范围”放宽两条限制（仅限本次实际引用的同批方案）：
+     * 1）允许仍未批准的本次下层方案；2）整套通过时允许待审核行由本次一并通过。
+     * 待移除确认、物料有效性、比例/单位/项目、环等校验不因整套而放宽。
+     */
+    private List<com.jjx.product.domain.vo.BomCheckIssueVO> checkBom(Long bomId, boolean forApprove,
+                                                                     PackageContext ctx) {
         List<com.jjx.product.domain.vo.BomCheckIssueVO> issues = new java.util.ArrayList<>();
         EngineeringBom bom = productBomMapper.selectById(bomId);
         if (bom == null) {
@@ -1814,8 +2723,12 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             }
             activeRows++;
             if (forApprove && rowStatus != ProductEnums.BomItemReviewStatus.APPROVED) {
-                issues.add(issue(iid, code, name, "reviewStatus",
-                        "行状态为「" + rowStatus.getLabel() + "」，需逐行审核通过"));
+                boolean packagePending = ctx != null && ctx.allowPendingRows
+                        && rowStatus == ProductEnums.BomItemReviewStatus.PENDING;
+                if (!packagePending) {
+                    issues.add(issue(iid, code, name, "reviewStatus",
+                            "行状态为「" + rowStatus.getLabel() + "」，需逐行审核通过"));
+                }
             }
             // 材料原文（快速模式）：名称必填，规格选填；未建档允许先入审核
             if (org.apache.commons.lang3.StringUtils.isBlank(it.getMaterialName())) {
@@ -1855,7 +2768,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 issues.add(issue(iid, code, name, "subBomId", "MAKE_WITHOUT_SCHEME：自制行必须明确下层生产BOM"));
             }
             if (it.getSubBomId() != null) {
-                String subError = validateSubBomReference(bomId, it, true);
+                String subError = validateSubBomReference(bomId, it, true, ctx);
                 if (subError != null) {
                     issues.add(issue(iid, code, name, "subBomId", subError));
                 }
@@ -1924,12 +2837,12 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             }
         }
         // 显式下层引用全图 DFS：环/深度/未批准子方案，不以“两层截断”伪装通过
-        String graphError = validateSubBomGraph(bomId, items, true);
+        String graphError = validateSubBomGraph(bomId, items, true, ctx);
         if (graphError != null) {
             issues.add(issue(null, null, null, "subBomId", graphError));
         }
         // 产品主方案引用的方案也必须已批准
-        String schemeError = validateSavedSchemeChoices(bom);
+        String schemeError = validateSavedSchemeChoices(bom, ctx);
         if (schemeError != null) {
             issues.add(issue(null, null, null, "schemeChoices", schemeError));
         }
@@ -2087,6 +3000,12 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
 
     /** 校验单行显式下层引用；rootBomId 为空时只校验存在/输出一致（新建尚未落库）。 */
     private String validateSubBomReference(Long rootBomId, EngineeringBomItem row, boolean requireApproved) {
+        return validateSubBomReference(rootBomId, row, requireApproved, null);
+    }
+
+    /** requireApproved 时，本次整套范围内尚未批准的方案按“本次同批处理”放行。 */
+    private String validateSubBomReference(Long rootBomId, EngineeringBomItem row, boolean requireApproved,
+                                           PackageContext ctx) {
         if (row.getSubBomId() == null) {
             return null;
         }
@@ -2108,7 +3027,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             return "SUB_BOM_OUTPUT_MISMATCH：下层方案产出物料 " + childOutputId
                     + " 与本行物料 " + row.getMaterialId() + " 不一致";
         }
-        if (requireApproved && !Objects.equals(child.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())) {
+        if (requireApproved && !Objects.equals(child.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())
+                && !contextAllowsUnapproved(ctx, child)) {
             return "SUB_BOM_NOT_APPROVED：下层方案未批准（bomId=" + child.getBomId() + "）";
         }
         return null;
@@ -2119,20 +3039,25 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
      * 共享 DAG 只按节点查询/遍历一次；同一条访问路径重复出现才是环。
      */
     private String validateSubBomGraph(Long rootBomId, List<EngineeringBomItem> rows, boolean requireApproved) {
+        return validateSubBomGraph(rootBomId, rows, requireApproved, null);
+    }
+
+    private String validateSubBomGraph(Long rootBomId, List<EngineeringBomItem> rows, boolean requireApproved,
+                                       PackageContext ctx) {
         if (rows == null || rows.isEmpty()) {
             return null;
         }
         java.util.Set<Long> starts = new java.util.LinkedHashSet<>();
         for (EngineeringBomItem row : rows) {
             if (row.getSubBomId() == null) continue;
-            String error = validateSubBomReference(rootBomId, row, requireApproved);
+            String error = validateSubBomReference(rootBomId, row, requireApproved, ctx);
             if (error != null) return error;
             starts.add(row.getSubBomId());
         }
         java.util.Map<Long, java.util.List<Long>> childCache = new java.util.HashMap<>();
         java.util.Map<Long, Integer> color = new java.util.HashMap<>(); // 1=访问中，2=已完成
         for (Long start : starts) {
-            String error = walkSubBom(start, rootBomId, requireApproved, childCache, color);
+            String error = walkSubBom(start, rootBomId, requireApproved, childCache, color, ctx);
             if (error != null) return error;
         }
         return null;
@@ -2141,7 +3066,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     /** 显式栈深度优先；每节点最多展开一次，深链不会栈溢出。 */
     private String walkSubBom(Long start, Long rootBomId, boolean requireApproved,
                               java.util.Map<Long, java.util.List<Long>> childCache,
-                              java.util.Map<Long, Integer> color) {
+                              java.util.Map<Long, Integer> color, PackageContext ctx) {
         if (rootBomId != null && Objects.equals(rootBomId, start)) {
             return "BOM_CYCLE：显式制造关系形成环，路径=" + rootBomId + " -> " + start;
         }
@@ -2150,7 +3075,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         if (state != null && state == 1) {
             return "BOM_CYCLE：显式制造关系形成环（bomId=" + start + "）";
         }
-        SubBomScan startScan = scanSubBomNode(start, rootBomId, requireApproved, childCache);
+        SubBomScan startScan = scanSubBomNode(start, rootBomId, requireApproved, childCache, ctx);
         if (startScan.error != null) return startScan.error;
         java.util.Deque<SubBomFrame> stack = new java.util.ArrayDeque<>();
         java.util.List<Long> path = new java.util.ArrayList<>();
@@ -2174,7 +3099,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             if (nextState != null && nextState == 1) {
                 return "BOM_CYCLE：显式制造关系形成环，路径=" + path + " -> " + next;
             }
-            SubBomScan scan = scanSubBomNode(next, rootBomId, requireApproved, childCache);
+            SubBomScan scan = scanSubBomNode(next, rootBomId, requireApproved, childCache, ctx);
             if (scan.error != null) return scan.error;
             color.put(next, 1);
             path.add(next);
@@ -2185,7 +3110,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
 
     /** 按节点缓存显式下层引用；同一节点在共享 DAG 中只查库一次。 */
     private SubBomScan scanSubBomNode(Long bomId, Long rootBomId, boolean requireApproved,
-                                      java.util.Map<Long, java.util.List<Long>> childCache) {
+                                      java.util.Map<Long, java.util.List<Long>> childCache, PackageContext ctx) {
         java.util.List<Long> cached = childCache.get(bomId);
         if (cached != null) return new SubBomScan(cached, null);
         java.util.List<EngineeringBomItem> children = productBomItemMapper.selectList(
@@ -2193,7 +3118,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         java.util.List<Long> ids = new java.util.ArrayList<>();
         for (EngineeringBomItem child : children) {
             if (child.getSubBomId() == null) continue;
-            String error = validateSubBomReference(rootBomId, child, requireApproved);
+            String error = validateSubBomReference(rootBomId, child, requireApproved, ctx);
             if (error != null) return new SubBomScan(null, error);
             ids.add(child.getSubBomId());
         }
@@ -2228,6 +3153,10 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
      * 不得因其草稿阻断审批；坏 JSON 仍明确阻断，不静默当空。
      */
     private String validateSavedSchemeChoices(EngineeringBom bom) {
+        return validateSavedSchemeChoices(bom, null);
+    }
+
+    private String validateSavedSchemeChoices(EngineeringBom bom, PackageContext ctx) {
         if (ManufacturingOutputType.normalize(bom.getOutputType()) != ManufacturingOutputType.PRODUCT
                 || bom.getProductId() == null) {
             return null;
@@ -2267,7 +3196,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                     || !Objects.equals(childOutputId, choice.getMaterialId())) {
                 return "SUB_BOM_OUTPUT_MISMATCH：产品主方案产出与物料不一致（materialId=" + choice.getMaterialId() + "）";
             }
-            if (!Objects.equals(child.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())) {
+            if (!Objects.equals(child.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())
+                    && !contextAllowsUnapproved(ctx, child)) {
                 return "SUB_BOM_NOT_APPROVED：产品主方案未批准（bomId=" + choice.getBomId() + "）";
             }
         }

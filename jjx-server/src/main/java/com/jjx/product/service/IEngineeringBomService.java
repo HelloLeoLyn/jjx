@@ -8,6 +8,9 @@ import com.jjx.engineering.domain.entity.EngineeringBom;
 import com.jjx.engineering.domain.entity.EngineeringBomItem;
 import com.jjx.product.domain.query.EngineeringBomQuery;
 import com.jjx.product.domain.vo.EngineeringBomVO;
+import com.jjx.product.domain.vo.BomReviewPackageVO;
+import com.jjx.product.domain.vo.BomReviewBatchResultVO;
+import com.jjx.product.domain.dto.BomReviewPackageRequest;
 
 import java.util.List;
 
@@ -31,9 +34,18 @@ public interface IEngineeringBomService extends IService<EngineeringBom> {
         private java.util.Date currentEffectiveDate;
         private Long latestId;
         private String latestVersion;
+        /** 最新维护版本状态（BomStatus 值）；供产品/材料页直接展示与操作判断。 */
+        private Integer latestStatus;
+        private Integer currentStatus;
         private long versionCount;
         private boolean hasDraft;
         private boolean hasPending;
+        /** 最新维护版本实际引用（sub_bom_id）摘要：编码 版本（状态）。 */
+        private String subBomSummary;
+        private int subBomCount;
+        /** 最新维护版本整套送审预检的问题数量（已批准版本按 0 处理）。 */
+        private int issueCount;
+        private int itemCount;
         private java.time.LocalDateTime updateTime;
     }
 
@@ -99,6 +111,8 @@ public interface IEngineeringBomService extends IService<EngineeringBom> {
     class BomListQuery extends EngineeringBomQuery {
         private boolean showAllVersions;
         private String bomName;
+        /** PRODUCT（产品BOM页签，默认）/ MATERIAL（材料BOM页签）。 */
+        private String outputType;
     }
 
     @lombok.Data
@@ -226,6 +240,21 @@ public interface IEngineeringBomService extends IService<EngineeringBom> {
     record BatchItemReviewResult(List<Long> successIds, List<ItemReviewFailure> failed) {}
 
     BatchItemReviewResult reviewItemsBatch(BatchItemReviewRequest request);
+
+    /**
+     * 整套范围预览（只读）：沿根 BOM 行实际 sub_bom_id 递归展开，共享节点去重、防环。
+     * action = SUBMIT / APPROVE / REJECT。
+     */
+    BomReviewPackageVO planReviewPackage(Long rootBomId, String action);
+
+    /**
+     * 整套送审/通过/驳回：每个产品一个独立根事务（全成功或全回滚），
+     * 产品之间互不连带回滚；共享方案只处理一次。
+     */
+    BomReviewBatchResultVO executeReviewPackages(BomReviewPackageRequest request);
+
+    /** 材料/子方案被驳回或独立审批前的影响范围：引用它的上层方案（含产品根方案）。 */
+    List<BomReviewPackageVO.ReferenceImpact> getReferenceImpact(Long bomId);
 
 
     /**

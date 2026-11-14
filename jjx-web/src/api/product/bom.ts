@@ -18,6 +18,11 @@ import type {
   ManufacturingBomSavePayload,
   ManufacturingSchemeChoice,
   BomEditSession,
+  ProductBomRow,
+  BomReviewPackage,
+  BomReviewPackageRequest,
+  BomReviewBatchResult,
+  BomReferenceImpact,
 } from '@/types/product/bom'
 import type { PageResult, R } from '@/types'
 // ==================== BomAPI ====================
@@ -32,6 +37,32 @@ export const productBomApi = {
     return request.get<R<PageResult<EngineeringBom>>>('/engineering/bom/page', {
       params,
     })
+  },
+  /** 产品/材料BOM页签聚合行（产品页默认 PRODUCT；材料页传 MATERIAL）。 */
+  getProductBomPage(params: EngineeringBomQueryParams) {
+    return request.get<R<PageResult<ProductBomRow>>>('/engineering/bom/product-page', { params })
+  },
+  /** 整套范围预览：只读展示每个产品实际引用的方案版本/状态/明细/问题。 */
+  planReviewPackages(action: 'SUBMIT' | 'APPROVE' | 'REJECT', rootBomIds: number[]) {
+    return request.post<R<BomReviewPackage[]>>('/engineering/bom/review/package/plan', rootBomIds, {
+      params: { action },
+    })
+  },
+  /** 产品侧整套送审（草稿/已驳回根方案 + 本次实际引用的未批准下层方案）。 */
+  submitReviewPackages(data: BomReviewPackageRequest) {
+    return request.post<R<BomReviewBatchResult>>('/engineering/bom/review/package/submit', data)
+  },
+  /** 产品侧整套通过（一次确认待审明细与本次待审方案）。 */
+  approveReviewPackages(data: BomReviewPackageRequest) {
+    return request.post<R<BomReviewBatchResult>>('/engineering/bom/review/package/approve', data)
+  },
+  /** 产品侧整套驳回（只退回该产品根方案）。 */
+  rejectReviewPackages(data: BomReviewPackageRequest) {
+    return request.post<R<BomReviewBatchResult>>('/engineering/bom/review/package/reject', data)
+  },
+  /** 材料/公共子方案被驳回或独立审批前的影响范围。 */
+  getBomReferenceImpact(bomId: number) {
+    return request.get<R<BomReferenceImpact[]>>(`/engineering/bom/${bomId}/references`)
   },
   getBomVersions(bomCode: string) {
     return request.get<R<EngineeringBom[]>>('/engineering/bom/versions', { params: { bomCode } })
