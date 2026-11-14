@@ -52,7 +52,7 @@ import java.util.regex.Pattern;
 public class WorkSpecDocsetSnapshotService {
 
     /** 快照格式版本：结构变更时递增，旧消费者按此分支兼容。 */
-    public static final int SCHEMA_VERSION = 1;
+    public static final int SCHEMA_VERSION = 2;
 
     private final IEngineeringBomService bomService;
     private final IEngineeringRoutingService routingService;
@@ -196,6 +196,9 @@ public class WorkSpecDocsetSnapshotService {
         putText(publication, "changeSummary", changeSummary);
 
         content.set("bom", bomNode == null ? json.nullNode() : bomNode);
+        // 新版本冻结方案投入资料；旧版本缺此可选字段时仍按原模式读，不回查最新方案。
+        JsonNode materialSchemes = spec.path("sourceData").path("materialSchemes");
+        if (materialSchemes.isObject()) content.set("materialSchemes", materialSchemes.deepCopy());
         content.set("routing", routingNode == null ? json.nullNode() : routingNode);
 
         ObjectNode iconsNode = content.putObject("icons");
@@ -502,6 +505,16 @@ public class WorkSpecDocsetSnapshotService {
         if (product.getCurrentBomId() != null) {
             appendRows(token, jdbc.queryForList(
                     "SELECT bom_id,bom_code,bom_version,approve_status,update_time FROM engineering_bom WHERE bom_id=? FOR SHARE",
+                    product.getCurrentBomId()));
+            // 原料展示可能来自当前制造方案（即使产品行标为外购）。冻结读取窗口内的候选与投入行。
+            appendRows(token, jdbc.queryForList(
+                    "SELECT b.* FROM engineering_bom b WHERE b.output_type='MATERIAL' AND b.output_id IN "
+                            + "(SELECT material_id FROM engineering_bom_item WHERE bom_id=?) ORDER BY b.bom_id FOR SHARE",
+                    product.getCurrentBomId()));
+            appendRows(token, jdbc.queryForList(
+                    "SELECT i.* FROM engineering_bom_item i JOIN engineering_bom b ON b.bom_id=i.bom_id "
+                            + "WHERE b.output_type='MATERIAL' AND b.output_id IN "
+                            + "(SELECT material_id FROM engineering_bom_item WHERE bom_id=?) ORDER BY i.item_id FOR SHARE",
                     product.getCurrentBomId()));
             appendRows(token, jdbc.queryForList(
                     "SELECT item_id,material_id,process_id,split,quantity,unit,layer,item_order,remark,update_time FROM engineering_bom_item WHERE bom_id=? FOR SHARE",

@@ -9,6 +9,7 @@
     :initial-font-settings="initialFontSettings"
     :initial-cell-font-settings="route.query.cellFonts == null ? undefined : String(route.query.cellFonts)"
     :initial-template="initialWorkSpecTemplate(route.query.template)"
+    :initial-material-mode="normalizeMaterialMode(route.query.materialMode)"
     :initial-hidden-blocks="route.query.hideBlocks == null ? undefined : String(route.query.hideBlocks)"
     :auto-print="route.query.print === '1'"
     standalone
@@ -20,6 +21,7 @@ import { useRoute } from 'vue-router'
 import ProductSpecPreview from './components/ProductSpecPreview.vue'
 import { documentSections } from './components/docset'
 import { initialWorkSpecTemplate } from './components/workSpecFont'
+import { normalizeMaterialMode } from './components/workSpecMaterialMode'
 
 const route = useRoute()
 const productId = Number(route.params.productId)

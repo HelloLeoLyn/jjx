@@ -48,6 +48,7 @@ import java.util.ArrayList;
 @Service
 @RequiredArgsConstructor
 public class ProductWorkSpecService {
+    @org.springframework.beans.factory.annotation.Autowired private WorkSpecMaterialSchemeService materialSchemes;
     @org.springframework.beans.factory.annotation.Autowired private AttachmentRefService draftRefs;
     @org.springframework.beans.factory.annotation.Autowired private com.jjx.system.service.AttachmentDocumentTypeService docTypes;
     @org.springframework.beans.factory.annotation.Autowired private AttachmentAccessService draftAccess;
@@ -1120,6 +1121,7 @@ public class ProductWorkSpecService {
         product.put("customerName", full.getProduct().getCustomerName());
         sources.set("product", product);
         sources.set("bom", json.valueToTree(full.getBom()));
+        if (materialSchemes != null) sources.set("materialSchemes", materialSchemes.resolve(full.getBom()));
         sources.set("routing", json.valueToTree(full.getRouting()));
         if (data.has("projectMaterials")) sources.set("projectMaterials", data.get("projectMaterials"));
         if (data.hasNonNull("structureFileId")) {

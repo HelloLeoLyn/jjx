@@ -92,6 +92,20 @@ class WorkSpecDocsetSnapshotServiceTest {
         assertEquals("", working.path("projectMaterials").get(0).path("params").asText());
     }
 
+    @Test
+    void freezesMaterialSchemesForBothDisplayModesWithoutEditingWorkingMaterials() throws Exception {
+        Product product = product(); product.setCurrentBomId(null);
+        ObjectNode working = spec(null, false);
+        working.putObject("sourceData").putObject("materialSchemes").putObject("byMaterial")
+                .putObject("351").put("bomId", 1).putArray("items").addObject().put("materialName", "3M 9080").put("pitchMm", 80);
+        when(workSpecService.get(anyLong())).thenAnswer(call -> working.deepCopy());
+        JsonNode frozen = json.readTree(service.build(product, "V2.0", "工程甲", LocalDateTime.now(), null).json());
+        ((ObjectNode) working.path("sourceData").path("materialSchemes").path("byMaterial").path("351").path("items").get(0))
+                .put("materialName", "后续原料");
+        assertEquals("3M 9080", frozen.path("materialSchemes").path("byMaterial").path("351").path("items").get(0).path("materialName").asText());
+        assertEquals(2, frozen.path("schemaVersion").asInt());
+    }
+
     private Product product() {
         Product product = new Product();
         product.setProductId(3L);
@@ -112,7 +126,7 @@ class WorkSpecDocsetSnapshotServiceTest {
         ReflectionTestUtils.invokeMethod(service, "sourceToken", product);
 
         ArgumentCaptor<String> queries = ArgumentCaptor.forClass(String.class);
-        verify(jdbc, times(6)).queryForList(queries.capture(), any(Object[].class));
+        verify(jdbc, times(8)).queryForList(queries.capture(), any(Object[].class));
         verify(customerDocuments).lockForSnapshot(product.getProductId());
         String referenceSql = queries.getAllValues().stream()
                 .filter(sql -> sql.contains("FROM sys_attachment_ref r JOIN sys_attachment"))
@@ -161,7 +175,7 @@ class WorkSpecDocsetSnapshotServiceTest {
         Product product = product();
         product.setCurrentRouteId(2L);
         ReflectionTestUtils.invokeMethod(service, "sourceToken", product);
-        assertEquals(8, checked.get(), "BOM/路线各2条，附件及引用3条，工序图标1条");
+        assertEquals(10, checked.get(), "BOM/路线、制造方案及投入行、附件引用与图标来源均检查");
     }
 
     /** 规范正文（来自工作态读取：approved 已按 confirmedSource×来源摘要计算）。 */
@@ -323,7 +337,7 @@ class WorkSpecDocsetSnapshotServiceTest {
                 product(), "V1.0", "系统管理员", LocalDateTime.of(2026, 10, 13, 12, 0), "首次发布");
 
         JsonNode node = json.readTree(snapshot.json());
-        assertEquals(1, node.path("schemaVersion").asInt());
+        assertEquals(2, node.path("schemaVersion").asInt());
         assertTrue(node.path("confirmation").path("approved").asBoolean());
         assertEquals("张三", node.path("confirmation").path("confirmedBy").asText());
         List<Long> ids = snapshot.files().stream().map(WorkSpecDocsetSnapshotService.SnapshotFile::attachmentId).toList();

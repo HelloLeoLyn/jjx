@@ -115,7 +115,7 @@ const bomRow = {
   specification: '0.6T 020 蓝灯',
 }
 
-async function mountEditing() {
+async function mountEditing(withScheme = false) {
   let spec = normalizeWorkSpec({
     revision: 'r1',
     draftManaged: true,
@@ -131,6 +131,7 @@ async function mountEditing() {
     bom: { bomId: 9, items: [bomRow] },
     routing: { routingId: 11, items: [] },
     warnings: [],
+    materialSchemes: withScheme ? { byItem: {}, byMaterial: { 1: { bomId: 10, items: [{ materialId: 112, materialName: 'PET原料', specification: '205mm*440mm', moduleQty: 6, baseQty: 1 }] } } } : undefined,
   }))
   const wrapper = mount(Panel, {
     props: { productId: 2, productCode: 'P2', productName: '产品', viewOnly: false },
@@ -159,6 +160,27 @@ const specInput = (wrapper: any) => rowCells(wrapper)[3].find('input')
 const cellText = (wrapper: any, index: number) => rowCells(wrapper)[index].text()
 
 describe('项目材料规格/模数/基数三列（dev-20261102-001）', () => {
+  it('默认方案模式显示制造原料和6/1，切回原模式不写库，编辑时保留原始材料', async () => {
+    const wrapper = await mountEditing(true)
+    expect(cellText(wrapper, 2)).toContain('PET原料')
+    expect(cellText(wrapper, 3)).toContain('205×440mm')
+    expect(cellText(wrapper, 4)).toBe('6')
+    expect(cellText(wrapper, 5)).toBe('1')
+    expect(materialSection(wrapper).text()).not.toContain('BOM 已移除')
+    const mode = wrapper.findAllComponents({ name: 'ElSelect' }).find(node => node.props('ariaLabel') === '项目材料模式')!
+    await mode.vm.$emit('update:modelValue', 'original'); await flushPromises()
+    expect(cellText(wrapper, 2)).toContain(bomRow.materialName)
+    expect(cellText(wrapper, 4)).toBe('1')
+    await mode.vm.$emit('update:modelValue', 'scheme'); await flushPromises()
+    expect(cellText(wrapper, 2)).toContain('PET原料')
+    await materialSection(wrapper).findAll('.section-heading button').find((node: any) => node.text() === '编辑')!.trigger('click')
+    await flushPromises()
+    expect(mode.props('modelValue')).toBe('original')
+    expect(mode.props('disabled')).toBe(true)
+    expect((specInput(wrapper).element as HTMLInputElement).value).toBe(bomRow.specification)
+    expect(productWorkSpecApi.saveDraft).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
   it('规格/模数/基数分三列，规格点编辑后直接写在输入框里，不是只有灰色提示', async () => {
     const wrapper = await mountEditing()
     // 无宽长时规格回落到规格文本；模数/基数取 BOM 的 moduleQty/baseQty

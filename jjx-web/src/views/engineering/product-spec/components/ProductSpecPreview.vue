@@ -14,6 +14,10 @@
         ><span class="toolbar-caption">{{ pages.length }} 页 · A4</span>
       </div>
       <div class="preview-actions">
+        <el-select v-if="!paperOnly && selectedSections.includes('spec')" v-model="materialMode" aria-label="项目材料模式" style="width: 145px" :disabled="data?.published && !data.materialSchemes">
+          <el-option label="方案模式" :value="MATERIAL_MODE_SCHEME" />
+          <el-option label="原模式" :value="MATERIAL_MODE_ORIGINAL" />
+        </el-select>
         <el-select v-if="!paperOnly && selectedSections.includes('spec')" v-model="selectedTemplate" aria-label="作业规范模板" style="width: 140px">
           <el-option label="模板 A" value="A" />
           <el-option label="模板 B" value="B" />
@@ -52,6 +56,8 @@
       :closable="false"
       class="preview-message no-print"
     />
+    <el-alert v-for="message in materialWarnings" :key="message" :title="message" type="warning" :closable="false" class="preview-message no-print" />
+    <el-alert v-if="data?.published && !data.materialSchemes" title="该定版未记录制造方案资料，保持原模式显示。" type="info" :closable="false" class="preview-message no-print" />
     <template v-if="paperOnly">
       <el-alert
         v-for="file in failedFiles"
@@ -177,7 +183,7 @@
             @layout="onLayout"
             @flow-layout="onFlowLayout"
             @flow-error="onFlowError"
-            :data="data"
+            :data="displayData!"
             :pages="pages"
             :structure-image="structureImage"
             :structure-caption="structureCaption"
@@ -252,6 +258,7 @@ import PrintToolbar from '@/components/print/PrintToolbar.vue'
 import ProductFilePreview from '@/components/product/ProductFilePreview.vue'
 import { downloadFile } from '@/components/product/productFilePreviewUtils'
 import ProductSpecSheets from './ProductSpecSheets.vue'
+import { MATERIAL_MODE_SCHEME, MATERIAL_MODE_ORIGINAL, normalizeMaterialMode, effectiveMaterialMode, materialModeWarnings, type WorkSpecMaterialMode } from './workSpecMaterialMode'
 import {
   documentSections,
   loadDocset,
@@ -303,11 +310,15 @@ const props = withDefaults(
     initialCellFontSettings?: string
     initialTemplate?: WorkSpecTemplate
     initialHiddenBlocks?: string
+    initialMaterialMode?: WorkSpecMaterialMode
   }>(),
   { standalone: false, autoPrint: false, paperOnly: false }
 )
 const emit = defineEmits<{ loaded: [data: DocsetData] }>()
 const data = shallowRef<DocsetData>()
+const materialMode = ref<WorkSpecMaterialMode>(normalizeMaterialMode(props.initialMaterialMode))
+const displayData = computed(() => data.value ? { ...data.value, materialMode: materialMode.value } : undefined)
+const materialWarnings = computed(() => displayData.value ? materialModeWarnings(displayData.value) : [])
 const loading = ref(false)
 const error = ref('')
 const selectedSections = ref<string[]>(
@@ -461,9 +472,9 @@ const originalFiles = computed(() =>
   )
 )
 const pages = computed(() =>
-  data.value
+  displayData.value
     ? makePages(
-        data.value,
+        displayData.value,
         selectedSections.value,
         selectedFiles.value,
         images.value,
@@ -642,6 +653,7 @@ async function printDocuments() {
       fonts: serializeWorkSpecFontSettings(fontSettings.value),
       cellFonts: serializeWorkSpecCellFonts(cellFonts.value),
       template: selectedTemplate.value,
+      materialMode: effectiveMaterialMode(displayData.value!),
       generateOverflowAppendix: generateOverflowAppendix.value ? '1' : '0',
       ...(hiddenEmptyBlocks.value.length ? { hideBlocks: serializeHiddenBlocks(hiddenEmptyBlocks.value) } : {}),
       print: '1',
@@ -690,6 +702,10 @@ watch(() => [props.productId, props.versionId], (_, previous) => {
 defineExpose({ reload: load })
 watch(requestedFiles, expandFiles)
 watch(selectedTemplate, () => { overflow.value = {} })
+watch(materialMode, () => { overflow.value = {}; measuredSpecPages.value = [] })
+watch(data, value => {
+  if (value?.published && !value.materialSchemes) materialMode.value = MATERIAL_MODE_ORIGINAL
+})
 watch(
   [fontSettings, cellFonts],
   () => {

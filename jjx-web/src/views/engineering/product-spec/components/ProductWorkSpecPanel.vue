@@ -180,9 +180,13 @@
         <section class="data-section">
           <div class="section-heading">
             <h3>项目材料</h3>
+            <el-select v-model="materialMode" aria-label="项目材料模式" style="width: 145px" :disabled="projectMaterialDraft !== null">
+              <el-option label="方案模式" :value="MATERIAL_MODE_SCHEME" />
+              <el-option label="原模式" :value="MATERIAL_MODE_ORIGINAL" />
+            </el-select>
             <div v-if="canEdit">
               <template v-if="projectMaterialDraft === null">
-                <el-button :disabled="editing" @click="startProjectMaterials">编辑</el-button>
+                <el-button :disabled="editing" title="编辑原模式内容，方案模式由制造 BOM 提供" @click="startProjectMaterials">编辑</el-button>
                 <el-button
                   v-if="!data.workSpec.projectMaterials"
                   :disabled="editing"
@@ -206,6 +210,7 @@
               </template>
             </div>
           </div>
+          <el-alert v-for="message in materialWarnings" :key="message" :title="message" type="warning" :closable="false" />
           <el-alert
             v-if="!data.workSpec.projectMaterials"
             title="未建立项目材料，打印暂沿用 BOM；从 BOM 引入后不再自动同步，也不回写 BOM。"
@@ -253,7 +258,7 @@
                 </div></template
               ></el-table-column
             >
-            <el-table-column label="材料（限当前 BOM）" min-width="200"
+            <el-table-column :label="projectMaterialDraft ? '材料（限当前 BOM）' : '材料'" min-width="200"
               ><template #default="{ row, $index }">
                 <el-select
                   v-if="projectMaterialDraft"
@@ -282,7 +287,7 @@
                   /> </el-select
                 ><span v-else>{{ row.materialName || row.materialCode }}</span>
                 <el-tag
-                  v-if="!bomRows.some((item) => item.materialCode === row.materialCode)"
+                  v-if="!row.manufacturingBomId && !bomRows.some((item) => item.materialCode === row.materialCode)"
                   type="danger"
                   >BOM已移除</el-tag
                 >
@@ -475,6 +480,7 @@
         v-if="previewVisible"
         :product-id="productId"
         :initial-sections="['spec', 'print']"
+        :initial-material-mode="materialMode"
       />
     </el-dialog>
 
@@ -511,6 +517,7 @@ import {
 import SvgIcon from '@/components/SvgIcon/index.vue'
 import StandardProcessSelector from '@/components/Selector/StandardProcessSelector.vue'
 import ProductSpecPreview from './ProductSpecPreview.vue'
+import { MATERIAL_MODE_SCHEME, MATERIAL_MODE_ORIGINAL, materialModeRows, materialModeWarnings, type WorkSpecMaterialMode } from './workSpecMaterialMode'
 import StructureDrawingUpload from './StructureDrawingUpload.vue'
 import { useWorkSpecAttachmentSession } from './useWorkSpecAttachmentSession'
 import ProductPrintSpecPanel from './ProductPrintSpecPanel.vue'
@@ -660,14 +667,16 @@ watch(structureFile, () => {
   void loadStructureImage()
 })
 const bomRows = computed(() => flattenedBom(data.value?.bom.items))
+const materialMode = ref<WorkSpecMaterialMode>(MATERIAL_MODE_SCHEME)
+const materialWarnings = computed(() => data.value ? materialModeWarnings({ ...data.value, materialMode: materialMode.value }) : [])
 const projectMaterialDraft = ref<ProjectMaterial[] | null>(null)
 const projectMaterialSaving = ref(false)
 const projectMaterialRows = computed(
   () =>
     projectMaterialDraft.value ??
-    (data.value?.workSpec.projectMaterials
+    materialModeRows((data.value?.workSpec.projectMaterials
       ? flattenProjectMaterials(data.value.workSpec.projectMaterials)
-      : bomRows.value)
+      : bomRows.value), { ...data.value, materialMode: materialMode.value })
 )
 const projectMaterialGroups = computed(() =>
   projectMaterialDraft.value !== null || data.value?.workSpec.projectMaterials !== undefined
@@ -721,6 +730,7 @@ function handleProjectMaterialSelect(
   })
 }
 function startProjectMaterials() {
+  materialMode.value = MATERIAL_MODE_ORIGINAL
   // 未建立/空项目材料时用当前 BOM 行初始化，避免“查看有数据、点编辑变空表”。
   const source = data.value?.workSpec.projectMaterials
   if (!source || !source.length) {

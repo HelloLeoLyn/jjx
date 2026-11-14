@@ -171,7 +171,7 @@ describe('图标尺寸设置项', () => {
 
 // 模拟B分页后的静态HTML，验证父级事件代理而非Vue子节点监听。
 const SheetsStub = defineComponent({
-  name: 'ProductSpecSheets', props: ['pages', 'fontSettings', 'cellFonts', 'specTemplate', 'hiddenBlocks'], emits: ['layout'],
+  name: 'ProductSpecSheets', props: ['data', 'pages', 'fontSettings', 'cellFonts', 'specTemplate', 'hiddenBlocks'], emits: ['layout'],
   template: `<div class="doc-sheets"><div v-html="'<table><tr><td data-work-spec-cell=&quot;flow0-id-41&quot; data-cell-label=&quot;面板第1道作业流程&quot; tabindex=&quot;0&quot;><span>文字工序</span></td><td data-work-spec-cell=&quot;flow0-id-42&quot; data-cell-label=&quot;面板第2道作业流程&quot; tabindex=&quot;0&quot;>另一格</td></tr><tr><td data-work-spec-cell=&quot;mat0-name&quot; data-cell-label=&quot;材料第1项 · 材料&quot; data-cell-font=&quot;10&quot;><span class=&quot;material-name&quot;>面材</span></td></tr></table>'" /></div>`,
 })
 // 既有用例按 A 版布局断言（改版默认值由「作业规范模板默认值」用例覆盖），故显式传 A
@@ -184,6 +184,40 @@ async function preview(initialCellFontSettings?: string) {
   return wrapper
 }
 describe('预览默认模板', () => {
+  it('方案/原模式切换同步纸张材料，打印新窗口携带当前模式，原始内容不变', async () => {
+    const source = fixture()
+    source.bom.items = [{ materialId: 355, materialName: '裁好PET', specification: '66×185mm', moduleQty: 1, baseQty: 1 }]
+    source.materialSchemes = { byItem: {}, byMaterial: { 355: { items: [{ materialName: 'PET原料', specification: '205mm*440mm', moduleQty: 6, baseQty: 1 }] } } }
+    mocks.load.mockResolvedValue(source)
+    const wrapper = mount(ProductSpecPreview, { props: { productId: 42, initialSections: ['spec'], initialTemplate: 'A' }, global: { stubs: { ProductSpecSheets: SheetsStub } } })
+    wrappers.push(wrapper); await flushPromises()
+    const sheets = wrapper.findComponent(SheetsStub)
+    expect(sheets.props('pages')[0].rows[0]).toMatchObject({ materialName: 'PET原料', moduleQty: 6, baseQty: 1 })
+    const mode = wrapper.findAllComponents({ name: 'ElSelect' }).find(node => node.props('ariaLabel') === '项目材料模式')!
+    expect(mode).toBeTruthy()
+    await mode.vm.$emit('update:modelValue', 'original'); await flushPromises()
+    expect(sheets.props('pages')[0].rows[0]).toMatchObject({ materialName: '裁好PET', moduleQty: 1 })
+    sheets.vm.$emit('layout', 'spec-0', []); await flushPromises()
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    await wrapper.findAll('button').find(node => node.text() === '打印所选文档')!.trigger('click')
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(new URL(String(open.mock.calls[0][0]), 'http://localhost').searchParams.get('materialMode')).toBe('original')
+    await mode.vm.$emit('update:modelValue', 'scheme'); await flushPromises()
+    expect(sheets.props('pages')[0].rows[0].moduleQty).toBe(6)
+    expect(source.bom.items[0].materialName).toBe('裁好PET')
+  })
+
+  it('旧定版未冻结方案时保持原模式且不允许切到当前方案', async () => {
+    const source = fixture(); source.published = true
+    source.bom.items = [{ materialName: '历史材料', specification: '历史规格' }]
+    mocks.load.mockResolvedValue(source)
+    const wrapper = mount(ProductSpecPreview, { props: { productId: 42, versionId: 7, initialSections: ['spec'], initialTemplate: 'A' }, global: { stubs: { ProductSpecSheets: SheetsStub } } })
+    wrappers.push(wrapper); await flushPromises()
+    const mode = wrapper.findAllComponents({ name: 'ElSelect' }).find(node => node.props('ariaLabel') === '项目材料模式')!
+    expect(mode.props('modelValue')).toBe('original')
+    expect(mode.props('disabled')).toBe(true)
+    expect(wrapper.findComponent(SheetsStub).props('pages')[0].rows[0].materialName).toBe('历史材料')
+  })
   it('未指定模板时打印预览给纸张传 B 版（dev-20261031-006）', async () => {
     mocks.load.mockResolvedValue(fixture())
     const wrapper = mount(ProductSpecPreview, { props: { productId: 42, initialSections: ['spec'] },

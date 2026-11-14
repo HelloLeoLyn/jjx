@@ -152,7 +152,7 @@ export function parseDocsetSnapshot(value?: string | null): Record<string, any> 
   const snapshot = parsed.value
   if (
     !parsed.ok ||
-    snapshot.schemaVersion !== 1 ||
+    ![1, 2].includes(snapshot.schemaVersion) ||
     !snapshot.spec ||
     typeof snapshot.spec !== 'object' ||
     Array.isArray(snapshot.spec) ||

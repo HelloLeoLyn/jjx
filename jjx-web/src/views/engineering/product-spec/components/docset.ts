@@ -24,6 +24,7 @@ import { productRouteApi } from '@/api/product/routing'
 import type { FileImage } from '@/components/product/productFilePreviewUtils'
 import { composeMaterialSpec, isZeroSpec, plainText } from '@/utils/materialSpec'
 import { bomGroupRows } from '@/utils/bomGroups'
+import { materialModeRows, type MaterialModeData } from './workSpecMaterialMode'
 import {
   parseSnapshotStrict,
   parseDocsetSnapshot,
@@ -121,7 +122,7 @@ export function documentFileCaption(file: DocFile): string {
   }
   return parts.join(' · ')
 }
-export interface DocsetData {
+export interface DocsetData extends MaterialModeData {
   published?: boolean
   product: Record<string, any>
   bom: Record<string, any>
@@ -267,20 +268,21 @@ export function groupProjectMaterials(rows: Record<string, any>[]): Record<strin
   )
 }
 export function projectMaterialPrintRows(data: DocsetData): Record<string, any>[] {
-  const bom = flatten(data.bom.items || [])
+  const bom = materialModeRows(flatten(data.bom.items || []), data)
   if (data.workSpec.projectMaterials === undefined)
     return data.published ? groupProjectMaterials(bom) : groupBomMaterials(bom)
   return numberProjectGroups(
-    data.workSpec.projectMaterials.flatMap((group) =>
-      group.materials.map((row, index) => ({
+    data.workSpec.projectMaterials.flatMap((group) => {
+      const rows = materialModeRows(group.materials, data)
+      return rows.map((row, index) => ({
         ...row,
         processId: group.processId,
         processName: group.projectName,
         icon: group.projectIcon || bom.find((item) => item.processId === group.processId)?.icon,
         projectGroupKey: group.groupKey,
-        projectSpan: index === 0 ? group.materials.length : 0,
+        projectSpan: index === 0 ? rows.length : 0,
       }))
-    )
+    })
   )
 }
 /** 仅用于BOM回退；独立维护的项目材料及其快照沿用自己的组模型。 */
@@ -391,6 +393,7 @@ export async function loadDocset(productId: number): Promise<DocsetData> {
   const data: DocsetData = {
     product: full.product,
     bom: full.bom || {},
+    materialSchemes: full.materialSchemes,
     routing: full.routing || {},
     workSpec: normalizeWorkSpec(specification.data || {}),
     files: [],
@@ -590,6 +593,7 @@ export function buildDocsetFromSnapshot(
       customerName: snapshot.customerName || '',
     },
     bom: snapshot.bom || {},
+    materialSchemes: snapshot.materialSchemes,
     routing: snapshot.routing || {},
     workSpec: normalizeWorkSpec(snapshot.spec || {}),
     files: [],
@@ -736,7 +740,7 @@ export function makePages(
         )
       }
       const materialCapacity = 14
-      const bom = flatten(data.bom.items || [])
+      const bom = materialModeRows(flatten(data.bom.items || []), data)
       const groups = flowGroups.map((group) => ({
         ...group,
         rows: assembly.filter((row: any) => row.processCategory === group.value),
