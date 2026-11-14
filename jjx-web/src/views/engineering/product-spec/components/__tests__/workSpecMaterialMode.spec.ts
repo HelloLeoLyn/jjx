@@ -61,6 +61,16 @@ describe('项目材料方案/原模式', () => {
     expect(makePages(source, ['spec'], [], {})[0].rows![0].materialName).toBe('3M 9080-W195-L80')
     expect(workSpecFlowSource(source).rows![0].specification).toBe('195mm*80mm')
   })
+  it('BOM回退材料一行展开多个投入时，A/B打印刀模位置跟随来源行且后续行不串位', () => {
+    const source = data()
+    source.bom.items[0].children = [{ itemId: 29, materialId: 999, materialName: '其他材料', materialCode: 'OTHER', processName: '保护膜' }]
+    source.workSpec.dieLocationText = '刀模甲\n刀模乙'
+    source.materialSchemes!.byMaterial[351].items!.push({ materialName: '辅助投入', specification: '50mm' })
+    expect(workSpecFlowSource(source).diePositionRows).toEqual(['刀模甲', '刀模甲', '刀模乙'])
+    expect(makePages(source, ['spec'], [], {})[0].diePositionRows).toEqual(['刀模甲', '刀模甲', '刀模乙'])
+    source.materialMode = 'original'
+    expect(workSpecFlowSource(source).diePositionRows).toEqual(['刀模甲', '刀模乙'])
+  })
   it('旧定版无方案快照始终原模式；新定版仅使用冻结的方案资料', () => {
     const source = data()
     const snapshot: any = { schemaVersion: 1, spec: {}, bom: source.bom, files: [], counts: { files: 0 } }

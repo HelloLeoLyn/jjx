@@ -267,8 +267,14 @@ export function groupProjectMaterials(rows: Record<string, any>[]): Record<strin
     )
   )
 }
+/** 先按原行取刀模，再展开制造投入，保证一行变多行后刀模仍与来源对应。 */
+function bomMaterialPrintRows(data: DocsetData): Record<string, any>[] {
+  const original = flatten(data.bom.items || [])
+  const positions = dieLocationRows(data.workSpec.dieLocation, data.bom.items, data.workSpec.dieLocationText)
+  return materialModeRows(original.map((row, index) => ({ ...row, dieLocation: positions[index] || row.dieLocation || '' })), data)
+}
 export function projectMaterialPrintRows(data: DocsetData): Record<string, any>[] {
-  const bom = materialModeRows(flatten(data.bom.items || []), data)
+  const bom = bomMaterialPrintRows(data)
   if (data.workSpec.projectMaterials === undefined)
     return data.published ? groupProjectMaterials(bom) : groupBomMaterials(bom)
   return numberProjectGroups(
@@ -679,10 +685,7 @@ export async function buildDocsetFromLegacyRefs(
 export function workSpecFlowSource(data: DocsetData): DocPage {
   const text = specText(data)
   const materials = projectMaterialPrintRows(data)
-  const diePositions =
-    data.workSpec.projectMaterials !== undefined
-      ? materials.map((row) => row.dieLocation || '')
-      : text.diePositionRows
+  const diePositions = materials.map((row) => row.dieLocation || '')
   return {
     key: 'spec-b-source',
     section: 'spec',
@@ -740,7 +743,8 @@ export function makePages(
         )
       }
       const materialCapacity = 14
-      const bom = materialModeRows(flatten(data.bom.items || []), data)
+      const bom = bomMaterialPrintRows(data)
+      const diePositions = bom.map(row => row.dieLocation || '')
       const groups = flowGroups.map((group) => ({
         ...group,
         rows: assembly.filter((row: any) => row.processCategory === group.value),
@@ -750,7 +754,7 @@ export function makePages(
       const count = Math.max(
         1,
         Math.ceil(bom.length / materialCapacity),
-        Math.ceil(text.diePositionRows.length / materialCapacity),
+        Math.ceil(diePositions.length / materialCapacity),
         ...groups.map((group, i) => Math.ceil(group.rows.length / capacities[i]))
       )
       for (let i = 0; specTemplate === 'A' && i < count; i++)
@@ -761,7 +765,7 @@ export function makePages(
           kind: 'spec',
           continuation: i,
           engineeringNotes: text.engineeringNotes,
-          diePositionRows: text.diePositionRows.slice(
+          diePositionRows: diePositions.slice(
             i * materialCapacity,
             (i + 1) * materialCapacity
           ),
