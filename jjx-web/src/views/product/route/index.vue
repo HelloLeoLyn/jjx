@@ -15,7 +15,13 @@
         >
         <el-table-column label="当前版本（生效日）" min-width="190"
           ><template #default="{ row }"
-            >{{ row.currentVersion || '—' }}（{{
+            ><el-link
+              v-if="row.currentId"
+              type="primary"
+              @click="openVersionDetail(row.currentId)"
+              >{{ row.currentVersion }}</el-link
+            ><span v-else>{{ row.currentVersion || '—' }}</span
+            >（{{
               row.currentEffectiveDate ? parseTime(row.currentEffectiveDate, '{y}-{m}-{d}') : '—'
             }}）</template
           ></el-table-column
@@ -40,16 +46,9 @@
             parseTime(row.updateTime) || '—'
           }}</template></el-table-column
         >
-        <el-table-column label="操作" width="280"
+        <el-table-column label="操作" width="200"
           ><template #default="{ row }">
             <el-button link type="primary" @click="openTrace(row)">流水</el-button>
-            <el-button
-              v-hasPermi="['engineering:routing:edit']"
-              link
-              type="primary"
-              @click="openVersions(row)"
-              >设置当前版本</el-button
-            >
             <el-button link type="primary" @click="openVersions(row)">版本维护</el-button>
           </template></el-table-column
         >
@@ -247,6 +246,12 @@ const edit = (row: Version) => {
 }
 const view = (row: Version) => {
   detailId.value = row.routingId
+  detailVisible.value = true
+}
+/** 主列表点当前版本：直接看该版本工艺路线详情（dev-20261113-012 补充）。 */
+const openVersionDetail = (routingId?: number) => {
+  if (!routingId) return
+  detailId.value = routingId
   detailVisible.value = true
 }
 const versionRows = computed<VersionMaintenanceRow[]>(() =>
