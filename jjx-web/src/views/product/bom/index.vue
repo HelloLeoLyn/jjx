@@ -105,6 +105,24 @@
     <BomFormDialog ref="formDialogRef" v-model="formVisible" :bom-id="formId" @success="refresh" />
     <BomDetail v-model="detailVisible" :bom-id="detailId" />
     <BomApproveDialog v-model="approveVisible" :bom-id="approveId" @success="refresh" />
+    <BomSubmitCheckDialog
+      v-model="submitCheckVisible"
+      :issues="submitCheckIssues"
+      :target-name="submitCheckTarget"
+      @navigate="openSchemeVersions"
+    />
+    <VersionMaintenanceDialog
+      v-model="schemeVisible"
+      :title="schemeTitle"
+      domain="bom"
+      :rows="schemeRows"
+      :loading="schemeLoading"
+      :busy="actionBusy"
+      :supports-validity="true"
+      :supports-review-audit="true"
+      :fetch-detail="fetchVersionDetail"
+      @action="handleSchemeAction"
+    />
     <TraceTimeline v-model="traceVisible" biz-type="bom" :biz-id="String(traceId || '')" />
   </div>
 </template>
@@ -123,7 +141,9 @@ import RouteCopyDialog from '../route/components/RouteCopyDialog.vue'
 import BomFormDialog from './components/BomFormDialog.vue'
 import BomDetail from './components/BomDetail.vue'
 import BomApproveDialog from './components/BomApproveDialog.vue'
-import type { EngineeringBom } from '@/types/product/bom'
+import BomSubmitCheckDialog from './components/BomSubmitCheckDialog.vue'
+import type { SchemeNavigateTarget } from './components/bomSubmitCheck'
+import type { EngineeringBom, BomCheckIssue } from '@/types/product/bom'
 type Version = EngineeringBom & { canSetCurrent: boolean; approveBy?: string; approveTime?: string }
 interface ProductRow {
   outputType: string
@@ -218,6 +238,13 @@ const versions = ref<Version[]>([])
 const versionsVisible = ref(false)
 const versionsLoading = ref(false)
 let versionRequest = 0
+/** “查看制造方案”打开的对应产出对象版本维护（与主列表版本维护各自独立）。 */
+const schemeVisible = ref(false)
+const schemeTitle = ref('')
+const schemeVersions = ref<Version[]>([])
+const schemeLoading = ref(false)
+const schemeObject = ref<{ outputType: string; outputId: number } | null>(null)
+let schemeRequest = 0
 const loadVersions = async () => {
   if (!selected.value) return
   const requestId = ++versionRequest
@@ -231,6 +258,38 @@ const loadVersions = async () => {
     if (requestId === versionRequest) versionsLoading.value = false
   }
 }
+/** 只读加载目标产出对象的全部版本，供“查看制造方案”继续走既有提交/审核/批准流程。 */
+const loadSchemeVersions = async (): Promise<boolean> => {
+  if (!schemeObject.value) return false
+  const requestId = ++schemeRequest
+  schemeLoading.value = true
+  try {
+    const response = await request.get('/engineering/bom/object-versions', {
+      params: {
+        outputType: schemeObject.value.outputType,
+        outputId: schemeObject.value.outputId,
+      },
+    })
+    if (requestId === schemeRequest) schemeVersions.value = response.data || []
+    return requestId === schemeRequest
+  } catch (error: any) {
+    if (requestId === schemeRequest) {
+      schemeVersions.value = []
+      ElMessage.error(error?.message || '制造方案版本加载失败，请刷新后重试')
+    }
+    return false
+  } finally {
+    if (requestId === schemeRequest) schemeLoading.value = false
+  }
+}
+const openSchemeVersions = async (target: SchemeNavigateTarget) => {
+  if (!target?.outputType || !target.outputId) return
+  schemeObject.value = { outputType: target.outputType, outputId: target.outputId }
+  schemeTitle.value = [target.name, target.version].filter(Boolean).join(' · ')
+  schemeVersions.value = []
+  schemeVisible.value = true
+  await loadSchemeVersions()
+}
 const openVersions = (row: ProductRow) => {
   selected.value = row
   versions.value = []
@@ -240,6 +299,7 @@ const openVersions = (row: ProductRow) => {
 const refresh = async () => {
   await loadData()
   if (versionsVisible.value) await loadVersions()
+  if (schemeVisible.value) await loadSchemeVersions()
 }
 const formVisible = ref(false)
 const formId = ref<number>()
@@ -248,6 +308,10 @@ const detailVisible = ref(false)
 const detailId = ref<number>()
 const approveVisible = ref(false)
 const approveId = ref<number>()
+/** 提交预检有阻断项时打开可读说明，不直接拼接错误码。 */
+const submitCheckVisible = ref(false)
+const submitCheckIssues = ref<BomCheckIssue[]>([])
+const submitCheckTarget = ref('')
 const add = () => {
   formId.value = undefined
   formVisible.value = true
@@ -266,22 +330,22 @@ const openVersionDetail = (bomId?: number) => {
   detailId.value = bomId
   detailVisible.value = true
 }
-const versionRows = computed<VersionMaintenanceRow[]>(() =>
-  versions.value.map((row) => ({
-    id: row.bomId,
-    version: row.bomVersion,
-    approveStatus: row.approveStatus,
-    isCurrent: Boolean(row.isCurrent),
-    canSetCurrent: row.canSetCurrent,
-    createBy: row.createBy,
-    createTime: row.createTime,
-    remark: row.remark,
-    effectiveDate: row.effectiveDate,
-    expiryDate: row.expiryDate,
-    approveBy: row.approveBy,
-    approveTime: row.approveTime,
-  }))
-)
+const toVersionRow = (row: Version): VersionMaintenanceRow => ({
+  id: row.bomId,
+  version: row.bomVersion,
+  approveStatus: row.approveStatus,
+  isCurrent: Boolean(row.isCurrent),
+  canSetCurrent: row.canSetCurrent,
+  createBy: row.createBy,
+  createTime: row.createTime,
+  remark: row.remark,
+  effectiveDate: row.effectiveDate,
+  expiryDate: row.expiryDate,
+  approveBy: row.approveBy,
+  approveTime: row.approveTime,
+})
+const versionRows = computed<VersionMaintenanceRow[]>(() => versions.value.map(toVersionRow))
+const schemeRows = computed<VersionMaintenanceRow[]>(() => schemeVersions.value.map(toVersionRow))
 const fetchVersionDetail = async (id: number) => {
   const response = await productBomApi.getEngineeringBomInfo(id)
   if (!response.data) throw new Error('版本已不存在，请刷新')
@@ -309,9 +373,13 @@ const copyConfirm = async (newVersion: string) => {
     copyBusy.value = false
   }
 }
-const handleVersionAction = async (key: string, row: VersionMaintenanceRow) => {
+const handleVersionAction = (key: string, row: VersionMaintenanceRow) =>
+  handleVersionActionIn(versions.value, key, row)
+const handleSchemeAction = (key: string, row: VersionMaintenanceRow) =>
+  handleVersionActionIn(schemeVersions.value, key, row)
+const handleVersionActionIn = async (list: Version[], key: string, row: VersionMaintenanceRow) => {
   if (actionBusy.value) return
-  const raw = versions.value.find((v) => v.bomId === row.id)
+  const raw = list.find((v) => v.bomId === row.id)
   if (!raw) return
   if (key === 'view') {
     view(raw)
@@ -326,7 +394,7 @@ const handleVersionAction = async (key: string, row: VersionMaintenanceRow) => {
     approveVisible.value = true
     return
   }
-  const expectedCurrentId = versions.value.find((v) => Boolean(v.isCurrent))?.bomId || 0
+  const expectedCurrentId = list.find((v) => Boolean(v.isCurrent))?.bomId || 0
   actionBusy.value = true
   try {
     if (key === 'copy') {
@@ -340,8 +408,11 @@ const handleVersionAction = async (key: string, row: VersionMaintenanceRow) => {
     }
     if (key === 'submit') {
       const check = await productBomApi.checkEngineeringBom(row.id)
-      if (check.data?.length) {
-        await ElMessageBox.alert(check.data.map((i) => i.message).join('；'), '暂不能提交审核')
+      const issues = (check.data || []) as BomCheckIssue[]
+      if (issues.length) {
+        submitCheckIssues.value = issues
+        submitCheckTarget.value = row.version
+        submitCheckVisible.value = true
         return
       }
       await ElMessageBox.confirm(`提交 ${row.version} 审核？`, '提交审核')
