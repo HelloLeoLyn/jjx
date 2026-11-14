@@ -43,7 +43,7 @@
               >{{ row.currentVersion }}</el-link
             ><span v-else>{{ row.currentVersion || '—' }}</span
             >（{{
-              row.currentEffectiveDate ? parseTime(row.currentEffectiveDate, '{y}-{m}-{d}') : '—'
+              row.currentEffectiveDate ? parseTime(row.currentEffectiveDate, 'yyyy-MM-dd') : '—'
             }}）</template
           ></el-table-column
         >

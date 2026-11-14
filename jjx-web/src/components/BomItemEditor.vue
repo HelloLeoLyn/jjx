@@ -133,7 +133,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="规格" prop="specification" width="120">
+        <el-table-column label="规格" prop="specification" width="180">
           <template #default="scope">
             <span v-if="Number(scope.row.materialId) > 0">{{ autoSpecOf(scope.row) }}</span>
             <el-input
@@ -164,7 +164,7 @@
           </template>
         </el-table-column>
         <!-- 基数 -->
-        <el-table-column label="基数" prop="baseQty" align="center" width="105">
+        <el-table-column label="用量（基数）" prop="baseQty" align="center" width="105">
           <template #header>
             <span>基数</span>
             <el-tooltip content="产品单位用量/每个项目标准用量" placement="top">
@@ -186,7 +186,7 @@
           </template>
         </el-table-column>
         <!-- 卷材裁切：跳距 + 每跳片数（dev-20261112-008） -->
-        <el-table-column label="跳距(mm)" width="100" align="center">
+        <!-- <el-table-column label="跳距(mm)" width="100" align="center">
           <template #default="scope">
             <el-input-number
               v-if="!hasRatioValues(scope.row)"
@@ -216,7 +216,7 @@
             />
             <span v-else class="muted-hint">—</span>
           </template>
-        </el-table-column>
+        </el-table-column> -->
         <!-- 已选物料单位只读；未建档快速草稿仍可提供计量单位。旧单位不静默改写。 -->
         <el-table-column label="单位" prop="unit" width="80">
           <template #default="scope">
@@ -391,7 +391,12 @@ import { BomItemReviewStatusEnum } from '@/enums/product'
 import BomEntryTools from '@/components/bom/BomEntryTools.vue'
 import { bomGroupRows } from '@/utils/bomGroups'
 import { autoSpecOf } from './bomSpecMode'
-import { hasPitchValues, hasRatioValues, unitMismatch, consumptionInputError } from '@/components/bom/consumptionMode'
+import {
+  hasPitchValues,
+  hasRatioValues,
+  unitMismatch,
+  consumptionInputError,
+} from '@/components/bom/consumptionMode'
 import { generateBomSpecification, specificationSource } from './bomSpecification'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
