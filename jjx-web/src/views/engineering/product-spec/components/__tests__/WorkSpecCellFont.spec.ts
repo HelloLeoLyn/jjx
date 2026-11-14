@@ -192,7 +192,7 @@ describe('预览默认模板', () => {
     const wrapper = mount(ProductSpecPreview, { props: { productId: 42, initialSections: ['spec'], initialTemplate: 'A' }, global: { stubs: { ProductSpecSheets: SheetsStub } } })
     wrappers.push(wrapper); await flushPromises()
     const sheets = wrapper.findComponent(SheetsStub)
-    expect(sheets.props('pages')[0].rows[0]).toMatchObject({ materialName: 'PET原料', moduleQty: 6, baseQty: 1 })
+    expect(sheets.props('pages')[0].rows[0]).toMatchObject({ materialName: 'PET原料', specification: '205mm*440mm', moduleQty: 6, baseQty: 1 })
     const mode = wrapper.findAllComponents({ name: 'ElSelect' }).find(node => node.props('ariaLabel') === '项目材料模式')!
     expect(mode).toBeTruthy()
     await mode.vm.$emit('update:modelValue', 'original'); await flushPromises()

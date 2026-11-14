@@ -163,7 +163,7 @@ describe('项目材料规格/模数/基数三列（dev-20261102-001）', () => {
   it('默认方案模式显示制造原料和6/1，切回原模式不写库，编辑时保留原始材料', async () => {
     const wrapper = await mountEditing(true)
     expect(cellText(wrapper, 2)).toContain('PET原料')
-    expect(cellText(wrapper, 3)).toContain('205×440mm')
+    expect(cellText(wrapper, 3)).toContain('205mm*440mm')
     expect(cellText(wrapper, 4)).toBe('6')
     expect(cellText(wrapper, 5)).toBe('1')
     expect(materialSection(wrapper).text()).not.toContain('BOM 已移除')

@@ -39,9 +39,8 @@ export function manufacturingMaterialSpec(row: Record<string, any>): string {
       : /^([\d.]+)\s*(?:mm|[×*x])/i.exec(text(row.specification))?.[1]
     return `${width ? `${decimal(width)}mm` : text(row.specification)}跳${decimal(row.pitchMm)}mm`
   }
-  if (positive(row.widthMm) && positive(row.lengthMm))
-    return `${decimal(row.widthMm)}×${decimal(row.lengthMm)}mm`
-  return text(row.specification).replace(/([\d.]+)\s*mm\s*[×*x]\s*([\d.]+)\s*mm/gi, '$1×$2mm')
+  // 无跳距时直接沿用制造 BOM 规格原文，不改符号/单位，也不另用宽长覆盖。
+  return row.specification == null ? '' : String(row.specification)
 }
 function sourceFor(row: Record<string, any>, sources?: MaterialSchemeSources): MaterialScheme | undefined {
   return (row.itemId != null ? sources?.byItem?.[row.itemId] : undefined)

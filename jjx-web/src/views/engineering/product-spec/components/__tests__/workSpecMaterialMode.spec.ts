@@ -25,10 +25,10 @@ describe('项目材料方案/原模式', () => {
     expect(JSON.stringify(source)).toBe(before)
     expect(normalizeMaterialMode('unexpected')).toBe('scheme')
   })
-  it('PET显示205×440mm及6/1，不沿用半成品1/1，也不带人工覆盖规格污染方案显示', () => {
+  it('PET保留制造BOM规格原文205mm*440mm及6/1，不沿用半成品1/1或人工规格', () => {
     const source = data()
     const input = [{ materialId: 355, materialName: '裁好PET', specification: '66×185mm', moduleQty: 1, baseQty: 1, params: '人工规格' }]
-    expect(materialModeRows(input, source)[0]).toMatchObject({ materialName: 'PET原料', specification: '205×440mm', moduleQty: 6, baseQty: 1, params: '205×440mm' })
+    expect(materialModeRows(input, source)[0]).toMatchObject({ materialName: 'PET原料', specification: '205mm*440mm', moduleQty: 6, baseQty: 1, params: '205mm*440mm' })
     expect(materialModeRows(input, { ...source, materialMode: 'original' })[0].params).toBe('人工规格')
   })
   it('无制造方案保持原内容，来源错误明确提示而不猜选方案', () => {
@@ -85,5 +85,10 @@ describe('项目材料方案/原模式', () => {
   it('跳距规格不把卷长带入，不凭空补出片数或模数', () => {
     expect(manufacturingMaterialSpec({ widthMm: 195, lengthMm: 50000, pitchMm: 80 })).toBe('195mm跳80mm')
     expect(manufacturingMaterialSpec({ specification: '195mm', pitchMm: 80 })).toBe('195mm跳80mm')
+  })
+  it('无跳距时保留规格符号、单位和空格，宽长字段不覆盖制造BOM规格原文', () => {
+    const specification = '205 mm * 440 mm'
+    expect(manufacturingMaterialSpec({ specification, widthMm: 999, lengthMm: 888 })).toBe(specification)
+    expect(manufacturingMaterialSpec({ specification: '205mm*440mm', widthMm: 205, lengthMm: 440 })).toBe('205mm*440mm')
   })
 })
