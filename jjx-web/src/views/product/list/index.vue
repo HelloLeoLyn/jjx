@@ -279,7 +279,7 @@
     </el-dialog>
 
     <!-- 添加或修改产品对话框组件 -->
-    <ProductForm v-model="open" :product-id="selectedProductId" @success="() => {}" />
+    <ProductForm v-model="open" :product-id="selectedProductId" @success="getList" />
     <!-- 产品详情组件 -->
     <ProductDetailDialog v-model="detailOpen" :product-id="selectedProductId" />
     <RouteDetailDialog v-model="routeDetailDialogVisible" :routing-id="currentRoutingId" />
@@ -314,7 +314,7 @@ defineOptions({
   name: 'ProductList',
 })
 
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { productApi } from '@/api/product'
@@ -839,6 +839,15 @@ onMounted(() => {
   getList()
   getCategoryOptions()
   initCategories()
+})
+
+// 缓存列表返回时重新查询；首次激活已由 onMounted 加载，避免重复请求。
+let hasActivated = false
+onActivated(() => {
+  if (hasActivated) {
+    getList()
+  }
+  hasActivated = true
 })
 </script>
 
