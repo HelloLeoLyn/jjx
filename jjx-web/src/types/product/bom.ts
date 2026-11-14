@@ -156,6 +156,11 @@ export interface EngineeringBomItem {
   parentMaterialId?: number | null
   /** 显式下层制造方案 BOM ID（source_type=make 时使用；不是分组父行） */
   subBomId?: number | null
+  /** 下层制造方案编码/名称/版本/审核状态（后端按 sub_bom_id 只读带出） */
+  subBomCode?: string | null
+  subBomName?: string | null
+  subBomVersion?: string | null
+  subBomApproveStatus?: number | null
   /** 来源类型：buy 外购 / make 自制；subBomId 非空时必须是 make */
   sourceType?: string | null
   /** 旧客户端兼容字段，编辑器不再使用 */
@@ -310,6 +315,13 @@ export interface EngineeringBom {
   expiryDate: string
   remark: string
   approveRemark?: string
+  /** 产出身份：PRODUCT 产品 / MATERIAL 物料（半成品制造方案） */
+  outputType?: ManufacturingOutputType
+  /** 产出对象编码/名称：PRODUCT 取产品，MATERIAL 取物料（半成品制造方案用） */
+  outputCode?: string
+  outputName?: string
+  /** 同一 bomCode 的版本总数（列表行用 versionCount，详情用 versionTotal，避免 getter 冲突） */
+  versionTotal?: number
   createTime: string
   updateTime: string
   createBy: string

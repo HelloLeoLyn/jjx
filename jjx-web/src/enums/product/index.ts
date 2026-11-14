@@ -186,6 +186,22 @@ export const SourceTypeEnum = createEnum({
 })
 
 /**
+ * BOM 明细行的来源类型：engineering_bom_item.source_type 落库为 'buy'/'make' 字符串，
+ * 与上面的数值型 SourceTypeEnum(1/2) 不是同一套口径（BOM 行不使用数值口径）。
+ * 单独立此枚举，避免页面里散落 'buy'/'make' 字面量。
+ */
+export const BomSourceTypeEnum = Object.assign(
+  { BUY: 'buy' as const, MAKE: 'make' as const },
+  createEnum<string>({
+    items: [
+      { value: 'buy', label: '外购', tagProps: { type: 'primary' } },
+      { value: 'make', label: '自制', tagProps: { type: 'success' } },
+    ],
+    defaultTag: { type: 'info' },
+  })
+)
+
+/**
  * BOM层枚举（薄膜开关专用）
  * 对应 Java ProductEnums.BomLayer
  */

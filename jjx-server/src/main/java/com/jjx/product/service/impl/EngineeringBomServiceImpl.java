@@ -394,6 +394,25 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 vo.setSchemeChoices(readSchemeChoices(product.getMaterialSchemeJson()));
             }
         }
+        // 产出对象：PRODUCT 用产品，MATERIAL 用物料（半成品制造方案没有 productId）
+        Long outputId = bom.getOutputId() != null ? bom.getOutputId() : bom.getProductId();
+        if (outputId != null) {
+            if (ManufacturingOutputType.isMaterial(bom.getOutputType())) {
+                var material = inventoryMaterialMapper.selectById(outputId);
+                if (material != null) {
+                    vo.setOutputCode(material.getMaterialCode());
+                    vo.setOutputName(material.getMaterialName());
+                }
+            } else {
+                vo.setOutputCode(vo.getProductCode());
+                vo.setOutputName(vo.getProductName());
+            }
+        }
+        // 版本数：同一 bomCode 的历史版本数量，详情页不跳列表也能判断"这是第几版"
+        if (bom.getBomCode() != null && !bom.getBomCode().isBlank()) {
+            vo.setVersionTotal(Math.toIntExact(productBomMapper.selectCount(
+                    new LambdaQueryWrapper<EngineeringBom>().eq(EngineeringBom::getBomCode, bom.getBomCode()))));
+        }
         return vo;
     }
 
@@ -1258,15 +1277,38 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 .orderByAsc(EngineeringBomItem::getItemOrder)
                 .orderByAsc(EngineeringBomItem::getItemId);
         List<EngineeringBomItem> items = productBomItemMapper.selectList(queryWrapper);
-        // 带出分类根类型（R含基材/辅材/油墨，未归类为null）
+        // 带出分类根类型（R含基材/辅材/油墨，未归类为null）+ 档案单位（详情页核对单位口径用）
         if (items != null) {
             for (EngineeringBomItem it : items) {
                 it.setMaterialType(null);
+                it.setArchiveUnit(null);
                 if (it.getMaterialId() != null) {
                     try {
                         com.jjx.inventory.domain.InventoryMaterial mat = inventoryMaterialMapper.selectById(it.getMaterialId());
                         it.setMaterialType(mat == null ? null : inventoryMaterialMapper.materialTypeOf(mat.getCategoryId()));
+                        it.setArchiveUnit(mat == null ? null : mat.getUnit());
                     } catch (Exception ignored) { }
+                }
+            }
+            // 下层制造方案：一次批量带出编码/版本/状态，只读展示；不改变保存链
+            Set<Long> subBomIds = new HashSet<>();
+            for (EngineeringBomItem it : items) {
+                if (it.getSubBomId() != null && it.getSubBomId() > 0) {
+                    subBomIds.add(it.getSubBomId());
+                }
+            }
+            if (!subBomIds.isEmpty()) {
+                Map<Long, EngineeringBom> subBoms = new HashMap<>();
+                for (EngineeringBom sub : productBomMapper.selectBatchIds(subBomIds)) {
+                    subBoms.put(sub.getBomId(), sub);
+                }
+                for (EngineeringBomItem it : items) {
+                    EngineeringBom sub = it.getSubBomId() == null ? null : subBoms.get(it.getSubBomId());
+                    if (sub == null) continue;
+                    it.setSubBomCode(sub.getBomCode());
+                    it.setSubBomName(sub.getBomName());
+                    it.setSubBomVersion(sub.getBomVersion());
+                    it.setSubBomApproveStatus(sub.getApproveStatus());
                 }
             }
             if (items.stream().anyMatch(row -> row.getMaterialId() != null && row.getMaterialId() > 0)) {

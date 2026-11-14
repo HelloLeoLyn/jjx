@@ -37,6 +37,20 @@ public class EngineeringBomVO {
     /** 产品名称 */
     private String productName;
 
+    /**
+     * 产出对象编码/名称：PRODUCT 取产品，MATERIAL 取物料。
+     * 半成品制造方案没有 productId，只靠这两个字段才能在详情里说清"这张方案是给谁做的"。
+     */
+    private String outputCode;
+
+    private String outputName;
+
+    /**
+     * 同一 bomCode 下的版本总数（详情页展示用）。
+     * 不复用 versionCount：列表行 BomListRow 已用 long versionCount，同名会导致 getter 返回类型冲突。
+     */
+    private Integer versionTotal;
+
     /** 版本号 */
     private String bomVersion;
 

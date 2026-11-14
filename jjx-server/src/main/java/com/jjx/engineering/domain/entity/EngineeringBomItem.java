@@ -249,6 +249,28 @@ public class EngineeringBomItem {
     private String materialType;
 
     /**
+     * 物料档案基本单位（查询时带出，用于详情页核对 BOM 行单位与档案单位是否一致，不落库）
+     */
+    @TableField(exist = false)
+    private String archiveUnit;
+
+    /**
+     * 下层制造方案（source_type=make 且 sub_bom_id 非空时按 sub_bom_id 带出，只读展示用）
+     */
+    @TableField(exist = false)
+    private String subBomCode;
+
+    @TableField(exist = false)
+    private String subBomName;
+
+    @TableField(exist = false)
+    private String subBomVersion;
+
+    /** 下层制造方案审核状态，取值同 BomStatusEnum */
+    @TableField(exist = false)
+    private Integer subBomApproveStatus;
+
+    /**
      * 前端组合出的默认规格，仅作提交与日志对照；查询默认值从原始来源组合，不落业务表。
      */
     @TableField(exist = false)
