@@ -248,6 +248,27 @@ class BomReviewPackageTransactionTest {
     }
 
     @Test
+    void oneProductFailureDoesNotRollBackOtherSuccessfulProduct() {
+        seedSharedPackage();
+        BomReviewPackageRequest request = new BomReviewPackageRequest();
+        request.setAction("APPROVE");
+        request.setProducts(List.of(scope(1L), scope(4L)));
+        failRootApprove.set(true);
+
+        BomReviewBatchResultVO result = service.executeReviewPackages(request);
+
+        // 产品1根日志失败只回滚产品1；产品4独立事务成功，共享方案由其批准。
+        assertEquals(1, result.getFailures().size());
+        assertEquals(1, result.getSuccesses().size());
+        assertEquals(4L, result.getSuccesses().get(0).getRootBomId());
+        assertEquals(ProductEnums.BomStatus.REVIEWING.getValue(), status(1L));
+        assertEquals(ProductEnums.BomStatus.APPROVED.getValue(), status(4L));
+        assertEquals(ProductEnums.BomStatus.APPROVED.getValue(), status(2L));
+        assertEquals(ProductEnums.BomItemReviewStatus.PENDING.getValue(), rowStatus(11L));
+        assertEquals(ProductEnums.BomItemReviewStatus.APPROVED.getValue(), rowStatus(41L));
+    }
+
+    @Test
     void sharedNodeIsApprovedOnceAndSecondProductReusesIt() {
         seedSharedPackage();
         BomReviewPackageRequest request = new BomReviewPackageRequest();
