@@ -52,13 +52,13 @@ async function mountTable(items: EngineeringBomItem[]) {
 const headers = (wrapper: ReturnType<typeof mount>) =>
   wrapper.findAll('th').map((node) => node.text().replace(/\s+/g, ''))
 
-describe('BOM详情明细：字段口径与下层制造方案', () => {
-  it('显示来源、下层制造方案、投料与跳距，且“数量”改名为“每件用量”', async () => {
+describe('BOM详情明细：字段口径与下层生产BOM', () => {
+  it('显示来源、下层生产BOM、投料与跳距，且“数量”改名为“每件用量”', async () => {
     const wrapper = await mountTable([
       row({ pitchMm: 80, pcsPerPitch: 2, actualIssueQty: 1.25, appliedQty: 1.2 }),
     ])
     const titles = headers(wrapper)
-    for (const title of ['来源', '下层制造方案', '跳距(mm)', '每跳片数', '每件用量', '应用料(含损耗)', '实际投料']) {
+    for (const title of ['来源', '下层生产BOM', '跳距(mm)', '每跳片数', '每件用量', '应用料(含损耗)', '实际投料']) {
       expect(titles).toContain(title)
     }
     expect(titles).not.toContain('数量')

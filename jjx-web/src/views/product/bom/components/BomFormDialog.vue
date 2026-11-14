@@ -436,7 +436,7 @@ const handleSchemeAdopt = (payload: { materialId: number; bomId: number }) => {
   if (!materialId || !bomId) return
   const row = manufacturingRow.value
   if (!row || Number(row.materialId) !== materialId) {
-    ElMessage.warning('该行物料已变化，请重新打开制造BOM窗口后再采用')
+    ElMessage.warning('该行物料已变化，请重新打开生产BOM窗口后再采用')
     return
   }
   row.subBomId = bomId

@@ -2,7 +2,7 @@ import { BomStatusEnum } from '@/enums/product'
 import type { BomCheckIssue } from '@/types/product/bom'
 
 /**
- * BOM 提交预检里与下层制造方案有关的提示码。
+ * BOM 提交预检里与下层生产BOM有关的提示码。
  * 后端只返回中文 message（含错误码与 bomId），前端在这里解析并按方案去重展示。
  */
 export type SubBomIssueCode = 'SUB_BOM_NOT_APPROVED' | 'SUB_BOM_NOT_FOUND'
@@ -104,7 +104,7 @@ export function normalizeSchemeDetail(
   const outputId = Number(raw.outputId ?? raw.productId)
   return {
     bomId,
-    name: name || '未命名制造方案',
+    name: name || '未命名生产BOM',
     code: text(raw.bomCode),
     version: text(raw.bomVersion) || '版本未知',
     status: Number.isFinite(statusValue) ? statusValue : undefined,
@@ -172,14 +172,18 @@ export interface SubmitCheckView {
   otherItems: OtherBlock[]
 }
 
-const MANUFACTURING_SUFFIX = '制造方案'
+/**
+ * 名称后缀：新记录默认叫「生产BOM」（dev-20261114-009 术语统一）；
+ * 2026-11-14 之前的记录仍以「制造方案」命名，两种后缀都要能识别并去掉。
+ */
+const MANUFACTURING_SUFFIX = '生产BOM'
+const SCHEME_NAME_SUFFIXES = [MANUFACTURING_SUFFIX, '制造方案']
 
-/** “离型纸 RP-W195-L80制造方案”在提示里显示为“离型纸 RP-W195-L80”。 */
+/** “离型纸 RP-W195-L80生产BOM”在提示里显示为“离型纸 RP-W195-L80”。 */
 export function schemeDisplayName(name: string): string {
   const trimmed = text(name)
-  return trimmed.endsWith(MANUFACTURING_SUFFIX)
-    ? trimmed.slice(0, trimmed.length - MANUFACTURING_SUFFIX.length)
-    : trimmed
+  const suffix = SCHEME_NAME_SUFFIXES.find((item) => trimmed.endsWith(item))
+  return suffix ? trimmed.slice(0, trimmed.length - suffix.length) : trimmed
 }
 
 function buildSchemeBlock(entry: MergedSubBomIssue, result: SchemeDetailResult | undefined): SchemeBlock {
@@ -194,7 +198,7 @@ function buildSchemeBlock(entry: MergedSubBomIssue, result: SchemeDetailResult |
       return {
         ...base,
         title: `请先检查${displayName}${MANUFACTURING_SUFFIX}`,
-        message: `提交预检未找到该制造方案，但当前仍能读取到『${displayName} · ${detail.version}』，状态为「${statusLabel}」。请打开版本维护确认该方案是否仍然有效，再回来提交当前 BOM。`,
+        message: `提交预检未找到该生产BOM，但当前仍能读取到『${displayName} · ${detail.version}』，状态为「${statusLabel}」。请打开版本维护确认该方案是否仍然有效，再回来提交当前 BOM。`,
         statusLabel,
         canNavigate: Boolean(target),
         target,
@@ -202,9 +206,9 @@ function buildSchemeBlock(entry: MergedSubBomIssue, result: SchemeDetailResult |
     }
     return {
       ...base,
-      title: '引用的制造方案已不存在',
+      title: '引用的生产BOM已不存在',
       message:
-        '当前 BOM 行引用的制造方案已不存在或无权查看，无法确认它的批准状态，因此暂时不能提交审核。请先修正该 BOM 行引用的制造方案。',
+        '当前 BOM 行引用的生产BOM已不存在或无权查看，无法确认它的批准状态，因此暂时不能提交审核。请先修正该 BOM 行引用的生产BOM。',
       canNavigate: false,
       error: result && !result.ok ? result.error : undefined,
     }
@@ -213,9 +217,9 @@ function buildSchemeBlock(entry: MergedSubBomIssue, result: SchemeDetailResult |
   if (!result) {
     return {
       ...base,
-      title: '无法确认制造方案状态',
+      title: '无法确认生产BOM状态',
       message:
-        '没有取得该制造方案的只读详情，无法确认它是否已批准，因此暂时不能提交审核。请刷新后重试。',
+        '没有取得该生产BOM的只读详情，无法确认它是否已批准，因此暂时不能提交审核。请刷新后重试。',
       canNavigate: false,
       error: '未取得方案详情',
     }
@@ -224,8 +228,8 @@ function buildSchemeBlock(entry: MergedSubBomIssue, result: SchemeDetailResult |
   if (!result.ok) {
     return {
       ...base,
-      title: '制造方案信息读取失败',
-      message: `无法读取该制造方案的名称、版本和状态（${result.error}），无法确认它是否已批准，因此暂时不能提交审核。请刷新后重试；仍失败请联系管理员。`,
+      title: '生产BOM信息读取失败',
+      message: `无法读取该生产BOM的名称、版本和状态（${result.error}），无法确认它是否已批准，因此暂时不能提交审核。请刷新后重试；仍失败请联系管理员。`,
       canNavigate: false,
       error: result.error,
     }
@@ -239,7 +243,7 @@ function buildSchemeBlock(entry: MergedSubBomIssue, result: SchemeDetailResult |
   const message =
     detail.status === BomStatusEnum.APPROVED.value
       ? `当前 BOM 使用的『${label}』在预检时仍被判定为未批准（系统当前显示为「${statusLabel}」），请刷新后重新提交；若仍被拦截，请联系管理员核对。`
-      : `当前 BOM 使用的『${label}』当前状态为「${statusLabel}」，尚未批准，因此暂时不能提交审核。请先完成该制造方案的提交审核和批准，再回来提交当前 BOM。`
+      : `当前 BOM 使用的『${label}』当前状态为「${statusLabel}」，尚未批准，因此暂时不能提交审核。请先完成该生产BOM的提交审核和批准，再回来提交当前 BOM。`
   return {
     ...base,
     title: `请先审核${displayName}${MANUFACTURING_SUFFIX}`,
@@ -310,8 +314,8 @@ function buildPendingSchemeBlock(entry: MergedSubBomIssue): SchemeBlock {
     key: entry.key,
     code: entry.code,
     bomId: entry.bomId,
-    title: '正在读取制造方案信息',
-    message: '正在读取该制造方案的名称、版本和审批状态，读取完成前不能跳转。',
+    title: '正在读取生产BOM信息',
+    message: '正在读取该生产BOM的名称、版本和审批状态，读取完成前不能跳转。',
     canNavigate: false,
     pending: true,
   }

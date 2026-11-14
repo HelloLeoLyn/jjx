@@ -86,7 +86,7 @@ const mountDialog = (issues: BomCheckIssue[], targetName = 'V1.0') =>
   })
 
 const viewButtons = (wrapper: ReturnType<typeof mountDialog>) =>
-  wrapper.findAll('button').filter((node) => node.text() === '查看制造方案')
+  wrapper.findAll('button').filter((node) => node.text() === '查看生产BOM')
 
 beforeEach(() => {
   api.getEngineeringBomInfo.mockReset()
@@ -104,25 +104,25 @@ describe('BOM 提交预检弹窗', () => {
     expect(api.getEngineeringBomInfo).toHaveBeenCalledWith(4)
     expect(wrapper.findAll('[data-issue-code="SUB_BOM_NOT_APPROVED"]')).toHaveLength(1)
     const text = wrapper.text()
-    expect(text).toContain('请先审核离型纸 RP-W195-L80制造方案')
+    expect(text).toContain('请先审核离型纸 RP-W195-L80生产BOM')
     expect(text).toContain('离型纸 RP-W195-L80 · V1.0')
     expect(text).toContain('草稿')
-    expect(text).toContain('请先完成该制造方案的提交审核和批准，再回来提交当前 BOM')
+    expect(text).toContain('请先完成该生产BOM的提交审核和批准，再回来提交当前 BOM')
     expect(text).not.toContain('SUB_BOM')
     expect(text).not.toContain('bomId=')
 
     const buttons = wrapper.findAll('button').map((node) => node.text())
-    expect(buttons).toEqual(['查看制造方案', '关闭'])
+    expect(buttons).toEqual(['查看生产BOM', '关闭'])
     expect(api.submitEngineeringBom).not.toHaveBeenCalled()
     expect(api.approveEngineeringBom).not.toHaveBeenCalled()
   })
 
-  it('点“查看制造方案”只发出目标对象信息，不提交也不批准', async () => {
+  it('点“查看生产BOM”只发出目标对象信息，不提交也不批准', async () => {
     api.getEngineeringBomInfo.mockResolvedValue(detail(4))
     const wrapper = mountDialog([rowIssue(4), graphIssue(4)])
     await flushPromises()
 
-    const viewButton = wrapper.findAll('button').find((node) => node.text() === '查看制造方案')!
+    const viewButton = wrapper.findAll('button').find((node) => node.text() === '查看生产BOM')!
     await viewButton.trigger('click')
 
     expect(wrapper.emitted('navigate')?.[0]?.[0]).toEqual({
@@ -146,7 +146,7 @@ describe('BOM 提交预检弹窗', () => {
     expect(api.getEngineeringBomInfo.mock.calls.map(([id]) => id).sort()).toEqual([4, 8])
     expect(wrapper.findAll('[data-issue-code="SUB_BOM_NOT_APPROVED"]')).toHaveLength(2)
 
-    const buttons = wrapper.findAll('button').filter((node) => node.text() === '查看制造方案')
+    const buttons = wrapper.findAll('button').filter((node) => node.text() === '查看生产BOM')
     expect(buttons).toHaveLength(2)
     await buttons[0].trigger('click')
     await buttons[1].trigger('click')
@@ -159,10 +159,10 @@ describe('BOM 提交预检弹窗', () => {
     await flushPromises()
 
     const text = wrapper.text()
-    expect(text).toContain('制造方案信息读取失败')
+    expect(text).toContain('生产BOM信息读取失败')
     expect(text).toContain('403')
     expect(text).toContain('无法确认它是否已批准')
-    expect(text).not.toContain('查看制造方案')
+    expect(text).not.toContain('查看生产BOM')
     expect(wrapper.findAll('button').map((node) => node.text())).toContain('重新读取')
 
     await wrapper.findAll('button').find((node) => node.text() === '重新读取')!.trigger('click')
@@ -225,7 +225,7 @@ describe('BOM 提交预检弹窗', () => {
     await flushPromises()
 
     // 7 的详情还没回来：本轮只允许“正在读取”，旧方案 4 的名称/版本/按钮必须消失。
-    expect(wrapper.text()).toContain('正在读取相关制造方案信息')
+    expect(wrapper.text()).toContain('正在读取相关生产BOM信息')
     expect(wrapper.text()).not.toContain('离型纸')
     expect(wrapper.text()).not.toContain('RP-W195-L80')
     expect(wrapper.text()).not.toContain('V1.0')
@@ -289,7 +289,7 @@ describe('BOM 提交预检弹窗', () => {
     await flushPromises()
 
     const text = wrapper.text()
-    expect(text).toContain('正在读取相关制造方案信息')
+    expect(text).toContain('正在读取相关生产BOM信息')
     expect(text).toContain('其他需要处理的问题')
     expect(text).toContain('M-11')
     expect(text).toContain('用量必须大于0')

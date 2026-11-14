@@ -245,7 +245,7 @@ describe('父产品BOM：采用制造方案只回填草稿', () => {
     state.manufacturingRow = state.formData.items[0]
     state.handleSchemeAdopt({ materialId: 999, bomId: 124 })
     expect(state.formData.items[0].subBomId).toBeFalsy()
-    expect(mocks.warning).toHaveBeenCalledWith('该行物料已变化，请重新打开制造BOM窗口后再采用')
+    expect(mocks.warning).toHaveBeenCalledWith('该行物料已变化，请重新打开生产BOM窗口后再采用')
   })
 })
 

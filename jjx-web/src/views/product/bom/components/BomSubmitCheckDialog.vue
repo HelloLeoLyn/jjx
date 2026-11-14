@@ -13,7 +13,7 @@
         show-icon
       />
 
-      <el-alert v-if="loading" title="正在读取相关制造方案信息…" type="info" :closable="false" />
+      <el-alert v-if="loading" title="正在读取相关生产BOM信息…" type="info" :closable="false" />
 
       <div
         v-for="item in schemeItems"
@@ -28,7 +28,7 @@
         <p class="submit-check__message">{{ item.message }}</p>
         <div class="submit-check__actions">
           <el-button v-if="item.canNavigate" type="primary" link @click="navigate(item)">
-            查看制造方案
+            查看生产BOM
           </el-button>
           <el-button v-if="item.error" link @click="reload">重新读取</el-button>
         </div>

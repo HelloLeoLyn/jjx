@@ -7,7 +7,9 @@ vi.mock('@/components/inventory/MaterialFormDialog.vue', () => ({ default: { tem
 vi.mock('@/components/Selector/StandardProcessSelector.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/composables/useEnabledProcesses', () => ({ useEnabledProcesses: () => ({ processes: [] }) }))
 vi.mock('sortablejs', () => ({ default: { create: vi.fn(() => ({ destroy: vi.fn(), option: vi.fn() })) } }))
+vi.mock('@/directives', () => ({ hasPermi: vi.fn(() => true) }))
 import Sortable from 'sortablejs'
+import { hasPermi } from '@/directives'
 import { ElMessage } from 'element-plus'
 import { materialApi } from '@/api/inventory/material'
 import { materialMasterApi } from '@/api/inventory/materialMaster'
@@ -168,6 +170,17 @@ describe('制造BOM入口（dev-20261111-005）：只对已建档行开放，不
     expect(submitted.materialId).toBe(original.materialId)
     expect(exposed.updateItem(999, { subBomId: 1 })).toBe(false)
     expect(state.showManufacturing(submitted)).toBe(true)
+  })
+})
+
+describe('生产BOM入口文案（dev-20261114-009）：有方案才显示编辑', () => {
+  it('未挂下层方案显示新建；已挂按编辑权显示编辑或查看', () => {
+    const { state } = editor()
+    expect(state.manufacturingLabel({ ...original })).toBe('新建生产BOM')
+    expect(state.manufacturingLabel({ ...original, subBomId: 0 })).toBe('新建生产BOM')
+    expect(state.manufacturingLabel({ ...original, subBomId: 12 })).toBe('编辑生产BOM')
+    vi.mocked(hasPermi).mockReturnValueOnce(false)
+    expect(state.manufacturingLabel({ ...original, subBomId: 12 })).toBe('查看生产BOM')
   })
 })
 

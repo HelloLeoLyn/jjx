@@ -195,12 +195,12 @@ describe('BOM详情行内逐层展开（纯前端只读懒加载）', () => {
       .mockResolvedValueOnce({ data: child })
     const wrapper = await table(bom(1, [make(11, 2)]))
     await expand(wrapper)
-    expect(wrapper.text()).toContain('下层制造方案加载失败')
+    expect(wrapper.text()).toContain('下层生产BOM加载失败')
     const retry = wrapper.findAll('button').find((button) => button.text() === '重试加载下层方案')!
     await retry.trigger('click')
     await settle()
     expect(childTableOf(wrapper)!.props('items')).toEqual(child.items)
-    expect(wrapper.text()).not.toContain('下层制造方案加载失败')
+    expect(wrapper.text()).not.toContain('下层生产BOM加载失败')
   })
 })
 

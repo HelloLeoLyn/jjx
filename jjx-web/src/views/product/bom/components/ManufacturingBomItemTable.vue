@@ -146,7 +146,7 @@
             type="primary"
             size="small"
             @click="emit('open-sub', scope.row)"
-            >制造BOM</el-button
+            >新建生产BOM</el-button
           >
           <span v-else class="no-sub">—</span>
         </template>
@@ -186,7 +186,7 @@
 
 <script setup lang="ts">
 /**
- * 制造BOM 投入材料表（dev-20261111-005）。
+ * 生产BOM 投入材料表（dev-20261111-005）。
  * 一种产出、多行投入；编码/名称/档案规格/档案单位/投入单位/模数/基数/跳距/损耗/最低投料/跨单位换算依据。
  * 不做分组、不加供给方式列、不内嵌工艺路线；规格与档案单位只读，不反向改物料档案。
  * 用量一律以保存后后端回读为准：这里不计算、不回写 row.quantity，只标“待保存”。
@@ -422,7 +422,7 @@ const decimalPlaces = (value: unknown): number => {
  */
 const validate = (input?: EngineeringBomItem[]): string => {
   const list = input ?? rows.value
-  if (!list.length) return '制造BOM至少需要一行投入材料'
+  if (!list.length) return '生产BOM至少需要一行投入材料'
   for (let i = 0; i < list.length; i++) {
     const row = list[i]
     const prefix = `第${i + 1}行`

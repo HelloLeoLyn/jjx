@@ -112,10 +112,10 @@ describe('BOM 提交预检：可读文案与真实状态', () => {
   it('草稿方案给出名称、版本、实际状态和下一步，主展示不含错误码与 bomId', () => {
     const view = buildSubmitCheckView(mergeSubmitIssues([rowIssue(), graphIssue(), schemeIssue()]), details(okDetail(4)))
     const item = view.schemeItems[0]
-    expect(item.title).toBe('请先审核离型纸 RP-W195-L80制造方案')
+    expect(item.title).toBe('请先审核离型纸 RP-W195-L80生产BOM')
     expect(item.statusLabel).toBe('草稿')
     expect(item.message).toBe(
-      '当前 BOM 使用的『离型纸 RP-W195-L80 · V1.0』当前状态为「草稿」，尚未批准，因此暂时不能提交审核。请先完成该制造方案的提交审核和批准，再回来提交当前 BOM。'
+      '当前 BOM 使用的『离型纸 RP-W195-L80 · V1.0』当前状态为「草稿」，尚未批准，因此暂时不能提交审核。请先完成该生产BOM的提交审核和批准，再回来提交当前 BOM。'
     )
     const visible = [item.title, item.message, item.statusLabel || ''].join(' ')
     expect(visible).not.toContain('SUB_BOM')
@@ -155,7 +155,7 @@ describe('BOM 提交预检：可读文案与真实状态', () => {
     const failed = details({ ok: false, bomId: 4, error: 'Request failed with status code 403' })
     const view = buildSubmitCheckView(mergeSubmitIssues([rowIssue()]), failed)
     const item = view.schemeItems[0]
-    expect(item.title).toBe('制造方案信息读取失败')
+    expect(item.title).toBe('生产BOM信息读取失败')
     expect(item.message).toContain('403')
     expect(item.message).toContain('无法确认它是否已批准')
     expect(item.canNavigate).toBe(false)
@@ -165,7 +165,7 @@ describe('BOM 提交预检：可读文案与真实状态', () => {
   it('预检引用的方案确实不存在时给出修正指引', () => {
     const notFound = { field: 'subBomId', message: 'SUB_BOM_NOT_FOUND：下层方案不存在（bomId=4）' }
     const view = buildSubmitCheckView(mergeSubmitIssues([notFound]), new Map())
-    expect(view.schemeItems[0].title).toBe('引用的制造方案已不存在')
+    expect(view.schemeItems[0].title).toBe('引用的生产BOM已不存在')
     expect(view.schemeItems[0].canNavigate).toBe(false)
     expect(view.schemeItems[0].message).toContain('暂时不能提交审核')
   })
@@ -200,7 +200,7 @@ describe('BOM 提交预检：可读文案与真实状态', () => {
 
   it('详情字段缺失时如实回退，不伪造版本或状态', () => {
     const detail = normalizeSchemeDetail(4, { bomName: '', approveStatus: undefined })
-    expect(detail.name).toBe('未命名制造方案')
+    expect(detail.name).toBe('未命名生产BOM')
     expect(detail.version).toBe('版本未知')
     expect(detail.status).toBeUndefined()
   })

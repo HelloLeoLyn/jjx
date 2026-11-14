@@ -131,14 +131,14 @@
               {{ BomSourceTypeEnum.getLabel(row.sourceType) }}
             </el-tag>
             <!-- 自制行没指定下层方案时，领料/试算会算不出投入，这里直接提示 -->
-            <el-tooltip v-if="isMakeWithoutScheme(row)" content="自制行未指定下层制造方案" placement="top">
+            <el-tooltip v-if="isMakeWithoutScheme(row)" content="自制行未指定下层生产BOM" placement="top">
               <el-tag type="warning" size="small" class="scheme-missing">缺方案</el-tag>
             </el-tooltip>
           </template>
           <span v-else class="muted">—</span>
         </template>
       </el-table-column>
-      <el-table-column v-if="show('subBom')" label="下层制造方案" width="200" show-overflow-tooltip>
+      <el-table-column v-if="show('subBom')" label="下层生产BOM" width="200" show-overflow-tooltip>
         <template #default="{ row }">
           <template v-if="row.subBomCode">
             <span>{{ row.subBomCode }} {{ row.subBomVersion || '' }}</span>
@@ -270,7 +270,7 @@ async function loadChild(row: EngineeringBomItem) {
     children.value.set(bomId, {
       loading: false,
       cycle: true,
-      error: `循环引用：下层制造方案 ${row.subBomCode || '当前方案'} 已在祖先路径中，已拦截展开`,
+      error: `循环引用：下层生产BOM ${row.subBomCode || '当前方案'} 已在祖先路径中，已拦截展开`,
     })
     return
   }
@@ -284,7 +284,7 @@ async function loadChild(row: EngineeringBomItem) {
     children.value.set(bomId, { loading: false, error: '', detail: response.data })
   } catch {
     if (requestGeneration !== generation) return
-    children.value.set(bomId, { loading: false, error: '下层制造方案加载失败，请确认访问权限与方案是否存在' })
+    children.value.set(bomId, { loading: false, error: '下层生产BOM加载失败，请确认访问权限与方案是否存在' })
   }
 }
 
@@ -312,7 +312,7 @@ const COLUMNS = [
   { key: 'unit', label: '单位' },
   { key: 'archiveUnit', label: '档案单位' },
   { key: 'sourceType', label: '来源' },
-  { key: 'subBom', label: '下层制造方案' },
+  { key: 'subBom', label: '下层生产BOM' },
   { key: 'moduleQty', label: '模数' },
   { key: 'baseQty', label: '基数' },
   { key: 'pitch', label: '跳距(mm)' },

@@ -275,7 +275,7 @@ const loadSchemeVersions = async (): Promise<boolean> => {
   } catch (error: any) {
     if (requestId === schemeRequest) {
       schemeVersions.value = []
-      ElMessage.error(error?.message || '制造方案版本加载失败，请刷新后重试')
+      ElMessage.error(error?.message || '生产BOM版本加载失败，请刷新后重试')
     }
     return false
   } finally {

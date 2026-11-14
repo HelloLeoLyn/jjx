@@ -349,7 +349,7 @@
               size="small"
               :disabled="readonly"
               @click="handleManufacturing(scope.row)"
-              >制造BOM</el-button
+              >{{ manufacturingLabel(scope.row) }}</el-button
             >
             <el-button
               v-if="!scope.row.materialId && !isPendingRemove(scope.row)"
@@ -405,6 +405,7 @@ import { useEnabledProcesses } from '@/composables/useEnabledProcesses'
 import { productBomApi } from '@/api/product/bom'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import { materialMasterApi } from '@/api/inventory/materialMaster'
+import { hasPermi } from '@/directives'
 import Sortable from 'sortablejs'
 
 // ==================== Props & Emits ====================
@@ -416,7 +417,7 @@ interface Props {
   outputUnit?: string
   outputLengthMm?: number | null
   maxItems?: number
-  /** 是否显示「制造BOM」入口（权限/只读由父级判定；默认显示） */
+  /** 是否显示「生产BOM」入口（权限/只读由父级判定；默认显示） */
   canManufacturing?: boolean
 }
 
@@ -424,7 +425,7 @@ interface Emits {
   (e: 'update:modelValue', value: EngineeringBomItem[]): void
   (e: 'change', value: EngineeringBomItem[]): void
   (e: 'validate', valid: boolean): void
-  /** 打开独立制造BOM窗口（dev-20261111-005）：只传行，不在这里改分组或制造关系 */
+  /** 打开独立生产BOM窗口（dev-20261111-005）：只传行，不在这里改分组或制造关系 */
   (e: 'manufacturing', row: EngineeringBomItem): void
 }
 
@@ -483,7 +484,7 @@ const isApprovedRow = (row: EngineeringBomItem): boolean =>
   rowReviewStatus(row) === BomItemReviewStatusEnum.APPROVED.value
 
 /**
- * 独立制造BOM入口（dev-20261111-005）：只对有物料档案、未待移除且非只读的行开放；
+ * 独立生产BOM入口（dev-20261111-005）：只对有物料档案、未待移除且非只读的行开放；
  * 未建档行先去建档（物料身份是产出身份的前提），不从行内容推断制造关系。
  * 已有下层方案时进入查看；没有下层方案时进入该物料的候选并新建（只读不允许新建）。
  */
@@ -496,6 +497,24 @@ const showManufacturing = (row: EngineeringBomItem): boolean =>
 const handleManufacturing = (row: EngineeringBomItem) => {
   if (!showManufacturing(row)) return
   emit('manufacturing', row)
+}
+
+/**
+ * 「生产BOM」入口文案（dev-20261114-009）：本行已挂下层生产BOM → 编辑；无编辑权只能查看；
+ * 未挂 → 新建。按钮本身已按只读/权限隐藏，这里只区分已挂与未挂。
+ * hasPermi 读用户 store：单测直接挂载组件时没有 pinia，按无编辑权（查看）处理，不抛错。
+ */
+const canEditProductionBom = (): boolean => {
+  try {
+    return hasPermi('engineering:bom:edit')
+  } catch {
+    return false
+  }
+}
+
+const manufacturingLabel = (row: EngineeringBomItem): string => {
+  if (!(Number(row.subBomId) > 0)) return '新建生产BOM'
+  return canEditProductionBom() ? '编辑生产BOM' : '查看生产BOM'
 }
 
 // 项目选择器交互模式：'dropdown' 内联下拉 / 'dialog' 分组网格弹窗

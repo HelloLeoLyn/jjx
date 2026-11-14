@@ -10,7 +10,7 @@
   >
     <template #header>
       <div class="dialog-header">
-        <span class="dialog-title">制造BOM</span>
+        <span class="dialog-title">生产BOM</span>
         <span class="dialog-sub">{{ headerSub }}</span>
       </div>
     </template>
@@ -23,7 +23,7 @@
       type="info"
       :closable="false"
       show-icon
-      title="尚未选择产品：可以先保存制造方案；“设为主方案”需要先选择产品。"
+      title="尚未选择产品：可以先保存生产BOM；“设为主方案”需要先选择产品。"
     />
 
     <!-- 编辑占用（dev-20261111-018）：本层方案被其他窗口占用或编辑权失效时只读，草稿保留 -->
@@ -61,7 +61,7 @@
         >
         <el-button size="small" :loading="loading" @click="reloadOptions">刷新候选</el-button>
         <span class="scheme-hint"
-          >候选为已保存的制造方案；保存与采用都不会自动审核或生效。</span
+          >候选为已保存的生产BOM；保存与采用都不会自动审核或生效。</span
         >
       </div>
       <el-table
@@ -69,7 +69,7 @@
         size="small"
         border
         row-key="bomId"
-        empty-text="该产出物料尚无已保存的制造方案，可新建"
+        empty-text="该产出物料尚无已保存的生产BOM，可新建"
       >
         <el-table-column label="方案编码" prop="bomCode" min-width="150" show-overflow-tooltip />
         <el-table-column label="版本" prop="bomVersion" width="90" />
@@ -208,7 +208,7 @@
           :loading="saving"
           :disabled="!editable"
           @click="saveScheme"
-          >保存制造BOM</el-button
+          >保存生产BOM</el-button
         >
         <el-button v-if="canAdoptVisible" type="success" :disabled="!canAdopt" @click="adoptScheme"
           >采用此方案</el-button
@@ -220,10 +220,10 @@
 
 <script setup lang="ts">
 /**
- * 制造BOM 独立窗口（dev-20261111-005）。
+ * 生产BOM 独立窗口（dev-20261111-005）。
  *
  * 边界：
- * 1）只保存独立制造方案（POST/PUT /engineering/bom/manufacturing），不自动发布、不改父 BOM、不生成库存/工单；
+ * 1）只保存独立生产BOM（POST/PUT /engineering/bom/manufacturing），不自动发布、不改父 BOM、不生成库存/工单；
  * 2）采用：顶层把结果交给产品BOM草稿行；下层只回填直接上层投入行（subBomId/sourceType），
  *    由上层保存后才持久化，父/上层取消不删除已保存方案；
  * 3）主方案按 product × material 独立，只由用户显式“设为主方案”触发；深层设主先记录，
@@ -474,7 +474,7 @@ const currentDirty = computed(() => frameDirty(current.value))
 const hasProductContext = computed(() => Number(props.productId) > 0)
 /**
  * 权限矩阵（沿用既有 BOM 权限枚举）：
- * - canCreate：有新增权限且非只读，可新建制造方案并采用；
+ * - canCreate：有新增权限且非只读，可新建生产BOM并采用；
  * - canEditStored：有编辑权限且非只读，可编辑已存方案、设主方案；
  * - 采用 = 新增或编辑任一；只读=仅查看。
  */
@@ -599,7 +599,7 @@ const footerTip = computed(() => {
   if (activeIndex.value > 0) {
     return '采用只回填直接上层投入行；上层保存后才持久化关联，产品BOM最后保存'
   }
-  return '保存只落该制造方案；采用后还需在父 BOM 点保存才会持久化关联'
+  return '保存只落该生产BOM；采用后还需在父 BOM 点保存才会持久化关联'
 })
 
 const statusLabel = (value: unknown): string => BomStatusEnum.getLabel(Number(value) || 0)
@@ -650,7 +650,7 @@ const resetDraft = (frame: Frame): void => {
   frame.draft = {
     ...emptyDraft(),
     bomCode: code ? `${code}-MFG` : '',
-    bomName: name ? `${name}制造方案` : '',
+    bomName: name ? `${name}生产BOM` : '',
   }
   frame.baseline = serializeDraft(frame.draft)
 }
@@ -705,8 +705,8 @@ const loadFrame = async (frame: Frame): Promise<void> => {
     if (preferred) await loadScheme(frame, preferred)
     else resetDraft(frame)
   } catch (error) {
-    console.error('加载制造方案候选失败:', error)
-    ElMessage.error('加载制造方案候选失败')
+    console.error('加载生产BOM候选失败:', error)
+    ElMessage.error('加载生产BOM候选失败')
     resetDraft(frame)
     frame.baseline = serializeDraft(frame.draft)
   } finally {
@@ -732,7 +732,7 @@ const resolveDirty = async (
 ): Promise<'saved' | 'discard' | 'cancel'> => {
   if (!frameDirty(current.value)) return 'saved'
   try {
-    await ElMessageBox.confirm('当前制造方案有未保存的修改。', '未保存提醒', {
+    await ElMessageBox.confirm('当前生产BOM有未保存的修改。', '未保存提醒', {
       distinguishCancelAndClose: true,
       confirmButtonText: saveLabel,
       cancelButtonText: discardLabel,
@@ -755,7 +755,7 @@ const resolveLeave = async (): Promise<boolean> => {
   if (ancestorDirty) {
     try {
       await ElMessageBox.confirm(
-        '上层制造方案还有未保存的修改，关闭会丢弃这些未保存内容；已保存的方案不受影响。',
+        '上层生产BOM还有未保存的修改，关闭会丢弃这些未保存内容；已保存的方案不受影响。',
         '未保存提醒',
         {
           distinguishCancelAndClose: true,
@@ -800,8 +800,8 @@ const selectSchemeByBomId = async (bomId: number): Promise<void> => {
     await loadScheme(frame, Number(bomId))
     void loadArchive(frame)
   } catch (error) {
-    console.error('加载制造方案失败:', error)
-    ElMessage.error('加载制造方案失败')
+    console.error('加载生产BOM失败:', error)
+    ElMessage.error('加载生产BOM失败')
   } finally {
     loading.value = false
   }
@@ -819,8 +819,8 @@ const reloadOptions = async (): Promise<void> => {
     loading.value = true
     await refreshOptions(current.value)
   } catch (error) {
-    console.error('刷新制造方案候选失败:', error)
-    ElMessage.error('刷新制造方案候选失败')
+    console.error('刷新生产BOM候选失败:', error)
+    ElMessage.error('刷新生产BOM候选失败')
   } finally {
     loading.value = false
   }
@@ -962,10 +962,10 @@ const buildPayload = () => {
 /** 前端只做必填/正数/精度/换算依据提示；耗用、单位、环与批准资格一律以后端校验为准。 */
 const validateDraft = (): string => {
   const frame = current.value
-  if (!Number(frame.material.materialId)) return '缺少产出物料，无法保存制造方案'
+  if (!Number(frame.material.materialId)) return '缺少产出物料，无法保存生产BOM'
   if (!String(frame.draft.bomCode || '').trim()) return '请填写方案编码'
   if (!String(frame.draft.bomName || '').trim()) return '请填写方案名称'
-  if (!(frame.draft.items || []).length) return '制造BOM至少需要一行投入材料'
+  if (!(frame.draft.items || []).length) return '生产BOM至少需要一行投入材料'
   const local = itemTableRef.value?.validate?.(frame.draft.items)
   if (local) return local
   return ''
@@ -1022,22 +1022,22 @@ const saveScheme = async (): Promise<boolean> => {
     }
     frame.baseline = serializeDraft(frame.draft)
     if (editSession.readOnly.value) {
-      ElMessage.success('制造BOM方案已保存（当前只读）')
+      ElMessage.success('生产BOM已保存（当前只读）')
     } else {
-      ElMessage.success('制造BOM方案已保存')
+      ElMessage.success('生产BOM已保存')
     }
     try {
       await refreshOptions(frame)
     } catch (error) {
-      console.error('刷新制造方案候选失败:', error)
+      console.error('刷新生产BOM候选失败:', error)
     }
     flushPendingPrimary()
     return true
   } catch (error) {
-    console.error('保存制造BOM方案失败:', error)
+    console.error('保存生产BOM失败:', error)
     if (isContentConflict(error)) {
       editSession.handleRequestError(error)
-      ElMessage.error('制造方案已被其他人保存，当前修改未提交；草稿已保留，请重新申请编辑权或重新加载后再试')
+      ElMessage.error('生产BOM已被其他人保存，当前修改未提交；草稿已保留，请重新申请编辑权或重新加载后再试')
       return false
     }
     const leaseOutcome = editSession.handleRequestError(error)
@@ -1045,7 +1045,7 @@ const saveScheme = async (): Promise<boolean> => {
       ElMessage.error(editSession.message.value)
       return false
     }
-    ElMessage.error('保存制造BOM方案失败')
+    ElMessage.error('保存生产BOM失败')
     return false
   } finally {
     saving.value = false
@@ -1080,7 +1080,7 @@ const adoptScheme = async (): Promise<boolean> => {
   const frame = current.value
   if (!canAdoptVisible.value) return false
   if (!Number(frame.draft.bomId)) {
-    ElMessage.warning('请先保存制造方案；未保存的方案不能被采用')
+    ElMessage.warning('请先保存生产BOM；未保存的方案不能被采用')
     return false
   }
   if (frameDirty(frame)) {
@@ -1097,15 +1097,15 @@ const adoptScheme = async (): Promise<boolean> => {
         bomId: Number(frame.draft.bomId),
         scheme: response?.data ?? null,
       })
-      ElMessage.success('已采用该制造方案；保存产品BOM后才会持久化关联')
+      ElMessage.success('已采用该生产BOM；保存产品BOM后才会持久化关联')
     } else if (applyAdoptToParent(frame, Number(frame.draft.bomId))) {
       ElMessage.success('已回填上层投入行；返回上层保存后才持久化关联')
     }
     flushPendingPrimary()
     return true
   } catch (error) {
-    console.error('采用制造方案失败:', error)
-    ElMessage.error('采用制造方案失败')
+    console.error('采用生产BOM失败:', error)
+    ElMessage.error('采用生产BOM失败')
     return false
   }
 }
@@ -1127,7 +1127,7 @@ const markPrimary = (scheme?: ManufacturingScheme): void => {
   const materialId = Number(frame.material.materialId)
   const bomId = Number(scheme?.bomId ?? frame.draft.bomId)
   if (!materialId || !bomId) {
-    ElMessage.warning('请先保存制造方案，再将其设为主方案')
+    ElMessage.warning('请先保存生产BOM，再将其设为主方案')
     return
   }
   primaryOverride.value = { materialId, bomId }

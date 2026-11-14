@@ -281,7 +281,7 @@ describe('制造BOM跳距保存与未保存提醒（dev-20261112-010）', () => 
     expect(state.canAdopt).toBe(false)
     mocks.confirm.mockRejectedValueOnce('close')
     expect(await state.resolveLeave()).toBe(false)
-    expect(mocks.confirm).toHaveBeenCalledWith('当前制造方案有未保存的修改。', '未保存提醒', expect.any(Object))
+    expect(mocks.confirm).toHaveBeenCalledWith('当前生产BOM有未保存的修改。', '未保存提醒', expect.any(Object))
     expect(await state.saveScheme()).toBe(true)
     expect(mocks.updateManufacturingBom.mock.calls[0][1].items[0][field]).toBe(value)
     expect(state.currentDirty).toBe(false)
