@@ -42,7 +42,7 @@ BOM管理主列表拆为「产品BOM / 材料BOM」两个页签，默认产品BO
 ## 行为验收对照
 
 A) YL1025PWOO 只读核对（2026-11-14 17:50 实查）：产品 YL1025PWOO / YL-208NDW；BOM V1.0（bom_id=3，已批准，is_current=1）、V1.1（bom_id=4，草稿，is_current=0）；两者各 5 行，均引用 AUX000347-MFG V1.0、AUX000348-MFG V1.0（两个子方案均已批准）。产品页应按 PRODUCT 显示 1 行，材料页另按 MATERIAL 各 1 行；两个已批准子方案在整套中标记复用、不要求重审。页面运行态未查看（未获服务生命周期授权）。
-B) 隔离夹具：新增 BomReviewPackageTest 覆盖两层以上未批准链一次预览/一次通过范围；新增 BomReviewPackageTransactionTest 用 H2 真实事务验证单产品全成或全回滚、共享节点只批准一次。未在生产 MySQL 造业务夹具。
+B) 隔离夹具：新增 BomReviewPackageTest 覆盖两层以上未批准链一次预览/一次通过范围；新增 BomReviewPackageTransactionTest 用 H2 真实事务验证单产品全成或全回滚、共享节点只批准一次、一个产品失败不影响另一个产品已成功事务。未在生产 MySQL 造业务夹具。
 C) 两产品共享子方案：BomReviewPackageTransactionTest.sharedNodeIsApprovedOnceAndSecondProductReusesIt 断言共享方案 2 只写一次 APPROVE 日志、两个产品根各自批准；重复提交（retryWithStalePreviewDoesNotDuplicateLogsOrOverwrite）不追加日志。真实多线程并发未跑（H2 替身不适合模拟 MySQL 行锁），以全局图锁+状态 CAS 作为并发防线。
 D) 驳回只退根产品：plan REJECT 只含根节点；executeRejectPackage 只改根状态，不遍历下层。材料驳回影响范围由 /references 返回。已批准复用节点/行不改审核人时间（代码跳过）。
 E) 预览后修改/引用链变化/版本变化/内容指纹变化/权限缺失/未关联物料/非法参数/环/未确认移除/停用材料均有明确阻断与定位；共享待审方案复用不重复生成/删除无关待办。
@@ -57,7 +57,7 @@ G) 最小验证命令与结果见下。
 2. vue-tsc --noEmit（MemoryMax=3G，NODE_OPTIONS=--max-old-space-size=2304，timeout 180）→ 退出码 0。
 3. npm run check:status-enums → 通过（存量 105 处，新增 0 处）。
 4. npm run check:docs → 通过（history 285 / modules 4 / task-docs 66）。
-5. 后端定向 mvn -o -Dtest=BomReviewPackageTest,BomReviewPackageTransactionTest,BomReviewPackagePermissionTest,BomItemBatchReviewTest test（MemoryMax=2G/Swap0，timeout 240，flock 互斥）→ 17 个用例全通过，退出码 0。
+5. 后端定向 mvn -o -Dtest=BomReviewPackageTest,BomReviewPackageTransactionTest,BomReviewPackagePermissionTest,BomItemBatchReviewTest test（MemoryMax=2G/Swap0，timeout 240，flock 互斥）→ 18 个用例全通过（含跨产品独立事务隔离用例），退出码 0。
 6. 基线失败记录：BomItemReviewFlowTest.saveKeepsItemIdAndNeverDeletesWholeBom 在本卡开工基线 ec72d4ee 的独立 worktree 中同样失败（expected 3 but was 2），确认非本卡引入；本卡未修改该链路，保留失败记录。
 7. git diff --check 待提交前复查。
 
