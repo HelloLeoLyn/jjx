@@ -242,6 +242,59 @@ describe('编辑权只读时禁用物料选择与拖拽', () => {
 })
 
 describe('精简录入保留计量语义', () => {
+  it.each([
+    [0, 'PCS'],
+    [undefined, 'PCS'],
+    [0, 'M'],
+  ])('未关联行首次选料（原ID=%s，档案单位=%s）保留模数基数和最低投料', async (materialId, unit) => {
+    const { state, row, exposed } = editor({
+      ...original, materialId, materialCode: '', unit: 'PCS',
+      moduleQty: 6, baseQty: 1, minIssueQty: 3, lossRate: 2,
+    })
+    state.handleMaterialSelect({ ...replacement, unit }, row)
+    await flushPromises()
+    expect(await exposed.prepareSpecifications()).toBe(true)
+    expect(exposed.validateItems()).toBe(true)
+    expect(exposed.getItems()[0]).toMatchObject({
+      materialId: replacement.materialId, materialCode: replacement.materialCode, unit,
+      moduleQty: 6, baseQty: 1, minIssueQty: 3, lossRate: 2,
+    })
+    expect(row.quantityStale).toBe(true)
+  })
+
+  it('未关联行新建物料回填保留跳距、每跳片数及最低投料', async () => {
+    const { state, row, exposed } = editor({
+      ...original, materialId: 0, materialCode: '', unit: 'M',
+      pitchMm: 80, pcsPerPitch: 2, minIssueQty: 5, lossRate: 2,
+    })
+    state.handleCreateMaterial(row, replacement.materialName)
+    state.handleMaterialCreated({ ...replacement, unit: 'M' })
+    await flushPromises()
+    expect(await exposed.prepareSpecifications()).toBe(true)
+    expect(exposed.validateItems()).toBe(true)
+    expect(exposed.getItems()[0]).toMatchObject({
+      materialId: replacement.materialId, pitchMm: 80, pcsPerPitch: 2,
+      minIssueQty: 5, lossRate: 2,
+    })
+    expect(row.quantityStale).toBe(true)
+  })
+
+  it('已有物料真正换料时仍清理旧定额和下层制造关系，即使单位相同', async () => {
+    const { state, row, exposed } = editor({
+      ...original, moduleQty: 6, baseQty: 1, minIssueQty: 3,
+      subBomId: 124, sourceType: 'make', split: '80mm',
+    })
+    state.handleMaterialSelect({ ...replacement, unit: original.unit }, row)
+    await flushPromises()
+    expect(exposed.getItems()[0]).toMatchObject({
+      materialId: replacement.materialId, unit: original.unit,
+      quantity: 0, minIssueQty: 0, subBomId: null, split: '',
+    })
+    expect(row.moduleQty).toBeUndefined()
+    expect(row.baseQty).toBeUndefined()
+    expect(row.sourceType).toBeUndefined()
+  })
+
   it.each(['损耗率', '最低投料', '同物料同单位重新选择'])('历史仅用量行修改%s仍可保存原用量', async (change) => {
     const { state, row, exposed } = editor()
     await flushPromises()

@@ -697,9 +697,11 @@ const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomIt
   if (!material || props.readonly) return
   delete materialDrafts.value[String(row.itemId)]
   const identityChanged = Number(row.materialId) !== Number(material.materialId)
+  // 首次关联只补齐物料档案，保留导入或手填的定额；已有物料换料/换单位才清理旧定额。
   if (
-    identityChanged ||
-    String(row.unit).toUpperCase() !== String(material.unit || 'PCS').toUpperCase()
+    Number(row.materialId) > 0 &&
+    (identityChanged ||
+      String(row.unit).toUpperCase() !== String(material.unit || 'PCS').toUpperCase())
   ) {
     row.baseQty = undefined
     row.moduleQty = undefined
