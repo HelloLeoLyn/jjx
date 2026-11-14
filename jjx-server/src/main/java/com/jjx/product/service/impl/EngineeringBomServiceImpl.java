@@ -1849,10 +1849,10 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             }
             // 来源与显式下层引用：make 必须有方案，buy 不得挂方案
             if ("buy".equals(sourceType) && it.getSubBomId() != null) {
-                issues.add(issue(iid, code, name, "subBomId", "BUY_WITH_SUB_BOM：外购行不能引用制造方案"));
+                issues.add(issue(iid, code, name, "subBomId", "BUY_WITH_SUB_BOM：外购行不能引用生产BOM"));
             }
             if ("make".equals(sourceType) && it.getSubBomId() == null) {
-                issues.add(issue(iid, code, name, "subBomId", "MAKE_WITHOUT_SCHEME：自制行必须明确下层制造方案"));
+                issues.add(issue(iid, code, name, "subBomId", "MAKE_WITHOUT_SCHEME：自制行必须明确下层生产BOM"));
             }
             if (it.getSubBomId() != null) {
                 String subError = validateSubBomReference(bomId, it, true);
@@ -1999,10 +1999,10 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 throw new BusinessException("来源类型非法（应为 buy/make）");
             }
             if ("buy".equals(sourceType) && row.getSubBomId() != null) {
-                throw new BusinessException("BUY_WITH_SUB_BOM：外购行不能引用制造方案");
+                throw new BusinessException("BUY_WITH_SUB_BOM：外购行不能引用生产BOM");
             }
             if ("make".equals(sourceType) && row.getSubBomId() == null) {
-                throw new BusinessException("MAKE_WITHOUT_SCHEME：自制行必须明确下层制造方案");
+                throw new BusinessException("MAKE_WITHOUT_SCHEME：自制行必须明确下层生产BOM");
             }
             String unitError = validateUnitBasis(incomingRow);
             if (unitError != null) throw new BusinessException(unitError);

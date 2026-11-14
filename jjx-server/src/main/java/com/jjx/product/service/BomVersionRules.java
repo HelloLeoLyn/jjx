@@ -85,7 +85,7 @@ public class BomVersionRules {
                 .filter(b -> isEligible(b.getApproveStatus(), b.getEffectiveDate(), b.getExpiryDate(), target, approved))
                 .toList();
         if (valid.isEmpty()) {
-            throw new BusinessException("产品[" + productId + "]在 " + target + " 没有已批准且有效的制造BOM"
+            throw new BusinessException("产品[" + productId + "]在 " + target + " 没有已批准且有效的生产BOM"
                     + (bomCode == null || bomCode.isBlank() ? "" : "[" + bomCode + "]"));
         }
         return valid.stream().min(ORDER).orElseThrow();

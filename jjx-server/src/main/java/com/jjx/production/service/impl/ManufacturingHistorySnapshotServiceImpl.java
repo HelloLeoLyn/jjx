@@ -73,7 +73,7 @@ public class ManufacturingHistorySnapshotServiceImpl implements ManufacturingHis
     /** 递归读取 BOM 行；sub_bom 缺失或为空时记为 SNAPSHOT_PARTIAL，不改历史。 */
     private void loadBom(ManufacturingSnapshotVO vo, Long bomId, int maxDepth) {
         if (bomId == null) {
-            vo.getWarnings().add("工单未绑定制造BOM，无法展示材料耗用");
+            vo.getWarnings().add("工单未绑定生产BOM，无法展示材料耗用");
             return;
         }
         List<Map<String, Object>> items = jdbcTemplate.queryForList(

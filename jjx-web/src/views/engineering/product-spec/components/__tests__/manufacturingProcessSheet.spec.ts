@@ -197,7 +197,7 @@ describe('作业规范生产资料展示：制造历史快照', () => {
         nodes: [],
         routingSteps: [],
         executionSteps: [],
-        warnings: ['工单未绑定制造BOM，无法展示材料耗用'],
+        warnings: ['工单未绑定生产BOM，无法展示材料耗用'],
       },
     } as any)
 
@@ -206,7 +206,7 @@ describe('作业规范生产资料展示：制造历史快照', () => {
     expect(wrapper.text()).toContain('该工单快照没有 BOM 材料行')
     expect(wrapper.findComponent({ name: 'ElEmpty' }).exists()).toBe(true)
     expect(tables(wrapper)).toHaveLength(0)
-    expect(wrapper.text()).toContain('工单未绑定制造BOM，无法展示材料耗用')
+    expect(wrapper.text()).toContain('工单未绑定生产BOM，无法展示材料耗用')
     expect(wrapper.find('.sheet-error').exists()).toBe(false)
   })
 })

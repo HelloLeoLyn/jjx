@@ -84,7 +84,7 @@ class WorkSpecMaterialSchemeServiceTest {
         var result = service.resolve(root(output(28, 1L), output(29, 2L)));
         assertEquals(1, result.path("byItem").path("28").path("bomId").asLong());
         assertEquals(2, result.path("byItem").path("29").path("bomId").asLong());
-        assertTrue(result.path("byMaterial").path("351").path("warning").asText().contains("不同制造方案"));
+        assertTrue(result.path("byMaterial").path("351").path("warning").asText().contains("不同生产BOM"));
     }
     @Test void changedManufacturingInputInvalidatesWorkingSpecConfirmation() {
         when(mapper.selectList(any())).thenReturn(List.of(scheme(1, true))); inputs(1);

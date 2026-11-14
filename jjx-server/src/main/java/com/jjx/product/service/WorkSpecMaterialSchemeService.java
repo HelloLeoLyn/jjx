@@ -51,19 +51,19 @@ public class WorkSpecMaterialSchemeService {
                 final Long chosen = requested;
                 selected = candidates.stream().filter(b -> Objects.equals(b.getBomId(), chosen)).findFirst().orElse(null);
                 if (selected == null || !Objects.equals(selected.getOutputId(), materialId))
-                    warning = name + "：所选制造方案不存在或产出不匹配，暂按原模式显示，请检查制造方案";
+                    warning = name + "：所选生产BOM不存在或产出不匹配，暂按原模式显示，请检查生产BOM";
             } else {
                 List<EngineeringBom> current = candidates.stream().filter(b -> Objects.equals(b.getOutputId(), materialId)
                         && Boolean.TRUE.equals(b.getIsCurrent())
                         && Objects.equals(b.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())).toList();
                 if (current.size() == 1) selected = current.get(0);
-                else if (current.size() > 1) warning = name + "：存在多个当前制造方案，暂按原模式显示，请确认采用的方案";
+                else if (current.size() > 1) warning = name + "：存在多个当前生产BOM，暂按原模式显示，请确认采用的方案";
                 else if (candidates.stream().anyMatch(b -> Objects.equals(b.getOutputId(), materialId)))
-                    warning = name + "：暂无已批准的当前制造方案，暂按原模式显示";
+                    warning = name + "：暂无已批准的当前生产BOM，暂按原模式显示";
             }
             ObjectNode entry = json.createObjectNode();
             if (selected != null && !Objects.equals(selected.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue()))
-                warning = name + "：制造方案尚未批准，暂按原模式显示";
+                warning = name + "：生产BOM尚未批准，暂按原模式显示";
             if (warning != null) entry.put("warning", warning);
             else if (selected != null) {
                 long bomId = selected.getBomId();
@@ -74,7 +74,7 @@ public class WorkSpecMaterialSchemeService {
                     entry.put("bomCode", selected.getBomCode());
                     entry.put("bomVersion", selected.getBomVersion());
                     var inputs = bomService.getBomItems(bomId);
-                    if (inputs == null || inputs.isEmpty()) entry.put("warning", name + "：制造方案没有投入材料，暂按原模式显示");
+                    if (inputs == null || inputs.isEmpty()) entry.put("warning", name + "：生产BOM没有投入材料，暂按原模式显示");
                     else entry.set("items", json.valueToTree(inputs));
                     details.put(bomId, entry);
                 }
@@ -82,7 +82,7 @@ public class WorkSpecMaterialSchemeService {
             if (row.hasNonNull("itemId")) byItem.set(row.path("itemId").asText(), entry.deepCopy());
             String key = String.valueOf(materialId);
             if (byMaterial.has(key) && !byMaterial.get(key).equals(entry)) {
-                byMaterial.set(key, json.createObjectNode().put("warning", name + "：同一材料采用不同制造方案，请从 BOM 明确来源行后查看"));
+                byMaterial.set(key, json.createObjectNode().put("warning", name + "：同一材料采用不同生产BOM，请从 BOM 明确来源行后查看"));
             } else byMaterial.set(key, entry.deepCopy());
         }
         return result;

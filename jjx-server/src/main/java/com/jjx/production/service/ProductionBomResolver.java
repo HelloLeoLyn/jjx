@@ -21,7 +21,7 @@ public class ProductionBomResolver {
     public EngineeringBom resolve(ProductionOrder order) {
         boolean materialOutput = "MATERIAL".equalsIgnoreCase(order.getOutputType());
         if (order.getBomId() == null && materialOutput) {
-            throw new BusinessException("半成品工单[" + order.getOrderNo() + "]必须明确绑定制造BOM，不能用产品身份推定");
+            throw new BusinessException("半成品工单[" + order.getOrderNo() + "]必须明确绑定生产BOM，不能用产品身份推定");
         }
         if (order.getBomId() == null) {
             // 兼容未绑定版本的历史工单；不推断、不回填其历史 BOM。
@@ -50,16 +50,16 @@ public class ProductionBomResolver {
     /** 上层只领半成品库存；其显式补做方案仍须身份明确且已批准。 */
     public void requireMaterialScheme(Long bomId, Long materialId) {
         EngineeringBom bom = bomMapper.selectById(bomId);
-        if (bom == null) throw new BusinessException("半成品制造BOM[" + bomId + "]不存在，请核查方案引用");
+        if (bom == null) throw new BusinessException("半成品生产BOM[" + bomId + "]不存在，请核查方案引用");
         requireMaterialIdentity(bom, materialId);
         if (!ProductEnums.BomStatus.APPROVED.getValue().equals(bom.getApproveStatus()))
-            throw new BusinessException("半成品制造BOM[" + bomId + "]未批准或已作废，不能用于本次领料");
+            throw new BusinessException("半成品生产BOM[" + bomId + "]未批准或已作废，不能用于本次领料");
     }
 
     private void requireMaterialIdentity(EngineeringBom bom, Long materialId) {
         if (materialId == null || !"MATERIAL".equalsIgnoreCase(bom.getOutputType())
                 || !Objects.equals(materialId, bom.getOutputId()))
-            throw new BusinessException("制造BOM[" + bom.getBomId() + "]产出身份与半成品物料不一致");
+            throw new BusinessException("生产BOM[" + bom.getBomId() + "]产出身份与半成品物料不一致");
     }
 
 }

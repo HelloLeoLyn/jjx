@@ -57,7 +57,7 @@
       class="preview-message no-print"
     />
     <el-alert v-for="message in materialWarnings" :key="message" :title="message" type="warning" :closable="false" class="preview-message no-print" />
-    <el-alert v-if="data?.published && !data.materialSchemes" title="该定版未记录制造方案资料，保持原模式显示。" type="info" :closable="false" class="preview-message no-print" />
+    <el-alert v-if="data?.published && !data.materialSchemes" title="该定版未记录生产BOM资料，保持原模式显示。" type="info" :closable="false" class="preview-message no-print" />
     <template v-if="paperOnly">
       <el-alert
         v-for="file in failedFiles"

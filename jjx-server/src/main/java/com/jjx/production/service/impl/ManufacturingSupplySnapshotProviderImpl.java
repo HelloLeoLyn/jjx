@@ -118,26 +118,26 @@ public class ManufacturingSupplySnapshotProviderImpl implements ManufacturingSup
         for (MaterialProductionSupplyRow row : rows) {
             String label = productionLabel(row);
             if (!ProductEnums.BomStatus.APPROVED.getValue().equals(row.getBomApproveStatus())) {
-                snapshot.getWarnings().add(label + " 绑定的制造BOM[" + text(row.getBomCode(), row.getBomId())
+                snapshot.getWarnings().add(label + " 绑定的生产BOM[" + text(row.getBomCode(), row.getBomId())
                         + "]未批准，产出未计入生产供给");
                 continue;
             }
             if (row.getBomEffectiveDate() != null && row.getBomEffectiveDate().isAfter(demandDate)) {
-                snapshot.getWarnings().add(label + " 绑定的制造BOM[" + text(row.getBomCode(), row.getBomId())
+                snapshot.getWarnings().add(label + " 绑定的生产BOM[" + text(row.getBomCode(), row.getBomId())
                         + "]生效日期[" + row.getBomEffectiveDate() + "]晚于需求日期[" + demandDate + "]，产出未计入");
                 continue;
             }
             if (row.getBomExpiryDate() != null && row.getBomExpiryDate().isBefore(demandDate)) {
-                snapshot.getWarnings().add(label + " 绑定的制造BOM[" + text(row.getBomCode(), row.getBomId())
+                snapshot.getWarnings().add(label + " 绑定的生产BOM[" + text(row.getBomCode(), row.getBomId())
                         + "]已过失效日期[" + row.getBomExpiryDate() + "]，产出未计入");
                 continue;
             }
             if (row.getBomEffectiveDate() == null) {
-                snapshot.getWarnings().add(label + " 绑定的制造BOM[" + text(row.getBomCode(), row.getBomId())
+                snapshot.getWarnings().add(label + " 绑定的生产BOM[" + text(row.getBomCode(), row.getBomId())
                         + "]未设置生效日期，按历史兼容计入（需核查版本）");
             }
             if (row.getBomExpiryDate() == null) {
-                snapshot.getWarnings().add(label + " 绑定的制造BOM[" + text(row.getBomCode(), row.getBomId())
+                snapshot.getWarnings().add(label + " 绑定的生产BOM[" + text(row.getBomCode(), row.getBomId())
                         + "]未设置失效日期，按历史兼容计入（需核查版本）");
             }
             // 尚未实现产出 = planned − finished：finished_quantity 是完工检验合格累计，也是入库口径

@@ -74,7 +74,7 @@ export function materialModeRows<T extends Record<string, any>>(rows: T[], data:
 }
 export function materialModeWarnings(data: MaterialModeData): string[] {
   if (effectiveMaterialMode(data) === MATERIAL_MODE_ORIGINAL) return []
-  if (!data.materialSchemes) return ['制造方案资料尚未提供，当前显示原材料内容；请重新加载后核对。']
+  if (!data.materialSchemes) return ['生产BOM资料尚未提供，当前显示原材料内容；请重新加载后核对。']
   return [...new Set([
     ...Object.values(data.materialSchemes.byItem || {}),
     ...Object.values(data.materialSchemes.byMaterial || {}),

@@ -178,7 +178,7 @@ class ManufacturingRequirementNettingTest {
         assertEquals("100/1", line(summary, 400L).getGapQtyExact());
         RequirementLineVO shared = line(summary, 200L);
         assertEquals("140/1", shared.getGapQtyExact());
-        assertTrue(shared.getWarnings().stream().anyMatch(w -> w.contains("多个制造方案")));
+        assertTrue(shared.getWarnings().stream().anyMatch(w -> w.contains("多个生产BOM")));
     }
 
     @Test

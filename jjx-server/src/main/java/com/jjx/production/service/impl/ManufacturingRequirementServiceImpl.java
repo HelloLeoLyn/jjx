@@ -189,7 +189,7 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
         Set<Long> unprocessed = new LinkedHashSet<>(graph.boms.keySet());
         unprocessed.removeAll(processedBoms);
         if (!unprocessed.isEmpty()) {
-            throw new BusinessException("需求展开未完成，存在未处理的制造BOM：" + unprocessed);
+            throw new BusinessException("需求展开未完成，存在未处理的生产BOM：" + unprocessed);
         }
 
         List<Long> lineOrder = new ArrayList<>(lines.keySet());
@@ -285,7 +285,7 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
                           Graph graph, Deque<Long> visiting, RequirementSummaryVO summary) {
         Long bomId = bom.getBomId();
         if (visiting.contains(bomId)) {
-            throw new BusinessException("制造BOM存在循环引用：" + path + " -> BOM#" + bomId);
+            throw new BusinessException("生产BOM存在循环引用：" + path + " -> BOM#" + bomId);
         }
         if (graph.boms.containsKey(bomId)) {
             return;
@@ -319,7 +319,7 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
                 if (isMake(line)) {
                     ManufacturingDemandSnapshot sub = mapper.selectBom(line.getSubBomId());
                     if (sub == null) {
-                        throw new BusinessException(linePath + " 引用的下层制造方案[" + line.getSubBomId()
+                        throw new BusinessException(linePath + " 引用的下层生产BOM[" + line.getSubBomId()
                                 + "]不存在（悬空引用）");
                     }
                     if (!"MATERIAL".equals(sub.getOutputType())
@@ -584,7 +584,7 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
         if (hasMake) {
             line.setSubBomId(subBomIds.size() == 1 ? subBomIds.iterator().next() : null);
             if (subBomIds.size() > 1) {
-                line.getWarnings().add("同物料存在多个制造方案[" + subBomIds + "]，剩余缺口按各自 sub_bom_id 分别展开");
+                line.getWarnings().add("同物料存在多个生产BOM[" + subBomIds + "]，剩余缺口按各自 sub_bom_id 分别展开");
             }
         }
         line.setUnitFactorExact(unitFactors.size() == 1 ? unitFactors.iterator().next() : null);
