@@ -62,7 +62,7 @@
           :selectable="rowSelectable"
         />
         <el-table-column
-          :prop="activeTab === 'PRODUCT' ? 'productCode' : 'productCode'"
+          prop="productCode"
           :label="activeTab === 'PRODUCT' ? '产品编码' : '物料编码'"
           min-width="160"
         />

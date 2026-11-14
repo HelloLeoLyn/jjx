@@ -1885,7 +1885,6 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         node.setContentRevision(computeContentRevision(bom, items));
         int pending = 0;
         int approved = 0;
-        java.util.LinkedHashSet<Long> subIds = new java.util.LinkedHashSet<>();
         if (items != null) {
             for (EngineeringBomItem item : items) {
                 BomReviewPackageVO.Item row = new BomReviewPackageVO.Item();
@@ -1905,17 +1904,11 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                         ProductEnums.BomItemReviewStatus.fromValue(item.getReviewStatus());
                 if (rowStatus == ProductEnums.BomItemReviewStatus.PENDING) pending++;
                 if (rowStatus == ProductEnums.BomItemReviewStatus.APPROVED) approved++;
-                if (item.getSubBomId() != null && rowStatus != ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
-                    subIds.add(item.getSubBomId());
-                }
             }
         }
         node.setItemCount(items == null ? 0 : items.size());
         node.setPendingItemCount(pending);
         node.setApprovedItemCount(approved);
-        if (!subIds.isEmpty()) {
-            node.setItems(node.getItems());
-        }
         node.setIssues(checkBom(bom.getBomId(), forApprove, ctx));
         return node;
     }
@@ -2021,7 +2014,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             ProductEnums.BomStatus status = ProductEnums.BomStatus.fromValue(nodeBom.getApproveStatus());
             BomReviewPackageVO.Node node;
             if (PACKAGE_ACTION_APPROVE.equals(act) && status == ProductEnums.BomStatus.APPROVED) {
-                node = toRejectNode(nodeBom, items);
+                node = toPackageNode(nodeBom, items, ctx, true);
+                node.setIssues(new java.util.ArrayList<>());
                 node.setPlannedAction("REUSE");
                 node.setReuse(true);
                 reuseCount++;
