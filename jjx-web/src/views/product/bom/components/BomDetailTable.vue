@@ -1,6 +1,12 @@
 <template>
   <el-card class="bom-detail-card" shadow="never">
     <template #header>
+      <ManufacturingBomPath
+        v-if="ancestors.length"
+        class="detail-path"
+        :nodes="pathNodes"
+        @navigate="emit('navigate', $event)"
+      />
       <div class="card-header">
         <span>BOM明细</span>
         <div class="header-right">
@@ -32,7 +38,37 @@
       :stripe="stripe"
       :span-method="groupSpan"
       :row-class-name="rowClassName"
+      :row-key="rowKey"
+      :row-expandable="canExpand"
+      :expand-row-keys="expandedKeys"
+      @expand-change="onExpand"
     >
+      <el-table-column v-if="ancestors.length" type="expand" width="48">
+        <template #default="{ row }">
+          <div v-loading="childOf(row)?.loading" class="sub-bom-detail">
+            <el-alert
+              v-if="childOf(row)?.error"
+              :title="childOf(row)!.error"
+              type="error"
+              :closable="false"
+            />
+            <el-button
+              v-if="childOf(row)?.error && !childOf(row)?.cycle"
+              link
+              type="primary"
+              @click="loadChild(row)"
+            >重试加载下层方案</el-button>
+            <BomDetailTable
+              v-if="childOf(row)?.detail"
+              :items="childOf(row)!.detail!.items || []"
+              :ancestors="[...ancestors, childOf(row)!.detail!]"
+              height="auto"
+              :stripe="stripe"
+              @navigate="navigateFromChild(row, $event)"
+            />
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column v-if="show('serial')" label="序号" width="60" align="center">
         <template #default="{ $index }">{{ groups[$index]?.displayNumber || '' }}</template>
       </el-table-column>
@@ -181,6 +217,9 @@ import ProcessName from '@/components/ProcessName.vue'
 import { autoSpecOf } from '@/components/bomSpecMode'
 import { unitMismatch } from '@/components/bom/consumptionMode'
 import { parseTime } from '@/utils/format'
+import { productBomApi } from '@/api/product/bom'
+import type { EngineeringBom } from '@/types/product/bom'
+import ManufacturingBomPath from './ManufacturingBomPath.vue'
 import {
   BomItemReviewStatusEnum,
   BomSourceTypeEnum,
@@ -188,9 +227,78 @@ import {
 } from '@/enums/product'
 
 const props = withDefaults(
-  defineProps<{ items: EngineeringBomItem[]; height?: number | string; stripe?: boolean }>(),
-  { height: 300, stripe: false }
+  defineProps<{
+    items: EngineeringBomItem[]
+    height?: number | string
+    stripe?: boolean
+    ancestors?: EngineeringBom[]
+  }>(),
+  { height: 300, stripe: false, ancestors: () => [] }
 )
+const emit = defineEmits<{ navigate: [index: number] }>()
+
+type ChildDetail = EngineeringBom & { items?: EngineeringBomItem[] }
+interface ChildState {
+  loading: boolean
+  error: string
+  cycle?: boolean
+  detail?: ChildDetail
+}
+
+// 展开、缓存和路径均只存在于前端，不修改父 BOM 或保存/审批链路。
+const expandedKeys = ref<string[]>([])
+const children = ref(new Map<number, ChildState>())
+let generation = 0
+watch([() => props.items, () => props.ancestors.map((bom) => bom.bomId).join('/')], () => {
+  generation++
+  expandedKeys.value = []
+  children.value.clear()
+})
+const pathNodes = computed(() => props.ancestors.map((bom) => ({
+  bomId: bom.bomId,
+  label: [bom.bomCode, bom.bomVersion].filter(Boolean).join(' ') || bom.bomName || '当前层',
+})))
+const rowKey = (row: EngineeringBomItem) => `item:${row.itemId ?? props.items.indexOf(row)}`
+const canExpand = (row: EngineeringBomItem) =>
+  props.ancestors.length > 0 && row.sourceType === BomSourceTypeEnum.MAKE && Boolean(row.subBomId)
+const childOf = (row: EngineeringBomItem) => children.value.get(row.subBomId!)
+
+async function loadChild(row: EngineeringBomItem) {
+  if (!canExpand(row)) return
+  const bomId = row.subBomId!
+  if (props.ancestors.some((bom) => bom.bomId === bomId)) {
+    children.value.set(bomId, {
+      loading: false,
+      cycle: true,
+      error: `循环引用：下层制造方案 ${row.subBomCode || '当前方案'} 已在祖先路径中，已拦截展开`,
+    })
+    return
+  }
+  if (childOf(row)?.loading || childOf(row)?.detail) return
+  const state: ChildState = { loading: true, error: '' }
+  children.value.set(bomId, state)
+  const requestGeneration = generation
+  try {
+    const response = await productBomApi.getEngineeringBomInfo(bomId)
+    if (requestGeneration !== generation) return
+    children.value.set(bomId, { loading: false, error: '', detail: response.data })
+  } catch {
+    if (requestGeneration !== generation) return
+    children.value.set(bomId, { loading: false, error: '下层制造方案加载失败，请确认访问权限与方案是否存在' })
+  }
+}
+
+function onExpand(row: EngineeringBomItem, expandedRows: EngineeringBomItem[]) {
+  expandedKeys.value = expandedRows.filter(canExpand).map(rowKey)
+  if (expandedKeys.value.includes(rowKey(row))) void loadChild(row)
+}
+function navigateFromChild(row: EngineeringBomItem, index: number) {
+  if (index === props.ancestors.length - 1) {
+    expandedKeys.value = expandedKeys.value.filter((key) => key !== rowKey(row))
+  } else {
+    emit('navigate', index)
+  }
+}
 
 /** 明细列清单：列设置的顺序与文案都以这里为准，加列时同时补 <el-table-column>。 */
 const COLUMNS = [
@@ -258,7 +366,9 @@ const resetColumns = () => {
 const groups = computed(() => bomGroupRows(props.items, true))
 const groupSpan = ({ rowIndex, columnIndex }: { rowIndex: number; columnIndex: number }) => {
   // 序号列是合并组号的锚点；它被隐藏时不能按列序猜，直接不合并
-  if (!show('serial') || columnIndex !== 0) return [1, 1]
+  if (!show('serial') || columnIndex !== (props.ancestors.length ? 1 : 0)) return [1, 1]
+  // 展开内容会插入物理行；此时重复展示组号，避免 rowspan 跨进子表导致列错位。
+  if (expandedKeys.value.length) return [1, 1]
   const group = groups.value[rowIndex]
   if (!group) return [1, 1]
   if (group.span === 0) return [0, 0]
@@ -267,7 +377,7 @@ const groupSpan = ({ rowIndex, columnIndex }: { rowIndex: number; columnIndex: n
 }
 
 const rowClassName = ({ row }: { row: EngineeringBomItem }) =>
-  unitMismatch(row) ? 'bom-row-error' : ''
+  [unitMismatch(row) ? 'bom-row-error' : '', canExpand(row) ? '' : 'no-sub-bom'].filter(Boolean).join(' ')
 
 const archiveSpecOf = (row: EngineeringBomItem) => autoSpecOf(row).trim()
 const specMismatch = (row: EngineeringBomItem) => {
@@ -287,6 +397,19 @@ const num = (value: number | string | null | undefined, digits: number) => {
 }
 </script>
 <style scoped>
+.detail-path {
+  margin-bottom: 12px;
+}
+.detail-path :deep(.path-hint) {
+  display: none;
+}
+.sub-bom-detail {
+  min-height: 48px;
+  padding: 12px;
+}
+:deep(.no-sub-bom > .el-table__expand-column .el-table__expand-icon) {
+  display: none;
+}
 .card-header {
   display: flex;
   justify-content: space-between;
