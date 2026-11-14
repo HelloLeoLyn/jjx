@@ -75,3 +75,5 @@
 | dev-20261014-041 | dev-20261014-041-completion.md | completion | 工序图标永久共享资产、原子登记、权限与清理保护 |
 
 | dev-20261113-005 | dev-20261113-005-completion.md | completion | 采购计划数量单位换算、原始需求隔离与订单核对接入 |
+
+| dev-20261114-011 | dev-20261114-011-completion.md | completion | BOM产品侧批量整套审核与材料BOM独立维护 |
