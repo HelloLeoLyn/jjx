@@ -235,6 +235,11 @@ TRUNCATE product_work_spec_version;
 
 
 -- ==================== 4. 工程模块（v5 起标准工序保留，其余清） ====================
+-- 迁移 366 的 BOM 变更单属业务数据，先明细再主表，随后清理其引用的 BOM（dev-20261114-006）。
+TRUNCATE bom_change_request_item;
+
+TRUNCATE bom_change_request;
+
 TRUNCATE engineering_resource_maintenance;
 
 TRUNCATE engineering_resource_product_rel;
@@ -513,6 +518,8 @@ UNION ALL SELECT 'quality_ncr_piece', COUNT(*) FROM quality_ncr_piece
 UNION ALL SELECT 'quality_ncr_piece_defect', COUNT(*) FROM quality_ncr_piece_defect
 UNION ALL SELECT 'quality_scrap_order', COUNT(*) FROM quality_scrap_order
 UNION ALL SELECT 'engineering_archive_import', COUNT(*) FROM engineering_archive_import
+UNION ALL SELECT 'bom_change_request_item', COUNT(*) FROM bom_change_request_item
+UNION ALL SELECT 'bom_change_request', COUNT(*) FROM bom_change_request
 UNION ALL SELECT 'sys_number_sequence', COUNT(*) FROM sys_number_sequence
 UNION ALL SELECT 'review_flow', COUNT(*) FROM review_flow
 UNION ALL SELECT 'quality_template_print_log', COUNT(*) FROM quality_template_print_log
