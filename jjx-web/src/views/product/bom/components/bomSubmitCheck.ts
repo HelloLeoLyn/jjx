@@ -157,6 +157,8 @@ export interface SchemeBlock {
   target?: SchemeNavigateTarget
   /** 读取失败时保留原因，供“重新读取”与测试核对。 */
   error?: string
+  /** 详情尚未返回时的本轮占位项：不含任何上一轮方案信息，也不允许导航。 */
+  pending?: boolean
 }
 
 export interface OtherBlock {
@@ -299,6 +301,36 @@ function buildOtherBlock(entry: MergedOtherIssue): OtherBlock {
   return { key: entry.key, location: describeIssueLocation(issue), message }
 }
 
+const isSubBomEntry = (entry: MergedSubmitIssue): entry is MergedSubBomIssue =>
+  entry.kind === 'sub-bom'
+
+/** 详情返回前的占位项：只有“正在读取”，没有名称/版本/导航目标，避免闪出上一轮方案。 */
+function buildPendingSchemeBlock(entry: MergedSubBomIssue): SchemeBlock {
+  return {
+    key: entry.key,
+    code: entry.code,
+    bomId: entry.bomId,
+    title: '正在读取制造方案信息',
+    message: '正在读取该制造方案的名称、版本和审批状态，读取完成前不能跳转。',
+    canNavigate: false,
+    pending: true,
+  }
+}
+
+/**
+ * 新一轮预检的即时视图：方案项只给本轮占位，其他校验错误立刻完整展示。
+ * 详情较慢时用户不会看到上一轮方案，也不会因为等详情而看不到其他问题。
+ */
+export function buildPendingCheckView(merged: MergedSubmitIssue[]): SubmitCheckView {
+  const schemeItems: SchemeBlock[] = []
+  const otherItems: OtherBlock[] = []
+  for (const entry of merged) {
+    if (isSubBomEntry(entry)) schemeItems.push(buildPendingSchemeBlock(entry))
+    else otherItems.push(buildOtherBlock(entry))
+  }
+  return { schemeItems, otherItems }
+}
+
 export function buildSubmitCheckView(
   merged: MergedSubmitIssue[],
   details: Map<number, SchemeDetailResult>
@@ -306,7 +338,7 @@ export function buildSubmitCheckView(
   const schemeItems: SchemeBlock[] = []
   const otherItems: OtherBlock[] = []
   for (const entry of merged) {
-    if (entry.kind === 'sub-bom') schemeItems.push(buildSchemeBlock(entry, details.get(entry.bomId)))
+    if (isSubBomEntry(entry)) schemeItems.push(buildSchemeBlock(entry, details.get(entry.bomId)))
     else otherItems.push(buildOtherBlock(entry))
   }
   return { schemeItems, otherItems }

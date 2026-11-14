@@ -55,6 +55,7 @@ import { computed, ref, watch } from 'vue'
 import { productBomApi } from '@/api/product/bom'
 import type { BomCheckIssue } from '@/types/product/bom'
 import {
+  buildPendingCheckView,
   buildSubmitCheckView,
   loadSchemeDetails,
   mergeSubmitIssues,
@@ -65,6 +66,7 @@ import type {
   SchemeBlock,
   SchemeDetailFetcher,
   SchemeNavigateTarget,
+  SubmitCheckView,
 } from './bomSubmitCheck'
 
 const props = defineProps<{
@@ -98,6 +100,11 @@ const fetchDetail: SchemeDetailFetcher = async (bomId: number) => {
   return data
 }
 
+const applyView = (view: SubmitCheckView) => {
+  schemeItems.value = view.schemeItems
+  otherItems.value = view.otherItems
+}
+
 const build = async () => {
   const requestId = ++buildRequest
   const merged = mergeSubmitIssues(props.issues)
@@ -106,12 +113,12 @@ const build = async () => {
     .map((item) => item.bomId)
   fatalError.value = ''
   loading.value = true
+  // 新一轮开始就丢弃上一轮的方案与导航目标：详情慢时只显示本轮占位，绝不闪出旧方案。
+  applyView(buildPendingCheckView(merged))
   try {
     const details = await loadSchemeDetails(bomIds, fetchDetail)
     if (requestId !== buildRequest) return
-    const view = buildSubmitCheckView(merged, details)
-    schemeItems.value = view.schemeItems
-    otherItems.value = view.otherItems
+    applyView(buildSubmitCheckView(merged, details))
   } catch (error: any) {
     if (requestId !== buildRequest) return
     fatalError.value = error?.message || '提交预检问题读取失败，请刷新后重试'
@@ -126,15 +133,28 @@ const reload = () => {
   void build()
 }
 
+/** 关闭时让进行中的读取失效，并清空本轮内容；晚返回的旧请求不能再写回。 */
+const reset = () => {
+  buildRequest += 1
+  loading.value = false
+  fatalError.value = ''
+  schemeItems.value = []
+  otherItems.value = []
+}
+
 const navigate = (item: SchemeBlock) => {
-  if (!item.target) return
-  emit('navigate', item.target)
+  // 读取未完成时不允许按旧内容跳转；只认当前这一轮存在的、可导航的方案项。
+  if (loading.value) return
+  const current = schemeItems.value.find((entry) => entry.key === item.key)
+  if (!current || !current.canNavigate || !current.target) return
+  emit('navigate', current.target)
 }
 
 watch(
   () => [props.modelValue, props.issues] as const,
   ([open]) => {
     if (open) void build()
+    else reset()
   },
   { immediate: true }
 )

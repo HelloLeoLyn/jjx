@@ -62,6 +62,16 @@ const detail = (bomId: number, over: Record<string, any> = {}) => ({
   },
 })
 
+const deferred = <T = any>() => {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: any) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 const mountDialog = (issues: BomCheckIssue[], targetName = 'V1.0') =>
   mount(BomSubmitCheckDialog, {
     props: { modelValue: true, issues, targetName },
@@ -74,6 +84,9 @@ const mountDialog = (issues: BomCheckIssue[], targetName = 'V1.0') =>
       },
     },
   })
+
+const viewButtons = (wrapper: ReturnType<typeof mountDialog>) =>
+  wrapper.findAll('button').filter((node) => node.text() === '查看制造方案')
 
 beforeEach(() => {
   api.getEngineeringBomInfo.mockReset()
@@ -191,5 +204,96 @@ describe('BOM 提交预检弹窗', () => {
 
     expect(wrapper.text()).toContain('审核中')
     expect(wrapper.text()).not.toContain('草稿')
+  })
+
+  it('关闭后为另一张 BOM 重新打开：新详情返回前不出现上一张方案、不能导航，返回后只展示新方案', async () => {
+    const nextDetail = deferred()
+    api.getEngineeringBomInfo.mockImplementation(async (bomId: number) =>
+      bomId === 7 ? nextDetail.promise : detail(4)
+    )
+    const wrapper = mountDialog([rowIssue(4)], '当前版本')
+    await flushPromises()
+    expect(viewButtons(wrapper)).toHaveLength(1)
+    expect(wrapper.text()).toContain('离型纸 RP-W195-L80 · V1.0')
+
+    await wrapper.setProps({ modelValue: false })
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('离型纸')
+    expect(viewButtons(wrapper)).toHaveLength(0)
+
+    await wrapper.setProps({ modelValue: true, issues: [rowIssue(7)] })
+    await flushPromises()
+
+    // 7 的详情还没回来：本轮只允许“正在读取”，旧方案 4 的名称/版本/按钮必须消失。
+    expect(wrapper.text()).toContain('正在读取相关制造方案信息')
+    expect(wrapper.text()).not.toContain('离型纸')
+    expect(wrapper.text()).not.toContain('RP-W195-L80')
+    expect(wrapper.text()).not.toContain('V1.0')
+    expect(viewButtons(wrapper)).toHaveLength(0)
+    expect(wrapper.emitted('navigate')).toBeUndefined()
+    expect(api.getEngineeringBomInfo).toHaveBeenCalledTimes(2)
+    expect(api.getEngineeringBomInfo.mock.calls.map(([id]) => id).sort()).toEqual([4, 7])
+
+    nextDetail.resolve(
+      detail(7, { bomName: '另一物料制造方案', bomCode: 'AUX000349-MFG', outputId: 353 })
+    )
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('另一物料')
+    expect(wrapper.text()).not.toContain('离型纸')
+    expect(viewButtons(wrapper)).toHaveLength(1)
+    await viewButtons(wrapper)[0].trigger('click')
+    expect(wrapper.emitted('navigate')?.[0]?.[0]).toMatchObject({
+      bomId: 7,
+      outputType: 'MATERIAL',
+      outputId: 353,
+    })
+  })
+
+  it('旧方案详情晚返回不会覆盖新预检结果', async () => {
+    const oldDetail = deferred()
+    api.getEngineeringBomInfo.mockImplementation(async (bomId: number) =>
+      bomId === 4
+        ? oldDetail.promise
+        : detail(7, { bomName: '另一物料制造方案', outputId: 353 })
+    )
+    const wrapper = mountDialog([rowIssue(4)])
+    await flushPromises()
+    expect(viewButtons(wrapper)).toHaveLength(0)
+
+    await wrapper.setProps({ modelValue: false })
+    await flushPromises()
+    await wrapper.setProps({ modelValue: true, issues: [rowIssue(7)] })
+    await flushPromises()
+    expect(wrapper.text()).toContain('另一物料')
+    expect(viewButtons(wrapper)).toHaveLength(1)
+
+    // 上一轮的 4 此时才返回，不能把 7 的结果盖掉，也不能多出可导航的旧按钮。
+    oldDetail.resolve(detail(4))
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('另一物料')
+    expect(wrapper.text()).not.toContain('离型纸 RP-W195-L80 · V1.0')
+    expect(viewButtons(wrapper)).toHaveLength(1)
+    await viewButtons(wrapper)[0].trigger('click')
+    expect(wrapper.emitted('navigate')?.map(([target]) => target.outputId)).toEqual([353])
+  })
+
+  it('详情较慢时立即显示本轮其他校验问题，且不给旧方案导航', async () => {
+    const slowDetail = deferred()
+    api.getEngineeringBomInfo.mockReturnValue(slowDetail.promise)
+    const wrapper = mountDialog([
+      rowIssue(4),
+      { itemId: 11, materialCode: 'M-11', materialName: '面板膜', field: 'quantity', message: '用量必须大于0' },
+    ])
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('正在读取相关制造方案信息')
+    expect(text).toContain('其他需要处理的问题')
+    expect(text).toContain('M-11')
+    expect(text).toContain('用量必须大于0')
+    expect(viewButtons(wrapper)).toHaveLength(0)
+    expect(wrapper.emitted('navigate')).toBeUndefined()
   })
 })
