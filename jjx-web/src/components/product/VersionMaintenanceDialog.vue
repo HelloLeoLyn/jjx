@@ -3,7 +3,14 @@
     <el-table v-loading="loading" :data="rows" row-key="id">
       <el-table-column label="版本号" width="125"
         ><template #default="{ row }">
-          {{ row.version }} <el-tag v-if="row.isCurrent" type="success" size="small">当前</el-tag>
+          <el-link
+            v-if="row.approveStatus !== BomStatusEnum.VOIDED.value"
+            type="primary"
+            @click="handleAction('view', row)"
+          >
+            {{ row.version }}</el-link
+          >
+          <el-tag v-if="row.isCurrent" type="success" size="small">当前</el-tag>
         </template></el-table-column
       >
       <el-table-column label="状态" width="100"
@@ -259,7 +266,7 @@ const allowed = (key: string, row: VersionMaintenanceRow) => {
 }
 const actions = computed<TableAction<VersionMaintenanceRow>[]>(() =>
   [
-    { key: 'view', label: '查看', permission: `engineering:${props.domain}:view` },
+    // { key: 'view', label: '查看', permission: `engineering:${props.domain}:view` },
     { key: 'edit', label: '编辑', permission: `engineering:${props.domain}:edit` },
     { key: 'copy', label: '复制为新版本', permission: `engineering:${props.domain}:add` },
     {
