@@ -118,9 +118,15 @@ public class PurchaseReceiptAttachmentService {
         return "采购收货确认[" + StpUtil.getLoginIdAsString() + ":" + dto.getReceiptRequestKey() + "] ";
     }
 
+    private String processingDigest(PurchaseOrderReceiveDTO.ReceiveItemDTO item) {
+        if(item.getProcessingGroups()==null)return "";
+        try{return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(item.getProcessingGroups());}
+        catch(com.fasterxml.jackson.core.JsonProcessingException ex){throw new BusinessException("加工收货内容无效");}
+    }
+
     private String marker(PurchaseOrderReceiveDTO dto) {
         String items = dto.getItems().stream()
-            .map(i -> i.getItemId() + ":" + i.getReceivedQuantity().stripTrailingZeros().toPlainString())
+            .map(i -> i.getItemId() + ":" + (i.getProcessingGroups()!=null?"processing":i.getReceivedQuantity()==null?"auto":i.getReceivedQuantity().stripTrailingZeros().toPlainString()) + ":" + processingDigest(i))
             .sorted().collect(Collectors.joining(","));
         try {
             String digest = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(

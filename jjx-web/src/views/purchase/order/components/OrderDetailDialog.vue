@@ -88,7 +88,7 @@
         <el-row style="margin-top: 16px; text-align: right">
           <el-col :span="24">
             <span style="font-size: 16px; font-weight: bold">
-              合计金额：{{ orderDetail.currency }} {{ totalAmount.toFixed(2) }}
+              未税合计：{{ orderDetail.currency }} {{ totalAmount.toFixed(2) }}
             </span>
           </el-col>
         </el-row>

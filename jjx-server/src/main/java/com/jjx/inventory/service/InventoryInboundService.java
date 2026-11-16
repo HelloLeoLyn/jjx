@@ -119,6 +119,9 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
      */
     Long createInboundRecordFromPurchase(Long purchaseOrderId);
 
+    /** 采购加工按实际交付明细生成凭证，事务由收货入口统一提交。 */
+    Long createInboundRecordFromPurchase(Long purchaseOrderId, List<com.jjx.inventory.domain.InventoryInboundItem> actualItems);
+
     /**
      * 生产入库（从生产工单创建）
      */

@@ -11,7 +11,7 @@
     @close="handleClose"
     @update:model-value="(val: boolean) => emit('update:visible', val)"
   >
-    <el-form label-width="100px" v-loading="loading" :disabled="submitting">
+    <el-form label-width="100px" v-loading="loading" :disabled="busy">
       <el-form-item label="订单号">
         <el-input :model-value="orderNo" disabled />
       </el-form-item>
@@ -24,7 +24,13 @@
         </div>
       </div>
 
-      <el-table :data="form.items" border style="width: 100%; margin-bottom: 8px">
+      <el-table ref="receiptTable" :data="form.items" row-key="itemId" border style="width: 100%; margin-bottom: 8px">
+        <el-table-column type="expand" width="40">
+          <template #default="{row}">
+            <PurchaseProcessingReceive v-if="row.processingPlan" :key="`${receiptDraftId}-${row.itemId}`" :ref="el=>setProcessingRef(row.itemId,el)" v-model="row.processingGroups" :item-id="row.itemId" :disabled="busy" />
+            <span v-else>普通采购行，按本次实际收货数量登记。</span>
+          </template>
+        </el-table-column>
         <el-table-column label="物料编码" prop="materialCode" width="160" />
         <el-table-column label="物料名称" prop="materialName" min-width="160" />
         <el-table-column label="规格型号" prop="materialSpec" width="120" />
@@ -42,7 +48,8 @@
         <!-- ①②：默认填满「未收」；超出不夹断而是标红并拦截提交 -->
         <el-table-column label="本次收货" width="180">
           <template #default="{ row, $index }">
-            <div class="qty-cell" :class="{ 'is-over': overOf(row) > 0 }">
+            <el-button v-if="row.processingPlan" link type="primary" @click="expandProcessing(row)">展开登记切片 / 余卷</el-button>
+            <div v-else class="qty-cell" :class="{ 'is-over': overOf(row) > 0 }">
               <el-input-number
                 :ref="(el: any) => setQtyRef(el, $index)"
                 v-model="row.receiveQuantity"
@@ -60,15 +67,15 @@
         </el-table-column>
         <el-table-column label="操作" width="110" align="center">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="fillRow(row)">填满</el-button>
-            <el-button link size="small" @click="clearRow(row)">清零</el-button>
+            <el-button v-if="!row.processingPlan" link type="primary" size="small" @click="fillRow(row)">填满</el-button>
+            <el-button v-if="!row.processingPlan" link size="small" @click="clearRow(row)">清零</el-button>
           </template>
         </el-table-column>
       </el-table>
 
       <div class="detail-summary">
-        <span>可收合计 <b>{{ fmt(totalRemain) }}</b></span>
-        <span>本次合计 <b :class="{ 'is-err': totalOver > 0 }">{{ fmt(totalInput) }}</b></span>
+        <span>普通采购可收合计 <b>{{ fmt(totalRemain) }}</b></span>
+        <span>普通采购本次合计 <b :class="{ 'is-err': totalOver > 0 }">{{ fmt(totalInput) }}</b></span>
         <span v-if="totalOver > 0" class="is-err">超出 <b>{{ fmt(totalOver) }}</b>，请调整后再提交</span>
         <span v-else>提交后剩余 <b>{{ fmt(totalRemain - totalInput) }}</b></span>
       </div>
@@ -139,7 +146,7 @@
         <el-tooltip :disabled="!hasOver" content="有明细超出未收数量，请先调整" placement="top">
           <span>
             <el-button type="primary" :loading="submitting" :disabled="!canSubmit" @click="handleSubmit">
-              确认收货{{ totalInput > 0 ? `（${fmt(totalInput)}）` : '' }}
+              确认收货（{{ filledCount }}行）
             </el-button>
           </span>
         </el-tooltip>
@@ -151,6 +158,8 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import PurchaseProcessingReceive from './PurchaseProcessingReceive.vue'
+import type { ProcessingReceiptGroup } from '@/api/purchase/orderEntry'
 import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import { attachmentApi } from '@/api/system/attachment'
 import { useUserStore } from '@/store/modules/user'
@@ -184,6 +193,8 @@ interface ReceiveItem {
   unit?: string
   quantity: number
   receivedQuantity: number
+  processingPlan?: string
+  processingGroups?: ProcessingReceiptGroup[]
   receiveQuantity: number | undefined
 }
 
@@ -216,7 +227,8 @@ const canGotoIqc = computed(() => userStore.hasPermission('quality:lot:view'))
 const receiptAttachments = ref<InstanceType<typeof AttachmentCenter>>()
 const receiptDraftId = ref('')
 const pendingFiles = computed(() => receiptAttachments.value?.pendingEntries || [])
-const busy = computed(() => submitting.value || !!receiptAttachments.value?.uploading)
+const preparing=ref(false)
+const busy = computed(() => preparing.value || submitting.value || !!receiptAttachments.value?.uploading)
 const historyFiles = ref<{ refId: number; attachmentId: number; fileName: string; inboundNo: string }[]>([])
 function newDraft() {
   receiptAttachments.value?.clearPending()
@@ -227,6 +239,11 @@ const submitting = ref(false)
 const lastInboundNo = ref('')
 
 const form = reactive({ items: [] as ReceiveItem[] })
+const receiptTable=ref<any>()
+const processingRefs=new Map<number,InstanceType<typeof PurchaseProcessingReceive>>()
+function setProcessingRef(id:number,el:unknown){if(el)processingRefs.set(id,el as InstanceType<typeof PurchaseProcessingReceive>);else processingRefs.delete(id)}
+function expandProcessing(row:ReceiveItem){receiptTable.value?.toggleRowExpansion(row,true)}
+function processingFilled(row:ReceiveItem){return !!row.processingGroups?.some(g=>g.outputs.some(o=>Number(o.quantity)>0)||Number(g.lossArea)>0)}
 
 const imageList = ref<DiskFileInfo[]>([])
 const previewVisible = ref(false)
@@ -249,11 +266,11 @@ function overOf(row: ReceiveItem): number {
   return Math.round((Number(row.receiveQuantity || 0) - remainOf(row)) * 100) / 100
 }
 
-const totalRemain = computed(() => round2(form.items.reduce((s, it) => s + Math.max(0, remainOf(it)), 0)))
-const totalInput = computed(() => round2(form.items.reduce((s, it) => s + Number(it.receiveQuantity || 0), 0)))
+const totalRemain = computed(() => round2(form.items.filter(it=>!it.processingPlan).reduce((s, it) => s + Math.max(0, remainOf(it)), 0)))
+const totalInput = computed(() => round2(form.items.filter(it=>!it.processingPlan).reduce((s, it) => s + Number(it.receiveQuantity || 0), 0)))
 const totalOver = computed(() => round2(form.items.reduce((s, it) => s + Math.max(0, overOf(it)), 0)))
 const hasOver = computed(() => totalOver.value > 0)
-const filledCount = computed(() => form.items.filter((it) => Number(it.receiveQuantity || 0) > 0).length)
+const filledCount = computed(() => form.items.filter((it) => it.processingPlan ? processingFilled(it) : Number(it.receiveQuantity || 0) > 0).length)
 const canSubmit = computed(() => !busy.value && !loading.value && filledCount.value > 0 && !hasOver.value)
 
 /** ⑧ 第一个超量行下标（-1=没有），用于自动滚入视野 */
@@ -273,7 +290,7 @@ function round2(v: number): number {
 }
 
 function fillRow(row: ReceiveItem) {
-  row.receiveQuantity = Math.max(0, remainOf(row))
+  if(!row.processingPlan) row.receiveQuantity = Math.max(0, remainOf(row))
 }
 function clearRow(row: ReceiveItem) {
   row.receiveQuantity = 0
@@ -310,6 +327,7 @@ const loadItems = async () => {
       const remain = Math.round((quantity - receivedQuantity) * 100) / 100
       return {
         itemId: Number(item.itemId),
+        processingPlan: item.processingPlan, processingGroups: [],
         materialCode: item.materialCode,
         materialName: item.materialName,
         materialSpec: item.materialSpec || '',
@@ -317,7 +335,7 @@ const loadItems = async () => {
         quantity,
         receivedQuantity,
         // ① 默认填满未收（未收<=0 的行保持 0，不需要收）
-        receiveQuantity: remain > 0 ? remain : 0,
+        receiveQuantity: item.processingPlan ? 0 : remain > 0 ? remain : 0,
       }
     })
   } catch (error) {
@@ -359,52 +377,41 @@ watch(firstOverIndex, async (idx) => {
 
 const handleSubmit = async () => {
   if (!props.orderId || !canSubmit.value) return
-  const receiveItems = form.items
-    .filter((item) => Number(item.receiveQuantity || 0) > 0)
-    .map((item) => ({
-      itemId: Number(item.itemId),
-      receivedQuantity: Math.round(Number(item.receiveQuantity) * 100) / 100,
-    }))
-  if (!receiveItems.length) {
-    ElMessage.warning('请至少输入一个物料的收货数量')
-    return
-  }
-  // 资料类型必选（dev-20261016-023，对齐 032）：缺二级类型的待绑定票据会被拦，避免「收货成功但票据未建引用」
-  const missingTypeCount = receiptAttachments.value?.getMissingTypeCount?.() ?? 0
-  if (missingTypeCount > 0) {
-    ElMessage.warning(`有 ${missingTypeCount} 个票据未选择资料类型，请先选择后再提交`)
-    return
-  }
-  // ⑥ 二次确认（默认已填满，避免误提交）
+  preparing.value=true
   try {
-    await ElMessageBox.confirm(
-      `确认收货？本次合计 ${fmt(totalInput.value)}，涉及 ${receiveItems.length} 行明细（订单 ${props.orderNo}）。收货后自动生成待确认入库单。`,
-      '收货确认',
-      { type: 'warning', confirmButtonText: '确认收货', cancelButtonText: '再改改' }
-    )
-  } catch {
-    return
-  }
-  if (!canSubmit.value) return
-  submitting.value = true
-  try {
+    const receiveItems: {itemId:number;receivedQuantity?:number;processingGroups?:ProcessingReceiptGroup[]}[]=[]
+    for(const item of form.items){
+      if(item.processingPlan){
+        if(!processingFilled(item))continue
+        const component=processingRefs.get(item.itemId)
+        if(!component){ElMessage.warning('请展开并核对实际交付');return}
+        const validated=await component.validate()
+        if(!validated)return
+        receiveItems.push({itemId:item.itemId,receivedQuantity:validated.receivedQuantity,processingGroups:validated.groups})
+      }else if(Number(item.receiveQuantity)>0){
+        receiveItems.push({itemId:Number(item.itemId),receivedQuantity:Math.round(Number(item.receiveQuantity)*100)/100})
+      }
+    }
+    if (!receiveItems.length) {ElMessage.warning('请至少输入一个物料的收货数量');return}
+    const missingTypeCount = receiptAttachments.value?.getMissingTypeCount?.() ?? 0
+    if (missingTypeCount > 0) {ElMessage.warning(`有 ${missingTypeCount} 个票据未选择资料类型，请先选择后再提交`);return}
+    try {
+      await ElMessageBox.confirm(
+        `确认收货？涉及 ${receiveItems.length} 行采购明细（订单 ${props.orderNo}），加工行按已核对的实际切片与余卷登记。收货后自动生成待确认入库单，库存尚未增加。`,
+        '收货确认', { type: 'warning', confirmButtonText: '确认收货', cancelButtonText: '再改改' }
+      )
+    } catch {return}
+    submitting.value=true
     const response: any = await confirmBatchReceive(Number(props.orderId), receiveItems, {
-      receiptRequestKey: receiptDraftId.value,
-      attachmentIds: pendingFiles.value.map(file => file.attachmentId),
+      receiptRequestKey: receiptDraftId.value, attachmentIds: pendingFiles.value.map(file => file.attachmentId),
     })
     const inboundNo = String(response.data?.inboundNo || '')
-    newDraft()
-    lastInboundNo.value = inboundNo
+    newDraft();lastInboundNo.value = inboundNo
     ElMessage.success(inboundNo ? `收货成功，已生成入库单 ${inboundNo}（待来料检验）` : '收货成功')
-    await loadItems()
-    await loadImages()
-    emit('success', { inboundNo })
+    await loadItems();await loadImages();emit('success', { inboundNo })
   } catch (error: any) {
-    console.error('收货失败:', error)
-    ElMessage.error(error?.message || '收货失败')
-  } finally {
-    submitting.value = false
-  }
+    console.error('收货失败:', error);ElMessage.error(error?.message || '收货失败')
+  } finally {submitting.value=false;preparing.value=false}
 }
 
 const gotoIqc = () => {

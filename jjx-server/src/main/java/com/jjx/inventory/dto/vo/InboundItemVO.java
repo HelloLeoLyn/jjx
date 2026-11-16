@@ -10,6 +10,8 @@ import java.time.LocalDate;
  */
 @Data
 public class InboundItemVO {
+    private Long sourcePurchaseItemId;
+    private String purchaseProcessingJson;
     private java.math.BigDecimal rollWidthMm;
     private java.math.BigDecimal rollLengthM;
     private Long sourceOutboundItemId;

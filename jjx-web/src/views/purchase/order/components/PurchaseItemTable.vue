@@ -20,6 +20,7 @@
               <label>宽度(mm)</label>
               <el-input-number v-model="row.rollWidthMm" :disabled="disabled || row.defaultLoading || Number(row.archiveWidthMm) > 0" :min="0.01" :precision="2" :controls="false" @change="emit('pricing', $index)" />
             </template>
+            <el-checkbox v-model="row.priceTaxInclusive" :disabled="disabled || row.defaultLoading" @change="emit('pricing', $index)">单价含税</el-checkbox>
             <label>税率(%)</label>
             <el-input-number v-model="row.taxRate" :disabled="disabled || row.defaultLoading" :min="0" :max="100" :precision="2" :controls="false" @change="emit('pricing', $index)" />
             <span>库存基本数量：{{ row.pricingLoading || row.pricingError ? '—' : entryNumber(row.quantity) }} {{ unitLabel(row.unit) }}</span>
@@ -31,8 +32,9 @@
             <el-button v-hasPermi="['purchase:supplier:edit']" link type="primary" :disabled="disabled || !row.materialId || row.defaultLoading" @click="emit('saveDefault', $index)">设为本供应商默认单位</el-button>
           </div>
           <el-input v-model="row.purchaseRemark" :disabled="disabled || row.defaultLoading" type="textarea" :rows="2" maxlength="2000" show-word-limit placeholder="采购/加工/交货要求，例如分切规格、切片数量、余料交回；不参与金额合计" />
+          <PurchaseProcessingEditor v-model="row.processingPlan" :item="row" :disabled="disabled || row.defaultLoading" @change="emit('pricing', $index)" />
           <p v-if="row.inspectionRemark" class="muted">原检验备注：{{ row.inspectionRemark }}</p>
-          <p class="muted">档案已确定尺寸只读，换规格请重新选料；每卷预估长度及本单确认的换算依据随订单保留；收货按实收核算，采购说明不自动生成加工或库存记录。</p>
+          <p class="muted">档案已确定尺寸只读，换规格请重新选料；每卷预估长度及本单确认的换算依据随订单保留；收货按实收核算，普通采购说明不自动生成加工记录；结构化加工要求随采购单审核，收货按实际切片和余卷登记。</p>
         </div>
       </template>
     </el-table-column>
@@ -63,11 +65,11 @@
     <el-table-column label="报价单位" width="90">
       <template #default="{ row, $index }"><el-select v-model="row.priceUnit" :disabled="disabled || row.defaultLoading" aria-label="报价单位" @change="emit('pricing', $index)"><el-option v-for="unit in optionsFor(row)" :key="unit.value" :label="unit.label" :value="unit.value" /></el-select><small class="muted">{{ currency || 'CNY' }}/{{ unitLabel(row.priceUnit) }}</small></template>
     </el-table-column>
-    <el-table-column label="单价（未税）" width="115">
-      <template #default="{ row, $index }"><el-input-number v-model="row.unitPrice" :disabled="disabled || row.defaultLoading" :min="0" :precision="4" :controls="false" aria-label="单价" @change="emit('pricing', $index)" /></template>
+    <el-table-column label="单价" width="115">
+      <template #default="{ row, $index }"><el-input-number v-model="row.unitPrice" :disabled="disabled || row.defaultLoading" :min="0" :precision="4" :controls="false" aria-label="单价" @change="emit('pricing', $index)" /><small class="muted">{{ row.priceTaxInclusive ? '含税' : '未税' }}</small></template>
     </el-table-column>
-    <el-table-column label="金额（未税）" width="120" align="right">
-      <template #default="{ row }">{{ row.pricingLoading || row.pricingError ? '—' : Number(row.amount || 0).toFixed(2) }}</template>
+    <el-table-column label="金额（报价口径）" width="120" align="right">
+      <template #default="{ row }">{{ row.pricingLoading || row.pricingError ? '—' : Number(row.quotedAmount ?? row.amount ?? 0).toFixed(2) }}</template>
     </el-table-column>
     <el-table-column label="操作" width="65" fixed="right">
       <template #default="{ $index }"><el-button link type="danger" :disabled="disabled || materialLocked || items.length <= 1" @click="emit('remove', $index)">移除</el-button></template>
@@ -75,6 +77,7 @@
   </el-table>
 </template>
 <script setup lang="ts">
+import PurchaseProcessingEditor from './PurchaseProcessingEditor.vue'
 import type { PurchaseEntryItem, PurchaseUnitOption } from '@/api/purchase/orderEntry'
 import { entryNumber, entryPrice, entrySpecification } from '@/api/purchase/orderEntry'
 import type { InventoryMaterial } from '@/types/inventory/material'

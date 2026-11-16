@@ -118,6 +118,17 @@ public final class PurchaseQuantityPricing {
         i.setPurchaseQuantity(entered); i.setQuantity(basicStored);
         i.setPriceQuantity(priced.toBigDecimal(12, RoundingMode.HALF_UP));
         i.setUnitPrice(unitPrice.setScale(4, RoundingMode.HALF_UP)); i.setAmount(amount);
+        BigDecimal rate = Objects.requireNonNullElse(i.getTaxRate(), BigDecimal.ZERO);
+        bounded(rate, 2, 3, "税率", false);
+        if (rate.compareTo(BigDecimal.valueOf(100)) > 0) throw new BusinessException("税率须在0至100之间");
+        i.setTaxRate(rate);
+        if (Boolean.TRUE.equals(i.getPriceTaxInclusive())) {
+            // 含税报价先确定本行应付额，再分解净额与税；不得在应付额上再次加税。
+            BigDecimal net = amount.multiply(BigDecimal.valueOf(100)).divide(BigDecimal.valueOf(100).add(rate), 2, RoundingMode.HALF_UP);
+            i.setAmount(net); i.setTaxAmount(amount.subtract(net)); i.setQuotedAmount(amount);
+        } else {
+            i.setTaxAmount(tax(amount, rate)); i.setQuotedAmount(amount);
+        }
         i.setEquivalentUnitPrice(equivalent(i)); i.setPricingMessage(null);
     }
     public static BigDecimal tax(BigDecimal amount, BigDecimal rate) {

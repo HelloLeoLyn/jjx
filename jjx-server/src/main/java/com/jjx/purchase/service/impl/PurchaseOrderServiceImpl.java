@@ -73,6 +73,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private final RedisSequenceService redisSequenceService;
     private final EventPublisher eventPublisher;
     private final com.jjx.purchase.service.PurchaseReceiptAttachmentService receiptAttachments;
+    private final PurchaseProcessingService processingService;
 
     /**
      * 采购类事件统一发布（2026-09-21 dev-20260921-013 采购批）：
@@ -252,6 +253,10 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_EDITABLE);
         }
 
+        if (selectOrderItemEntities(orderDTO.getOrderId()).stream().anyMatch(i ->
+                i.getProcessingPlan()!=null && i.getReceivedQuantity()!=null && i.getReceivedQuantity().signum()>0))
+            throw new BusinessException("已有加工收货的采购单不能重建明细，请保留原始收货来源");
+
         // 验证供应商信息
         if (orderDTO.getSupplierId() == null || StringUtils.isEmpty(orderDTO.getSupplierName())) {
             throw new BusinessException(PurchaseExceptionEnum.SUPPLIER_INFO_INCOMPLETE);
@@ -355,6 +360,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                 changeRecorder.diff(changes, "明细[" + desc + "]片长", old.getPieceLengthMm(), hit.getPieceLengthMm());
                 changeRecorder.diff(changes, "明细[" + desc + "]税率", old.getTaxRate(), hit.getTaxRate());
                 changeRecorder.diff(changes, "明细[" + desc + "]采购说明", old.getPurchaseRemark(), hit.getPurchaseRemark());
+                changeRecorder.diff(changes, "明细[" + desc + "]单价含税", old.getPriceTaxInclusive(), hit.getPriceTaxInclusive());
+                if (!Objects.equals(old.getProcessingPlan(),hit.getProcessingPlan())) changes.add("明细["+desc+"]加工方案已调整");
                 changeRecorder.diff(changes, "明细[" + desc + "]价格单位", old.getPriceUnit(), hit.getPriceUnit());
                 changeRecorder.diff(changes, "明细[" + desc + "]卷数", old.getRollCount(), hit.getRollCount());
                 changeRecorder.diffDecimal(changes, "明细[" + desc + "]每卷长度(m)", old.getRollLengthM(), hit.getRollLengthM());
@@ -516,6 +523,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         if (order == null) {
             throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_FOUND);
         }
+
+        if (selectOrderItemEntities(orderId).stream().anyMatch(i -> i.getProcessingPlan()!=null&&!i.getProcessingPlan().isBlank()))
+            throw new BusinessException("含加工要求的订单请使用统一收货窗口登记切片及余卷实收");
 
         // 检查订单状态（已批准或待审批可收货）
         Integer status = order.getApprovalStatus();
@@ -932,6 +942,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             newItem.setPieceWidthMm(sourceItem.getPieceWidthMm());
             newItem.setPieceLengthMm(sourceItem.getPieceLengthMm());
             newItem.setPurchaseRemark(sourceItem.getPurchaseRemark());
+            newItem.setProcessingPlan(sourceItem.getProcessingPlan());
+            newItem.setPriceTaxInclusive(sourceItem.getPriceTaxInclusive());
             newItem.setTaxRate(sourceItem.getTaxRate());
             newItem.setUnitPrice(sourceItem.getUnitPrice());
             newItem.setAmount(sourceItem.getAmount());
@@ -990,6 +1002,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                 itemVOs.get(i).setPriceQuantity(pricing.getPriceQuantity());
                 itemVOs.get(i).setPurchaseUnit(pricing.getPurchaseUnit());
                 itemVOs.get(i).setPriceUnit(pricing.getPriceUnit());
+                itemVOs.get(i).setTaxAmount(pricing.getTaxAmount());
+                itemVOs.get(i).setQuotedAmount(pricing.getQuotedAmount());
             } catch (BusinessException ex) {
                 // 旧单缺换算依据只提示，不改写已保存数量/金额，更不补猜比例。
                 itemVOs.get(i).setPricingMessage(ex.getMessage());
@@ -1116,11 +1130,13 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             // 计算明细项金额
             normalizePurchaseUnits(itemDTO);
             calculateItemPricing(itemDTO);
+            if (itemDTO.getProcessingPlan() != null && !itemDTO.getProcessingPlan().isBlank())
+                itemDTO.setProcessingPlan(processingService.normalize(itemDTO));
             BigDecimal amount = itemDTO.getAmount();
 
             // 计算明细项税额
             BigDecimal taxRate = itemDTO.getTaxRate() != null ? itemDTO.getTaxRate() : BigDecimal.ZERO;
-            BigDecimal taxAmount = com.jjx.purchase.domain.model.PurchaseQuantityPricing.tax(amount, taxRate);
+            BigDecimal taxAmount = itemDTO.getTaxAmount();
             itemDTO.setTaxRate(taxRate);
             itemDTO.setTaxAmount(taxAmount);
 
@@ -1380,8 +1396,16 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             throw new BusinessException(PurchaseExceptionEnum.ORDER_NOT_RECEIVABLE);
         }
 
+        if (dto.getItems()==null || dto.getItems().isEmpty() || dto.getItems().size()>500)
+            throw new BusinessException("请提供1至500条收货明细");
+        boolean hasProcessing = selectOrderItemEntities(dto.getOrderId()).stream()
+            .anyMatch(i -> i.getProcessingPlan()!=null&&!i.getProcessingPlan().isBlank());
+        var receiptLines = new java.util.ArrayList<com.jjx.inventory.domain.InventoryInboundItem>();
+        var receivedIds = new java.util.HashSet<Long>();
         int totalCount = 0;
         for (PurchaseOrderReceiveDTO.ReceiveItemDTO itemDTO : dto.getItems()) {
+            if (itemDTO==null || itemDTO.getItemId()==null || !receivedIds.add(itemDTO.getItemId()))
+                throw new BusinessException("收货明细重复或无效");
             // 检查明细项
             PurchaseOrderItem item = orderItemMapper.selectById(itemDTO.getItemId());
             if (item == null) {
@@ -1390,6 +1414,23 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
             if (!dto.getOrderId().equals(item.getOrderId())) {
                 throw new BusinessException("收货明细不属于当前采购订单");
+            }
+            if (item.getProcessingPlan()!=null&&!item.getProcessingPlan().isBlank()) {
+                if (!Objects.equals(ApproveStatusEnum.APPROVED.getValue(),order.getApprovalStatus()))
+                    throw new BusinessException("加工方案须随采购订单审核通过后才能登记实际交付");
+                var preview=processingService.preview(item,itemDTO.getProcessingGroups());
+                itemDTO.setReceivedQuantity(preview.receivedQuantity());receiptLines.addAll(preview.items());
+            } else {
+                if(itemDTO.getProcessingGroups()!=null&&!itemDTO.getProcessingGroups().isEmpty())
+                    throw new BusinessException("普通采购行不能提交加工交付");
+                if(itemDTO.getReceivedQuantity()==null || itemDTO.getReceivedQuantity().signum()<=0)
+                    throw new BusinessException("收货数量必须大于0");
+                var receipt=new com.jjx.inventory.domain.InventoryInboundItem();
+                receipt.setSourcePurchaseItemId(item.getItemId());receipt.setMaterialId(item.getMaterialId());
+                receipt.setMaterialCode(item.getMaterialCode());receipt.setMaterialName(item.getMaterialName());receipt.setSpecification(item.getMaterialSpec());
+                receipt.setUnit(item.getUnit());receipt.setQuantity(itemDTO.getReceivedQuantity());receipt.setUnitPrice(baseUnitCost(item));
+                receipt.setAmount(item.getAmount().multiply(itemDTO.getReceivedQuantity()).divide(item.getQuantity(),2,RoundingMode.HALF_UP));
+                receiptLines.add(receipt);
             }
             // 更新收货数量
             BigDecimal newReceivedQuantity = item.getReceivedQuantity() != null ?
@@ -1422,7 +1463,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
         // 采购收货→自动生成入库单（DEV-624）：生成待仓库确认的入库单，仓库确认后才加库存（业务定稿 2026-08-11：收货≠入库）
         // 失败不吞异常：与收货同一事务，保证“收了货必有入库单”的一致性
-        Long receiptInboundId = inboundService.createInboundRecordFromPurchase(dto.getOrderId());
+        Long receiptInboundId = hasProcessing
+            ? inboundService.createInboundRecordFromPurchase(dto.getOrderId(),receiptLines)
+            : inboundService.createInboundRecordFromPurchase(dto.getOrderId());
         receiptAttachments.complete(dto, receiptInboundId);
 
         // 2026-09-18：事件改为手写 payload 后置发布，把业务单号/供应商带进通知模板

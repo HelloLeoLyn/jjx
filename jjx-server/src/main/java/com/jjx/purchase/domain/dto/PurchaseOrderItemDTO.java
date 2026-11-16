@@ -79,8 +79,14 @@ public class PurchaseOrderItemDTO {
     /** 采购/加工/交货要求，独立于检验备注。 */
     @Size(max = 2000, message = "采购说明不能超过2000字符")
     private String purchaseRemark;
+    /** 从属采购行的加工方案快照；由后端校核与规范化，无独立状态机。 */
+    private String processingPlan;
+    /** 单价是否含税；amount始终为未税净额。旧单NULL按未税解释。 */
+    private Boolean priceTaxInclusive;
     /** 只读计价数量，由同一后端换算规则生成，不接受客户端作为计价权威。 */
     private BigDecimal priceQuantity;
+    /** 本次报价口径的行金额，后台计算，不落库。 */
+    private BigDecimal quotedAmount;
     private String pricingMessage;
 
     private Integer rollCount;

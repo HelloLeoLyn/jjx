@@ -36,6 +36,10 @@ public class InventoryInboundItem extends BaseEntity {
 
     /** 入库单ID */
     private Long inboundId;
+    /** 实际交付物所属的母卷采购行；普通新收货也明确记录来源。 */
+    private Long sourcePurchaseItemId;
+    /** 实际加工收货快照，包含母卷分组/输出键/原始片卷数/面积分摊；不作为库存余额。 */
+    private String purchaseProcessingJson;
 
     /** 统一库存物品ID */
     private Long inventoryItemId;

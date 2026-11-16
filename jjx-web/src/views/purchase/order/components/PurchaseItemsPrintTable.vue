@@ -1,7 +1,7 @@
 <template>
   <table class="purchase-print-items">
     <caption>币种：{{ currency || 'CNY' }}</caption>
-    <thead><tr><th>序号</th><th>品名</th><th>规格</th><th>采购数量</th><th>采购单位</th><th>计价数量</th><th>报价单位</th><th>单价（未税）</th><th>金额（未税）</th></tr></thead>
+    <thead><tr><th>序号</th><th>品名</th><th>规格</th><th>采购数量</th><th>采购单位</th><th>计价数量</th><th>报价单位</th><th>单价</th><th>金额</th></tr></thead>
     <tbody>
       <template v-for="(item,index) in items" :key="index">
         <tr>
@@ -10,8 +10,9 @@
           <td class="numeric">{{ entryNumber(item.purchaseQuantity ?? (item.purchaseUnit === 'ROLL' ? item.rollCount : item.quantity)) }}</td>
           <td>{{ unitLabel(item.purchaseUnit || item.unit) }}</td>
           <td class="numeric">{{ entryNumber(item.priceQuantity,12) }}</td><td>{{ unitLabel(item.priceUnit || item.unit) }}</td>
-          <td class="numeric">{{ entryPrice(item.unitPrice) }}</td><td class="numeric">{{ item.amount == null ? '—' : Number(item.amount).toFixed(2) }}</td>
+          <td class="numeric">{{ entryPrice(item.unitPrice) }}<small>{{ item.priceTaxInclusive ? '含税' : '未税' }}</small></td><td class="numeric">{{ (item.quotedAmount ?? item.amount) == null ? '—' : Number(item.quotedAmount ?? item.amount).toFixed(2) }}</td>
         </tr>
+        <tr v-if="item.processingPlan"><td></td><td colspan="8"><PurchaseProcessingSummary :model-value="item.processingPlan" /></td></tr>
         <tr v-if="item.purchaseRemark"><td></td><td colspan="8" class="purchase-requirement">采购 / 加工交货要求：{{ item.purchaseRemark }}</td></tr>
         <tr v-if="item.pricingMessage"><td></td><td colspan="8">换算待确认：{{ item.pricingMessage }}</td></tr>
       </template>
@@ -20,6 +21,7 @@
   </table>
 </template>
 <script setup lang="ts">
+import PurchaseProcessingSummary from './PurchaseProcessingSummary.vue'
 import { entryNumber,entryPrice,entrySpecification } from '@/api/purchase/orderEntry'
 import { getUnitName } from '@/enums/unit'
 const unitLabel = (code?: string) => code === '㎡' ? '㎡' : getUnitName(code || '')
@@ -28,6 +30,7 @@ interface Item {
   purchaseQuantity?: number | null; priceQuantity?: number | null; quantity?: number;
   purchaseUnit?: string; priceUnit?: string; unit?: string; rollCount?: number | null;
   rollLengthM?: number | null; rollWidthMm?: number | null;
+  processingPlan?: string | null; priceTaxInclusive?: boolean; quotedAmount?: number | null;
   unitPrice?: number; amount?: number; purchaseRemark?: string; pricingMessage?: string;
 }
 defineProps<{ items: Item[]; currency?: string }>()

@@ -383,6 +383,7 @@ async function initForm() {
               pieceWidthMm: item.pieceWidthMm,
               pieceLengthMm: item.pieceLengthMm,
               purchaseRemark: item.purchaseRemark || '',
+              processingPlan: item.processingPlan, priceTaxInclusive: item.priceTaxInclusive ?? false, quotedAmount: item.quotedAmount,
               pricingError: item.pricingMessage || '',
               priceUnit: item.priceUnit || item.unit,
               rollCount: item.rollCount,
@@ -611,7 +612,7 @@ async function calculateRowTotal(index: number, showInputError = false): Promise
     const response = await previewOrderPricing({ items: [{ ...item }] })
     if (!current()) return false
     const priced = response.data.items[0]
-    Object.assign(item, { quantity: Number(priced.quantity), amount: Number(priced.amount),
+    Object.assign(item, { quantity: Number(priced.quantity), amount: Number(priced.amount), quotedAmount: priced.quotedAmount, processingPlan: priced.processingPlan ?? item.processingPlan,
       purchaseUnit: priced.purchaseUnit || item.purchaseUnit, priceUnit: priced.priceUnit || item.priceUnit,
       purchaseQuantity: priced.purchaseQuantity ?? item.purchaseQuantity,
       priceQuantity: priced.priceQuantity ?? null, rollCount: priced.rollCount,
@@ -706,6 +707,7 @@ const handleSubmit = async () => {
         purchaseQuantity: item.purchaseQuantity, rollCount: item.rollCount, rollLengthM: item.rollLengthM,
         rollWidthMm: item.rollWidthMm, pieceWidthMm: item.pieceWidthMm, pieceLengthMm: item.pieceLengthMm,
         quantity: item.quantity, unitPrice: item.unitPrice, taxRate: item.taxRate, amount: item.amount,
+        processingPlan: item.processingPlan, priceTaxInclusive: item.priceTaxInclusive,
         purchaseRemark: item.purchaseRemark, inspectionRemark: item.inspectionRemark,
       })),
     }

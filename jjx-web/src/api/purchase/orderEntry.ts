@@ -43,6 +43,9 @@ export interface PurchaseEntryItem {
   taxRate?: number | null
   taxAmount?: number
   amount: number
+  processingPlan?: string | null
+  priceTaxInclusive?: boolean
+  quotedAmount?: number | null
   purchaseRemark?: string
   inspectionRemark?: string
 }
@@ -64,4 +67,26 @@ export function entrySpecification(item: Partial<PurchaseEntryItem>): string {
   if ((item.purchaseUnit === 'ROLL' || item.priceUnit === 'ROLL') && Number(item.rollWidthMm) > 0 && Number(item.rollLengthM) > 0)
     return `${entryNumber(item.rollWidthMm)}mm×${entryNumber(item.rollLengthM)}m/卷`
   return item.materialSpec || '—'
+}
+
+export interface ProcessingOutput {
+  outputId: string; materialId?: number; materialCode?: string; materialName?: string; materialSpec?: string
+  unit: 'PCS' | 'ROLL'; quantity: number; widthMm?: number; lengthMm?: number; rollLengthM?: number; remark?: string
+}
+export interface ProcessingGroup {
+  groupId: string; name: string; motherRolls: number
+  slits: { widthMm: number; rolls: number }[]; outputs: ProcessingOutput[]
+}
+export interface ProcessingPlan { groups: ProcessingGroup[] }
+export interface ProcessingReceiptGroup {
+  groupId: string; lossArea?: number; lossReason?: string
+  outputs: { outputId: string; quantity: number; rollLengthM?: number }[]
+}
+export const previewProcessingPlan = (item: Partial<PurchaseEntryItem>) => request.post<{data: PurchaseEntryItem}>('/purchase/processing/preview', item)
+export const getProcessingHistory = (itemId: number) => request.get<{data: {processingPlan: string; receipts: {groupId: string; outputId: string; quantity: number; rollLengthM?: number; settledArea: number}[]}}>(`/purchase/processing/item/${itemId}`)
+export const previewProcessingReceipt = (itemId: number, groups: ProcessingReceiptGroup[]) => request.post<{data: {receivedQuantity: number; items: {materialCode: string; materialName: string; specification: string; quantity: number; unit: string; amount: number; remark: string}[]}}>('/purchase/processing/receipt-preview', {itemId,groups})
+export function readProcessingPlan(value?: string | null): ProcessingPlan | undefined {
+  if (!value) return undefined
+  try { const plan = JSON.parse(value); if (Array.isArray(plan?.groups)) return plan } catch { /* 显示无效提示，不能把损坏快照当空方案。 */ }
+  return undefined
 }

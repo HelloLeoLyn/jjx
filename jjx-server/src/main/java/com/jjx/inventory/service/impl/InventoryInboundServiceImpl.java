@@ -2543,6 +2543,37 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Long createInboundRecordFromPurchase(Long purchaseOrderId, List<InventoryInboundItem> actualItems) {
+        PurchaseOrder po=purchaseOrderMapper.selectById(purchaseOrderId);
+        if(po==null || actualItems==null || actualItems.isEmpty())throw new BusinessException("采购收货缺少有效的实际交付明细");
+        var warehouseItems=new ArrayList<PurchaseOrderItem>();var quantities=new ArrayList<BigDecimal>();
+        for(var actual:actualItems){
+            if(actual.getMaterialId()==null || actual.getSourcePurchaseItemId()==null || actual.getQuantity()==null || actual.getQuantity().signum()<=0)
+                throw new BusinessException("采购实际交付明细或来源无效");
+            var source=purchaseOrderItemMapper.selectById(actual.getSourcePurchaseItemId());
+            if(source==null || !purchaseOrderId.equals(source.getOrderId()))throw new BusinessException("交付来源不属于当前采购单");
+            var warehouseItem=new PurchaseOrderItem();warehouseItem.setMaterialId(actual.getMaterialId());warehouseItems.add(warehouseItem);quantities.add(actual.getQuantity());
+        }
+        var order=new InventoryInboundOrder();order.setInboundNo(nextInboundNo());order.setInboundType("PURCHASE");order.setSourceType("PURCHASE");
+        order.setSourceId(purchaseOrderId);order.setSourceNo(po.getOrderNo());order.setTraceId(po.getTraceId());
+        order.setWarehouseId(resolvePurchaseWarehouseId(warehouseItems,quantities));order.setInboundDate(LocalDate.now());
+        order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());order.setInspectionResult(InspectionResultEnum.PENDING.name());
+        order.setSupplierId(po.getSupplierId());order.setSupplierName(po.getSupplierName());order.setCreateBy(SecurityUtils.getUsername());
+        order.setRemark("采购加工实际交付，母卷不重复入库");inboundOrderMapper.insert(order);
+        BigDecimal totalQty=BigDecimal.ZERO,totalAmount=BigDecimal.ZERO;int sort=0;
+        for(var actual:actualItems){
+            actual.setItemId(null);actual.setInboundId(order.getInboundId());actual.setBatchNo(order.getInboundNo()+"-"+(++sort));
+            actual.setSortOrder(sort);actual.setInspectionResult(InspectionResultEnum.PENDING.name());
+            if(actual.getPurchaseProcessingJson()!=null && actual.getRollWidthMm()!=null && actual.getRollLengthM()!=null)
+                actual.setRollNo(order.getInboundNo()+"-R"+sort);
+            inboundItemMapper.insert(actual);totalQty=totalQty.add(actual.getQuantity());totalAmount=totalAmount.add(actual.getAmount());
+        }
+        order.setTotalQuantity(totalQty);order.setTotalAmount(totalAmount);inboundOrderMapper.updateById(order);
+        return order.getInboundId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public Long createInboundRecordFromPurchase(Long purchaseOrderId) {
         log.info("采购收货自动生成入库单: purchaseOrderId={}", purchaseOrderId);
         PurchaseOrder po = purchaseOrderMapper.selectById(purchaseOrderId);
@@ -2575,6 +2606,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             log.warn("采购订单无明细，跳过自动入库: {}", purchaseOrderId);
             return null;
         }
+
+        if(items.stream().anyMatch(i -> i.getProcessingPlan()!=null&&!i.getProcessingPlan().isBlank()))
+            throw new BusinessException("含加工方案的采购单必须按实际交付生成入库凭证");
 
         // 计算各明细未入库数量（本次已收 - 已完成已入）
         List<PurchaseOrderItem> toInItems = new ArrayList<>();
@@ -4105,6 +4139,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
         InboundItemVO vo = new InboundItemVO();
         vo.setStockItemId(item.getStockItemId()); vo.setRollNo(item.getRollNo());
+        vo.setSourcePurchaseItemId(item.getSourcePurchaseItemId());vo.setPurchaseProcessingJson(item.getPurchaseProcessingJson());
         vo.setReversalOfItemId(item.getReversalOfItemId()); vo.setRollWidthMm(item.getRollWidthMm());
         vo.setRollLengthM(item.getRollLengthM()); vo.setSourceOutboundItemId(item.getSourceOutboundItemId());
         vo.setRollPlan(rollService == null ? java.util.List.of() : rollService.readReceiptPlan(item));

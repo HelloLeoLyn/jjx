@@ -125,9 +125,9 @@
             </div>
             <div>
               {{ entryNumber(purchaseItem(row).unitPrice) }} /
-              {{ unitLabel(purchaseItem(row).priceUnit) }}
+              {{ unitLabel(purchaseItem(row).priceUnit) }} · {{ purchaseItem(row).priceTaxInclusive ? '含税' : '未税' }}
             </div>
-            <small>金额 {{ entryNumber(purchaseItem(row).amount) }}</small>
+            <small>金额 {{ entryNumber(purchaseItem(row).quotedAmount ?? purchaseItem(row).amount) }}</small>
           </template>
         </el-table-column>
         <el-table-column label="来源 / 说明" min-width="180"
@@ -361,7 +361,7 @@
               @change="calculateDraft"
           /></el-form-item>
           <el-form-item label="采购金额"
-            >{{ draftPricing ? '试算中…' : entryNumber(draft.amount) }}（税额
+            >{{ draftPricing ? '试算中…' : entryNumber(draft.quotedAmount ?? draft.amount) }}（税额
             {{ draftPricing ? '—' : entryNumber(draft.taxAmount) }}）</el-form-item
           >
           <el-form-item v-if="!editingKey" label="需求日期"
@@ -699,6 +699,7 @@ watch(
     draft.value?.priceUnit,
     draft.value?.unitPrice,
     draft.value?.taxRate,
+    draft.value?.priceTaxInclusive,
     draft.value?.rollWidthMm,
     draft.value?.rollLengthM,
     draft.value?.pieceWidthMm,

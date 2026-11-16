@@ -59,9 +59,11 @@ public class PurchaseOrderReceiveDTO {
         /**
          * 本次收货数量
          */
-        @NotNull(message = "收货数量不能为空")
         @Positive(message = "收货数量必须大于0")
         private BigDecimal receivedQuantity;
+        /** 加工收货仅提交实收，receivedQuantity由后端按面积＋明确损耗重算。 */
+        @Valid
+        private List<PurchaseProcessingPlan.ReceiptGroup> processingGroups;
 
     }
 }

@@ -74,6 +74,9 @@ export interface PurchaseOrderItem {
   priceQuantity?: number | null
   pieceWidthMm?: number | null
   pieceLengthMm?: number | null
+  processingPlan?: string | null
+  priceTaxInclusive?: boolean
+  quotedAmount?: number | null
   purchaseRemark?: string
   pricingMessage?: string
 
