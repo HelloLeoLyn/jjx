@@ -56,6 +56,8 @@ const columns = [
   '计划采购量',
   '采购单位',
   '折合基本数量',
+  '采购基本单位',
+  '采购安排',
   '需求日期',
   '采购说明',
 ]
@@ -138,6 +140,7 @@ th,
 td {
   border: 1px solid #bbb;
   padding: 6px;
+  overflow-wrap: anywhere;
 }
 th {
   background: var(--doc-theme, #2b5aa7);

@@ -2,24 +2,25 @@ import { describe, expect, it } from 'vitest'
 import { groupPlanRows, groupQtyLabel } from '../groupPlanRows'
 import type { PlanRow } from '@/api/purchase/planEntry'
 
-const row = (patch: Partial<PlanRow>): PlanRow => ({
-  key: String(Math.random()),
-  materialId: 1,
-  materialCode: 'M1',
-  materialName: '物料',
-  unit: 'PCS',
-  purchaseUnit: 'PCS',
-  priceUnit: 'PCS',
-  purchaseQuantity: 1,
-  quantity: 1,
-  unitPrice: 0,
-  taxRate: 0,
-  amount: 0,
-  reason: '测试',
-  priority: 'normal',
-  sourceAlertIds: [],
-  ...patch,
-} as PlanRow)
+const row = (patch: Partial<PlanRow>): PlanRow =>
+  ({
+    key: String(Math.random()),
+    materialId: 1,
+    materialCode: 'M1',
+    materialName: '物料',
+    unit: 'PCS',
+    purchaseUnit: 'PCS',
+    priceUnit: 'PCS',
+    purchaseQuantity: 1,
+    quantity: 1,
+    unitPrice: 0,
+    taxRate: 0,
+    amount: 0,
+    reason: '测试',
+    priority: 'normal',
+    sourceAlertIds: [],
+    ...patch,
+  }) as PlanRow
 
 describe('采购计划按供应商分组（dev-20261113-010）', () => {
   it('2 个供应商 3 行 → 2 组，交期取最早、urgent 组内任一', () => {
@@ -43,7 +44,7 @@ describe('采购计划按供应商分组（dev-20261113-010）', () => {
     expect(groups).toHaveLength(2)
     const missing = groups.find((g) => g.missingSupplier)
     expect(missing?.supplierId).toBeNull()
-    expect(missing?.supplierName).toContain('未配置')
+    expect(missing?.supplierName).toContain('未指定')
   })
 
   it('合计按单位分开，不跨单位相加', () => {

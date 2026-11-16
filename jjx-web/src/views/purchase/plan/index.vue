@@ -56,7 +56,7 @@
           >
         </el-table-column>
         <el-table-column label="规格" min-width="160"
-          ><template #default="{ row }">{{ entrySpecification(row) }}</template></el-table-column
+          ><template #default="{ row }">{{ row.materialSpec || '—' }}</template></el-table-column
         >
         <el-table-column label="原始需求" width="120" align="right"
           ><template #default="{ row }">{{
@@ -74,34 +74,60 @@
             quantityLabel(row.inTransit, row.unit)
           }}</template></el-table-column
         >
+        <el-table-column label="采购安排" min-width="260">
+          <template #default="{ row }">
+            <el-tag
+              size="small"
+              :type="PurchasePlanSchemeStatusEnum.getTagProps(schemeStatus(row)).type"
+              >{{ PurchasePlanSchemeStatusEnum.getLabel(schemeStatus(row)) }}</el-tag
+            >
+            <template v-if="row.procurement">
+              <div>
+                {{ purchaseItem(row).materialCode }} · {{ entrySpecification(purchaseItem(row)) }}
+              </div>
+              <div>
+                {{ row.supplierName || '未指定供应商' }} ·
+                {{ row.procurement.expectedDeliveryDate || '到货日期未定' }}
+              </div>
+              <small>{{ row.procurement.message }}</small>
+            </template>
+            <small v-else>{{
+              row.supplierName ? '默认供应商：' + row.supplierName : '请打开采购方案选择本次供应商'
+            }}</small>
+          </template>
+        </el-table-column>
         <el-table-column label="计划采购量" width="145" align="right"
           ><template #default="{ row }">{{
-            quantityLabel(row.purchaseQuantity, row.purchaseUnit)
+            quantityLabel(purchaseItem(row).purchaseQuantity, purchaseItem(row).purchaseUnit)
           }}</template></el-table-column
         >
         <el-table-column label="折合基本数量" width="145" align="right"
           ><template #default="{ row }">{{
-            row.pricingError ? '待确认' : quantityLabel(row.quantity, row.unit)
+            purchaseItem(row).pricingError
+              ? '待确认'
+              : quantityLabel(purchaseItem(row).quantity, purchaseItem(row).unit)
           }}</template></el-table-column
         >
         <el-table-column label="需求日期" prop="needDate" width="115" />
         <el-table-column label="参考价 / 单价" width="190" align="right">
           <template #default="{ row }">
             <div class="ref-price">
-              上次 {{ row.lastPrice == null ? '—' : entryNumber(row.lastPrice) }} · 标准
-              {{ row.standardPrice == null ? '—' : entryNumber(row.standardPrice) }}
+              上次
+              {{
+                purchaseItem(row).lastPrice == null ? '—' : entryNumber(purchaseItem(row).lastPrice)
+              }}
+              · 标准
+              {{
+                purchaseItem(row).standardPrice == null
+                  ? '—'
+                  : entryNumber(purchaseItem(row).standardPrice)
+              }}
             </div>
-            <el-input-number
-              v-model="row.unitPrice"
-              :min="0"
-              :precision="4"
-              :controls="false"
-              size="small"
-              style="width: 100%"
-              :disabled="busy"
-              @change="recalcAmount(row)"
-            />
-            <small>金额 {{ entryNumber(row.amount || 0) }}</small>
+            <div>
+              {{ entryNumber(purchaseItem(row).unitPrice) }} /
+              {{ unitLabel(purchaseItem(row).priceUnit) }}
+            </div>
+            <small>金额 {{ entryNumber(purchaseItem(row).amount) }}</small>
           </template>
         </el-table-column>
         <el-table-column label="来源 / 说明" min-width="180"
@@ -125,9 +151,10 @@
             ></template
           ></el-table-column
         >
-        <el-table-column label="操作" width="120" fixed="right"
+        <el-table-column label="操作" width="150" fixed="right"
           ><template #default="{ row }"
-            ><el-button link :disabled="busy" @click="openEdit(row)">编辑</el-button
+            ><el-button link type="primary" :disabled="busy" @click="openEdit(row)"
+              >采购方案</el-button
             ><el-button link type="danger" :disabled="busy" @click="removeRow(row)"
               >移除</el-button
             ></template
@@ -141,19 +168,46 @@
       />
     </el-card>
     <MaterialDetailDialog v-model="showMaterialDetail" :material-id="detailMaterialId" />
-    <el-dialog
+    <el-drawer
       v-model="showAddMaterial"
-      :title="editingKey ? '修改计划物料' : '添加计划物料'"
-      width="760px"
+      :title="editingKey ? '采购方案' : '添加物料与采购方案'"
+      size="min(760px, 100vw)"
+      direction="rtl"
       append-to-body
       :close-on-click-modal="false"
       @closed="invalidateDraft"
     >
+      <el-descriptions
+        v-if="sourcePlan"
+        title="原需求"
+        :column="1"
+        border
+        size="small"
+        class="source-demand"
+      >
+        <el-descriptions-item label="物料"
+          >{{ sourcePlan.materialCode }} · {{ sourcePlan.materialName }}</el-descriptions-item
+        >
+        <el-descriptions-item label="规格">{{
+          sourcePlan.materialSpec || '—'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="需求"
+          >{{ quantityLabel(sourcePlan.demandQuantity, sourcePlan.unit) }} ·
+          {{ sourcePlan.needDate || '需求日期未定' }}</el-descriptions-item
+        >
+        <el-descriptions-item label="来源"
+          >{{ sourcePlan.reason
+          }}{{
+            sourcePlan.sourceAlertIds.length
+              ? ' · 预警 ' + sourcePlan.sourceAlertIds.join('、')
+              : ''
+          }}</el-descriptions-item
+        >
+      </el-descriptions>
       <el-form label-width="130px" :disabled="draftLoading || adding">
-        <el-form-item label="物料">
+        <el-form-item label="本次采购物料">
           <el-select
             v-model="addMaterialId"
-            :disabled="!!editingKey"
             filterable
             remote
             :remote-method="searchMaterials"
@@ -171,6 +225,21 @@
           </el-select>
         </el-form-item>
         <template v-if="draft && !draftLoading">
+          <el-form-item label="本次供应商" required>
+            <SupplierSelector
+              :model-value="draft.supplierId"
+              :selected-name="draft.supplierName"
+              remote
+              @change="selectSchemeSupplier"
+            />
+          </el-form-item>
+          <el-alert
+            v-if="sourcePlan && draft.materialId !== sourcePlan.materialId"
+            title="本次采购物料与原需求不同"
+            description="原需求保留。未建立本次需求的已确认替代/分切规则前，方案只能保留为待技术确认，不能生成替代采购单或抵扣原缺口。"
+            type="warning"
+            :closable="false"
+          />
           <el-form-item label="档案规格"
             ><span>{{ draft.materialSpec || '未维护' }} · 基本单位 {{ unitLabel(draft.unit) }}</span
             ><el-button link type="primary" @click="openMaterialDetail(draft.materialId)"
@@ -183,9 +252,6 @@
               {{ quantityLabel(draft.availableStock, draft.unit) }} /
               {{ quantityLabel(draft.inTransit, draft.unit) }}</span
             ></el-form-item
-          >
-          <el-form-item v-if="draft.demandQuantity != null" label="原始需求"
-            >{{ quantityLabel(draft.demandQuantity, draft.unit) }}（保留来源需求）</el-form-item
           >
           <el-form-item label="计划采购数量">
             <el-input-number
@@ -271,13 +337,55 @@
             type="warning"
             :closable="false"
           />
-          <el-form-item label="需求日期"
+          <el-form-item label="计价单位">
+            <el-select v-model="draft.priceUnit" aria-label="计价单位" @change="calculateDraft"
+              ><el-option v-for="u in draftUnits" :key="u.value" :label="u.label" :value="u.value"
+            /></el-select>
+          </el-form-item>
+          <el-form-item label="采购单价"
+            ><el-input-number
+              v-model="draft.unitPrice"
+              :min="0"
+              :precision="4"
+              :controls="false"
+              aria-label="采购单价"
+              @change="calculateDraft"
+          /></el-form-item>
+          <el-form-item label="税率(%)"
+            ><el-input-number
+              v-model="draft.taxRate"
+              :min="0"
+              :max="100"
+              :precision="2"
+              :controls="false"
+              @change="calculateDraft"
+          /></el-form-item>
+          <el-form-item label="采购金额"
+            >{{ draftPricing ? '试算中…' : entryNumber(draft.amount) }}（税额
+            {{ draftPricing ? '—' : entryNumber(draft.taxAmount) }}）</el-form-item
+          >
+          <el-form-item v-if="!editingKey" label="需求日期"
             ><el-date-picker
               v-model="draft.needDate"
               type="date"
               value-format="YYYY-MM-DD"
-              placeholder="可选，带入订单交期"
+              placeholder="可选"
+              @change="calculateDraft"
           /></el-form-item>
+          <el-form-item label="预计到货"
+            ><el-date-picker
+              v-model="expectedDeliveryDate"
+              type="date"
+              value-format="YYYY-MM-DD"
+              placeholder="可选，在订单核对时确认"
+              @change="calculateDraft"
+          /></el-form-item>
+          <el-form-item label="优先级"
+            ><el-select v-model="draft.priority"
+              ><el-option label="普通" value="normal" /><el-option
+                label="高"
+                value="high" /><el-option label="紧急" value="urgent" /></el-select
+          ></el-form-item>
           <el-form-item label="采购说明"
             ><el-input
               v-model="draft.purchaseRemark"
@@ -287,6 +395,30 @@
               show-word-limit
               placeholder="采购 / 加工 / 交货要求"
           /></el-form-item>
+          <el-descriptions :column="1" border size="small">
+            <el-descriptions-item label="预计满足原需">{{
+              draftPricing
+                ? '试算中…'
+                : draftPreview?.coveredQuantity == null
+                  ? '待确认'
+                  : quantityLabel(draftPreview.coveredQuantity, sourcePlan?.unit)
+            }}</el-descriptions-item>
+            <el-descriptions-item label="剩余缺口">{{
+              draftPricing
+                ? '试算中…'
+                : draftPreview?.remainingQuantity == null
+                  ? '待确认'
+                  : quantityLabel(draftPreview.remainingQuantity, sourcePlan?.unit)
+            }}</el-descriptions-item>
+          </el-descriptions>
+          <el-alert
+            v-if="draftPreview"
+            :title="draftPreview.message"
+            :type="
+              draftPreview.status === PurchasePlanSchemeStatusEnum.READY.value ? 'info' : 'warning'
+            "
+            :closable="false"
+          />
           <p class="plan-hint">
             档案已确定尺寸只读，换规格请重新选物料；整数片 / 卷及换算精度由系统校验。
           </p>
@@ -300,14 +432,20 @@
         ><el-button
           type="primary"
           :loading="adding"
-          :disabled="!draft || draftLoading || !!draftError || !!unitsError"
+          :disabled="!draft || draftLoading || draftPricing || !!draftError || !!unitsError"
           @click="confirmAddMaterial"
-          >{{ editingKey ? '保存计划行' : '加入计划' }}</el-button
+          >{{
+            draftPreview?.status === PurchasePlanSchemeStatusEnum.NEEDS_CONFIRMATION.value
+              ? '保留待确认方案'
+              : '采用本次方案'
+          }}</el-button
         ></template
       >
-    </el-dialog>
+    </el-drawer>
     <el-dialog v-model="showConfirmDialog" title="确认采购分组" width="760px" append-to-body>
-      <p class="plan-hint">按供应商分组下单：一个供应商生成一张采购订单；未配置主供应商的行需先指定。</p>
+      <p class="plan-hint">
+        按供应商分组下单：一个供应商生成一张采购订单；未安排或待技术确认的行需先处理采购方案。
+      </p>
       <el-table :data="confirmGroups" border size="small">
         <el-table-column label="供应商" min-width="200">
           <template #default="{ row }">
@@ -320,6 +458,11 @@
         <el-table-column label="合计数量" min-width="170" align="right">
           <template #default="{ row }">{{ groupQtyLabel(row) }}</template>
         </el-table-column>
+        <el-table-column label="预计到货" width="120"
+          ><template #default="{ row }">{{
+            row.earliestDeliveryDate || '订单中确认'
+          }}</template></el-table-column
+        >
         <el-table-column label="最早需求日" width="120" align="center">
           <template #default="{ row }">{{ row.earliestNeedDate || '—' }}</template>
         </el-table-column>
@@ -334,7 +477,7 @@
             <el-button
               link
               type="primary"
-              :disabled="row.missingSupplier || busy"
+              :disabled="!groupReady(row) || busy"
               @click="startGroup(row)"
               >生成</el-button
             >
@@ -342,9 +485,9 @@
         </el-table-column>
       </el-table>
       <template #footer>
-        <el-button @click="showConfirmDialog = false">取消</el-button>
+        <el-button :disabled="busy" @click="showConfirmDialog = false">取消</el-button>
         <el-button type="primary" :disabled="busy" @click="generateAllGroups"
-          >全部生成（{{ confirmGroups.filter((g) => !g.missingSupplier).length }} 张）</el-button
+          >全部生成（{{ confirmGroups.filter(groupReady).length }} 张）</el-button
         >
       </template>
     </el-dialog>
@@ -359,20 +502,33 @@
       type="warning"
       :closable="false"
       title="采购订单已保存，来源预警关联失败。请重试关联，不要重复下单。"
-      ><el-button :loading="linking" @click="retryAlertLink">重试关联预警</el-button></el-alert
+      ><el-button :loading="linking" @click="retryAlertLink(true)"
+        >重试关联预警</el-button
+      ></el-alert
     >
   </div>
 </template>
 
 <script setup lang="ts">
 defineOptions({ name: 'PurchasePlan' })
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as XLSX from 'xlsx'
 import { getPlanSuggestions } from '@/api/purchase/order'
-import { getPlanMaterial, getPlanUnits, getReferencePrices, previewPlanQuantity } from '@/api/purchase/planEntry'
-import type { PlanRow, PlanOrderSeed, SavedPurchaseOrder } from '@/api/purchase/planEntry'
+import {
+  getPlanMaterial,
+  getPlanUnits,
+  getReferencePrices,
+  previewPlanScheme,
+} from '@/api/purchase/planEntry'
+import type {
+  PlanRow,
+  PlanOrderSeed,
+  SavedPurchaseOrder,
+  PlanSchemePreview,
+  PlanPurchaseItem,
+} from '@/api/purchase/planEntry'
 import { groupPlanRows, groupQtyLabel } from './groupPlanRows'
 import type { PlanGroup } from './groupPlanRows'
 import { entryNumber, entrySpecification } from '@/api/purchase/orderEntry'
@@ -380,6 +536,9 @@ import type { PurchaseUnitOption } from '@/api/purchase/orderEntry'
 import { alertApi } from '@/api/inventory/alert'
 import { materialApi } from '@/api/inventory/material'
 import type { InventoryMaterial } from '@/types/inventory/material'
+import SupplierSelector from '@/components/Selector/SupplierSelector.vue'
+import type { PurchaseSupplier } from '@/types/purchase'
+import { PurchasePlanSchemeStatusEnum } from '@/enums/purchase/plan'
 import MaterialDetailDialog from '@/components/inventory/MaterialDetailDialog.vue'
 import OrderFormDialog from '@/views/purchase/order/components/OrderFormDialog.vue'
 
@@ -393,6 +552,10 @@ const loadingSuggestions = ref(false),
 const addMaterialId = ref<number | null>(null),
   materialOptions = ref<InventoryMaterial[]>([]),
   materialSearching = ref(false)
+const sourcePlan = ref<PlanRow>()
+const draftPreview = ref<PlanSchemePreview>()
+const expectedDeliveryDate = ref('')
+const validatingPlan = ref(false)
 const draft = ref<PlanRow>(),
   editingKey = ref(''),
   draftLoading = ref(false),
@@ -421,7 +584,9 @@ let disposed = false,
   nextKey = 0
 let orderSources: PlanRow[] = []
 const contextVersions = new WeakMap<PlanRow, number>()
-const busy = computed(() => orderVisible.value || linking.value || !!pendingAlert.value)
+const busy = computed(
+  () => orderVisible.value || linking.value || !!pendingAlert.value || validatingPlan.value
+)
 const unitLabel = (code?: string) => units.value.find((u) => u.value === code)?.label || code || '—'
 const quantityLabel = (n: unknown, unit?: string) =>
   n == null ? '—' : `${entryNumber(n)} ${unitLabel(unit)}`
@@ -463,15 +628,90 @@ function baseRow(m: any): PlanRow {
     supplierId: m.supplierId,
     supplierName: m.supplierName,
     reason: '手动添加',
+    needDate: m.needDate,
     priority: 'normal',
     sourceAlertIds: [],
   }
 }
-function recalcAmount(row: PlanRow) {
-  const qty = Number(row.quantity || 0)
-  const price = Number(row.unitPrice || 0)
-  row.amount = Number((qty * price).toFixed(2))
+function purchaseItem(row: PlanRow): PlanPurchaseItem {
+  return row.procurement?.purchase || row
 }
+function schemeStatus(row: PlanRow) {
+  return row.procurement?.status || PurchasePlanSchemeStatusEnum.UNARRANGED.value
+}
+function groupReady(group: PlanGroup) {
+  return (
+    !group.missingSupplier &&
+    group.rows.every((row) => schemeStatus(row) === PurchasePlanSchemeStatusEnum.READY.value)
+  )
+}
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value))
+}
+function schemeRequest(source: PlanRow, item: PlanPurchaseItem, delivery?: string) {
+  return {
+    sourceMaterialId: source.materialId!,
+    demandQuantity: source.demandQuantity,
+    supplierId: item.supplierId,
+    needDate: source.needDate || undefined,
+    expectedDeliveryDate: delivery || undefined,
+    item: { ...item },
+  }
+}
+function applyScheme(
+  source: PlanRow,
+  item: PlanPurchaseItem,
+  preview: PlanSchemePreview,
+  delivery?: string
+): PlanRow {
+  const purchase = {
+    ...clone(item),
+    ...preview.item,
+    supplierName: preview.supplierName || item.supplierName,
+  }
+  return {
+    ...source,
+    supplierId: purchase.supplierId,
+    supplierName: purchase.supplierName,
+    priority: item.priority,
+    procurement: {
+      purchase,
+      status: preview.status,
+      expectedDeliveryDate: delivery || undefined,
+      coveredQuantity: preview.coveredQuantity,
+      remainingQuantity: preview.remainingQuantity,
+      message: preview.message,
+    },
+  }
+}
+function selectSchemeSupplier(supplier: PurchaseSupplier | null) {
+  if (!draft.value) return
+  draft.value.supplierId = supplier?.supplierId
+  draft.value.supplierName = supplier?.supplierName || ''
+  void calculateDraft()
+}
+watch(
+  () => [
+    draft.value?.materialId,
+    draft.value?.supplierId,
+    draft.value?.purchaseUnit,
+    draft.value?.purchaseQuantity,
+    draft.value?.priceUnit,
+    draft.value?.unitPrice,
+    draft.value?.taxRate,
+    draft.value?.rollWidthMm,
+    draft.value?.rollLengthM,
+    draft.value?.pieceWidthMm,
+    draft.value?.pieceLengthMm,
+    expectedDeliveryDate.value,
+  ],
+  () => {
+    ++pricingVersion
+    draftPreview.value = undefined
+    draftPricing.value = false
+  },
+  { flush: 'sync' }
+)
 
 async function loadUnits() {
   try {
@@ -508,6 +748,7 @@ async function refreshContext(row: PlanRow) {
       availableStock: d.availableStock,
       inTransit: d.inTransit,
       contextError: '',
+      ...(!row.procurement ? { supplierId: d.supplierId, supplierName: d.supplierName } : {}),
     })
     for (const key of ['rollWidthMm', 'rollLengthM', 'pieceWidthMm', 'pieceLengthMm'] as const)
       if (row[key] == null) row[key] = d[key]
@@ -581,10 +822,13 @@ function invalidateDraft() {
   ++pricingVersion
   draftLoading.value = false
   draftPricing.value = false
+  draftPreview.value = undefined
 }
 function openAdd() {
   invalidateDraft()
   editingKey.value = ''
+  sourcePlan.value = undefined
+  expectedDeliveryDate.value = ''
   addMaterialId.value = null
   draft.value = undefined
   draftError.value = ''
@@ -603,7 +847,17 @@ async function selectMaterial(id: number | null) {
     if (disposed || epoch !== draftEpoch || !showAddMaterial.value) return
     const row = baseRow(r.data)
     Object.assign(row, r.data)
+    if (editingKey.value && sourcePlan.value)
+      Object.assign(row, {
+        priority: sourcePlan.value.priority,
+        reason: sourcePlan.value.reason,
+        needDate: sourcePlan.value.needDate,
+      })
     draft.value = row
+    const activeDraft = draft.value
+    if (!editingKey.value) sourcePlan.value = clone(row)
+    await loadReferencePrices([activeDraft])
+    if (epoch !== draftEpoch || draft.value !== activeDraft) return
     await calculateDraft()
   } catch (e: any) {
     if (epoch === draftEpoch) draftError.value = e?.message || '物料与库存读取失败，请重试'
@@ -614,23 +868,26 @@ async function selectMaterial(id: number | null) {
 async function openEdit(row: PlanRow) {
   invalidateDraft()
   editingKey.value = row.key
-  addMaterialId.value = row.materialId!
+  sourcePlan.value = clone(row)
+  const purchase = purchaseItem(row)
+  expectedDeliveryDate.value = row.procurement?.expectedDeliveryDate || row.needDate || ''
+  addMaterialId.value = purchase.materialId!
   draftError.value = ''
   materialOptions.value = [
     {
-      materialId: row.materialId,
-      materialCode: row.materialCode,
-      materialName: row.materialName,
-      specification: row.materialSpec,
+      materialId: purchase.materialId,
+      materialCode: purchase.materialCode,
+      materialName: purchase.materialName,
+      specification: purchase.materialSpec,
     } as InventoryMaterial,
   ]
-  draft.value = JSON.parse(JSON.stringify(row))
+  draft.value = clone({ ...purchase, procurement: undefined })
   showAddMaterial.value = true
   // 库存/档案重新读取；编辑时不丢弃草稿，也不让旧余额伪装成最新余额。
   const epoch = ++draftEpoch
   draftLoading.value = true
   try {
-    const r = await getPlanMaterial(row.materialId!)
+    const r = await getPlanMaterial(purchase.materialId!)
     if (epoch !== draftEpoch || disposed || !showAddMaterial.value) return
     Object.assign(draft.value!, {
       currentStock: r.data.currentStock,
@@ -640,6 +897,9 @@ async function openEdit(row: PlanRow) {
       archiveWidthMm: r.data.archiveWidthMm,
       archiveLengthMm: r.data.archiveLengthMm,
       contextError: '',
+      ...(!row.procurement
+        ? { supplierId: r.data.supplierId, supplierName: r.data.supplierName }
+        : {}),
     })
     await calculateDraft()
   } catch {
@@ -658,6 +918,7 @@ async function calculateDraft(): Promise<boolean> {
     epoch = draftEpoch,
     v = ++pricingVersion
   if (!row) return false
+  draftPreview.value = undefined
   row.pricingError = ''
   draftPricing.value = true
   if (!(Number(row.purchaseQuantity) > 0)) {
@@ -666,7 +927,14 @@ async function calculateDraft(): Promise<boolean> {
     return false
   }
   try {
-    const r = await previewPlanQuantity({ ...row })
+    const source = sourcePlan.value || row
+    const r = await previewPlanScheme(
+      schemeRequest(
+        { ...source, needDate: editingKey.value ? source.needDate : row.needDate },
+        row,
+        expectedDeliveryDate.value
+      )
+    )
     if (
       disposed ||
       epoch !== draftEpoch ||
@@ -675,14 +943,11 @@ async function calculateDraft(): Promise<boolean> {
       !showAddMaterial.value
     )
       return false
-    Object.assign(row, {
-      quantity: r.data.quantity,
-      unit: r.data.unit,
-      purchaseUnit: r.data.purchaseUnit,
-      purchaseQuantity: r.data.purchaseQuantity,
-      rollCount: r.data.rollCount,
+    Object.assign(row, r.data.item, {
+      supplierName: r.data.supplierName || row.supplierName,
       pricingError: '',
     })
+    draftPreview.value = r.data
     return true
   } catch (e: any) {
     if (epoch === draftEpoch && v === pricingVersion)
@@ -698,20 +963,32 @@ async function confirmAddMaterial() {
   adding.value = true
   try {
     if (!(await calculateDraft())) return
-    const row = JSON.parse(JSON.stringify(draft.value)) as PlanRow
+    if (!draftPreview.value || !sourcePlan.value) return
+    if (draftPreview.value.status === PurchasePlanSchemeStatusEnum.UNARRANGED.value) {
+      ElMessage.warning(draftPreview.value.message)
+      return
+    }
+    const actual = clone(draft.value)
+    const origin = clone(sourcePlan.value)
+    if (!editingKey.value) origin.needDate = actual.needDate
     const duplicate = planRows.value.find(
-      (r) => r.materialId === row.materialId && r.key !== editingKey.value
+      (r) => r.materialId === origin.materialId && r.key !== editingKey.value
     )
     if (duplicate) {
-      ElMessage.warning('该物料已在计划中，请编辑现有行；不同采购单位不能直接累加')
+      ElMessage.warning('该原需求物料已在计划中，请打开现有行采购方案')
       return
     }
     const index = planRows.value.findIndex((r) => r.key === editingKey.value)
+    const row = applyScheme(
+      index >= 0 ? planRows.value[index] : origin,
+      actual,
+      draftPreview.value,
+      expectedDeliveryDate.value
+    )
     if (index >= 0) {
       planRows.value.splice(index, 1, row)
       selectedRows.value = selectedRows.value.map((r) => (r.key === row.key ? row : r))
     } else planRows.value.push(row)
-    void loadReferencePrices([row])
     if (Number(row.inTransit) > 0)
       ElMessage.warning(
         `该物料已有在途 ${quantityLabel(row.inTransit, row.unit)}，请核对避免重复采购`
@@ -773,30 +1050,61 @@ async function loadReferencePrices(rows: PlanRow[]) {
   }
 }
 
-function handleConfirmPlan() {
+async function validateRows(rows: PlanRow[]): Promise<boolean> {
+  if (validatingPlan.value) return false
+  validatingPlan.value = true
+  let ready = true
+  try {
+    for (const row of rows) {
+      try {
+        const candidate = purchaseItem(row)
+        const response = await previewPlanScheme(
+          schemeRequest(row, candidate, row.procurement?.expectedDeliveryDate)
+        )
+        if (!planRows.value.includes(row)) {
+          ready = false
+          continue
+        }
+        const next = applyScheme(
+          row,
+          candidate,
+          response.data,
+          row.procurement?.expectedDeliveryDate
+        )
+        Object.assign(row, next)
+        if (schemeStatus(row) !== PurchasePlanSchemeStatusEnum.READY.value) ready = false
+      } catch (e: any) {
+        ready = false
+        if (row.procurement) {
+          row.procurement.status = PurchasePlanSchemeStatusEnum.UNARRANGED.value
+          row.procurement.coveredQuantity = null
+          row.procurement.remainingQuantity = null
+          row.procurement.message = e?.message || '方案校核失败，请重新打开采购方案'
+        }
+        ElMessage.warning(e?.message || '方案校核失败，请重新打开采购方案')
+      }
+    }
+    return ready
+  } finally {
+    validatingPlan.value = false
+  }
+}
+async function handleConfirmPlan() {
   if (!selectedRows.value.length || busy.value) return
   if (unitsError.value) {
     ElMessage.warning('请先重新读取单位')
     return
   }
-  if (
-    selectedRows.value.some(
-      (row) =>
-        row.pricingError ||
-        row.contextLoading ||
-        row.contextError ||
-        !row.unit ||
-        !(row.quantity > 0)
-    )
-  ) {
-    ElMessage.warning('请先编辑并确认计划数量')
+  if (selectedRows.value.some((row) => row.contextLoading || row.contextError)) {
+    ElMessage.warning('请先重新读取原需求物料信息')
     return
   }
+  await validateRows(selectedRows.value)
   const groups = groupPlanRows(selectedRows.value)
-  const missingRows = groups.filter((g) => g.missingSupplier).reduce((n, g) => n + g.rows.length, 0)
-  if (missingRows)
-    ElMessage.warning(`有 ${missingRows} 行未配置主供应商，需先指定供应商才能下单`)
-  if (groups.length > 1) ElMessage.info(`已选 ${groups.length} 个供应商，将生成 ${groups.length} 张订单`)
+  const blocked = selectedRows.value.filter(
+    (row) => schemeStatus(row) !== PurchasePlanSchemeStatusEnum.READY.value
+  ).length
+  if (blocked) ElMessage.warning(`有 ${blocked} 行采购方案未完成或待技术确认，请在采购方案中处理`)
   confirmGroups.value = groups
   showConfirmDialog.value = true
 }
@@ -804,7 +1112,7 @@ function handleConfirmPlan() {
 /** 组 → 订单种子：供应商/交期/紧急取组，明细带单价与金额（dev-20261113-010）。 */
 function buildSeed(group: PlanGroup): PlanOrderSeed {
   const dates = group.rows
-    .map((r) => r.needDate)
+    .map((r) => r.procurement?.expectedDeliveryDate || r.needDate)
     .filter((d): d is string => !!d)
     .sort()
   return {
@@ -813,16 +1121,16 @@ function buildSeed(group: PlanGroup): PlanOrderSeed {
     expectedDeliveryDate: dates[0],
     urgentFlag: group.urgent,
     items: group.rows.map((row) => {
-      const price = Number(row.unitPrice ?? row.lastPrice ?? row.standardPrice ?? 0)
-      const qty = Number(row.quantity || 0)
+      const actual = purchaseItem(row)
       return {
-        ...row,
-        unitPrice: price,
-        taxRate: row.taxRate ?? 13,
-        amount: Number((qty * price).toFixed(2)),
+        ...actual,
         purchaseRemark: [
-          row.purchaseRemark,
-          `计划来源：${row.reason}${row.demandQuantity == null ? '' : `；原始需求 ${quantityLabel(row.demandQuantity, row.unit)}`}${row.needDate ? `；需求日期 ${row.needDate}` : ''}`,
+          actual.purchaseRemark,
+          `原需求：${row.materialCode} ${row.materialSpec || ''}${row.demandQuantity == null ? '' : '；数量 ' + quantityLabel(row.demandQuantity, row.unit)}`,
+          `计划来源：${row.reason}${row.needDate ? '；需求日期 ' + row.needDate : ''}`,
+          row.procurement?.expectedDeliveryDate
+            ? '预计到货：' + row.procurement.expectedDeliveryDate
+            : '',
         ]
           .filter(Boolean)
           .join('\n'),
@@ -831,21 +1139,30 @@ function buildSeed(group: PlanGroup): PlanOrderSeed {
   }
 }
 
-function startGroup(group: PlanGroup) {
+async function startGroup(group: PlanGroup) {
+  if (validatingPlan.value || linking.value || pendingAlert.value) return
   if (!group.supplierId || group.missingSupplier) {
-    ElMessage.warning('该分组未配置主供应商，请先在物料档案指定供应商')
+    ElMessage.warning('请在采购方案中选择本次供应商')
+    return
+  }
+  if (!(await validateRows(group.rows)) || !groupReady(group)) {
+    ElMessage.warning('本组采购方案未通过校核，请返回采购方案处理后重试')
+    orderQueue.value = []
     return
   }
   orderSources = group.rows.map((row) => JSON.parse(JSON.stringify(row)))
   currentGroup.value = group
-  orderSeed.value = buildSeed(group)
+  orderSeed.value = buildSeed({
+    ...group,
+    supplierName: group.rows[0]?.supplierName || group.supplierName,
+  })
   showConfirmDialog.value = false
   orderVisible.value = true
 }
 
 /** 全部生成：按分组顺序串行开单，保存一张再开下一张。 */
 function generateAllGroups() {
-  const queue = confirmGroups.value.filter((g) => !g.missingSupplier && g.supplierId)
+  const queue = confirmGroups.value.filter(groupReady)
   if (!queue.length) {
     ElMessage.warning('没有可生成的供应商分组')
     return
@@ -859,11 +1176,13 @@ async function handleOrderSaved(saved?: SavedPurchaseOrder) {
     return
   }
   const covered = orderSources.filter((source) => {
-    const item = saved.items.find((i) => i.materialId === source.materialId)
+    const actual = purchaseItem(source)
+    const item = saved.items.find((i) => i.materialId === actual.materialId)
     return (
       item &&
+      actual.materialId === source.materialId &&
       item.unit === source.unit &&
-      Number(item.quantity) >= Math.max(Number(source.quantity), Number(source.demandQuantity || 0))
+      Number(item.quantity) >= Math.max(Number(actual.quantity), Number(source.demandQuantity || 0))
     )
   })
   const coveredKeys = new Set(covered.map((r) => r.key))
@@ -885,7 +1204,7 @@ async function handleOrderSaved(saved?: SavedPurchaseOrder) {
     }
     await retryAlertLink()
   }
-  openNextGroup()
+  if (!pendingAlert.value) openNextGroup()
 }
 /** 分组串行下单：保存一张后自动打开下一组（dev-20261113-010）。 */
 function openNextGroup() {
@@ -896,13 +1215,14 @@ function openNextGroup() {
   }
   setTimeout(() => startGroup(next), 0)
 }
-async function retryAlertLink() {
+async function retryAlertLink(resumeQueue = false) {
   if (!pendingAlert.value || linking.value) return
   linking.value = true
   try {
     await alertApi.batchProcess(pendingAlert.value)
     pendingAlert.value = undefined
     ElMessage.success('来源预警已关联采购订单')
+    if (resumeQueue) openNextGroup()
   } catch {
     ElMessage.warning('订单已保存，预警关联失败，请重试关联；不要重复下单')
   } finally {
@@ -929,25 +1249,38 @@ async function prefetchMaterial(id: number, alertId?: number) {
   }
 }
 function exportRows() {
-  return planRows.value.map((r) => ({
-    物料编码: r.materialCode,
-    物料名称: r.materialName,
-    供应商品名: r.supplierMaterialName || '',
-    规格: entrySpecification(r),
-    基本单位: unitLabel(r.unit),
-    原始需求: r.demandQuantity ?? '',
-    当前库存: r.currentStock ?? '',
-    可用库存: r.availableStock ?? '',
-    采购在途: r.inTransit ?? '',
-    计划采购量: r.purchaseQuantity,
-    采购单位: unitLabel(r.purchaseUnit),
-    折合基本数量: r.pricingError ? '待确认' : r.quantity,
-    需求日期: r.needDate || '',
-    来源: r.reason,
-    采购说明: r.purchaseRemark || '',
-    优先级: priorityLabel(r.priority),
-    已关联订单: r.linkedOrderNo || '',
-  }))
+  return planRows.value.map((r) => {
+    const actual = purchaseItem(r)
+    return {
+      物料编码: r.materialCode,
+      物料名称: r.materialName,
+      供应商品名: actual.supplierMaterialName || '',
+      规格: r.materialSpec || '',
+      基本单位: unitLabel(r.unit),
+      原始需求: r.demandQuantity ?? '',
+      当前库存: r.currentStock ?? '',
+      可用库存: r.availableStock ?? '',
+      采购在途: r.inTransit ?? '',
+      计划采购量: actual.purchaseQuantity,
+      采购单位: unitLabel(actual.purchaseUnit),
+      折合基本数量: actual.pricingError ? '待确认' : actual.quantity,
+      采购基本单位: unitLabel(actual.unit),
+      采购安排: [
+        PurchasePlanSchemeStatusEnum.getLabel(schemeStatus(r)),
+        actual.materialCode,
+        entrySpecification(actual),
+        r.supplierName || '供应商未定',
+        r.procurement?.expectedDeliveryDate || '到货未定',
+      ].join('；'),
+      预计满足原需: r.procurement?.coveredQuantity ?? '待确认',
+      剩余缺口: r.procurement?.remainingQuantity ?? '待确认',
+      需求日期: r.needDate || '',
+      来源: r.reason,
+      采购说明: actual.purchaseRemark || '',
+      优先级: priorityLabel(r.priority),
+      已关联订单: r.linkedOrderNo || '',
+    }
+  })
 }
 function handleExport() {
   const wb = XLSX.utils.book_new()
@@ -1002,6 +1335,9 @@ onBeforeUnmount(() => {
 }
 .table-card {
   margin-top: 12px;
+}
+.source-demand {
+  margin-bottom: 20px;
 }
 .purchase-plan small {
   color: var(--el-text-color-secondary);

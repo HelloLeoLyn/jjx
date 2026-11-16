@@ -107,7 +107,7 @@ describe('精简采购主表与后端换算',()=>{
   })
 })
 describe('采购计划预填正式订单',()=>{
-  it('保留计划数量单位和尺寸，只带供应商报价单位；初始化不下单',async()=>{
+  it('保留计划数量单位和尺寸及本次报价单位；初始化不下单',async()=>{
     const seed={supplierId:16,supplierName:'供应商',expectedDeliveryDate:'2026-12-01',urgentFlag:true,
       items:[{...row(),purchaseUnit:'㎡',purchaseQuantity:366,rollLengthM:98,purchaseRemark:'原始需求 300㎡',unitPrice:0}]}
     // 约定采购单位为卷，计划明确填㎡时不能将366变为366卷。
@@ -118,6 +118,14 @@ describe('采购计划预填正式订单',()=>{
     expect(seed.items[0].unitPrice).toBe(0)
     vm.addItem();vm.removeItem(0);vm.handleMaterialChange(110,0);vm.handleSupplierChange({supplierId:17,supplierName:'另一个供应商'})
     expect(vm.form.items).toHaveLength(1);expect(vm.form.items[0].materialId).toBe(354);expect(vm.form.supplierId).toBe('16')
+  })
+  it('方案按卷报价时不会被供应商默认面积报价覆盖',async()=>{
+    const seed={supplierId:16,supplierName:'供应商',items:[{...row(),priceUnit:'ROLL',unitPrice:100}]}
+    api.previewOrderPricing.mockImplementation(async body=>({data:{orderAmount:300,orderTax:39,orderTotalAmount:339,items:body.items.map((i:any)=>({...i,priceQuantity:3,amount:300,taxAmount:39}))}}))
+    const w=shallowMount(OrderFormDialog,{props:{visible:true,planSeed:seed}});wrappers.push(w);await flushPromises()
+    expect((w.vm as any).form.items[0]).toMatchObject({priceUnit:'ROLL',unitPrice:100})
+    expect((w.vm as any).totalAmount).toBe(300)
+    expect(api.previewOrderPricing).toHaveBeenCalledWith(expect.objectContaining({items:expect.arrayContaining([expect.objectContaining({priceUnit:'ROLL',unitPrice:100})])}))
   })
   it('保存成功发出实际数量与订单号；保存失败保留核对窗口，不发成功事件',async()=>{
     const {w,vm}=form();vm.form.items=[row()];vm.form.orderNo='PO-PLAN';vm.formRef={validate:vi.fn().mockResolvedValue(true)}

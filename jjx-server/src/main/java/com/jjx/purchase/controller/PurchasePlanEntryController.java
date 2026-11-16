@@ -24,4 +24,7 @@ public class PurchasePlanEntryController {
     @PostMapping("/quantity-preview")
     @SaCheckPermission(value={"purchase:plan:view","purchase:plan:add","purchase:plan:confirm"},mode=SaMode.OR)
     public Result<PurchaseOrderItemDTO> quantity(@RequestBody PurchaseOrderItemDTO item){return Result.success(service.quantity(item));}
+    @PostMapping("/scheme-preview")
+    @SaCheckPermission(value={"purchase:plan:view","purchase:plan:add","purchase:plan:confirm"},mode=SaMode.OR)
+    public Result<PurchasePlanEntryService.SchemePreview> scheme(@RequestBody PurchasePlanEntryService.SchemeRequest request){return Result.success(service.scheme(request));}
 }

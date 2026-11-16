@@ -421,7 +421,7 @@ async function initForm() {
         form.items = seed.items.map(item => ({ ...createRow(), ...JSON.parse(JSON.stringify(item)), itemId: undefined }))
         await loadSupplierMaterials(form.supplierId, '', form.items)
         await Promise.all(form.items.map(async row => {
-          // 计划明确选择的采购量/单位/尺寸保留，仅从供应商约定带出报价单位。
+          // 保留采购方案已选的数量、单位和尺寸，供应商约定仅补缺省报价单位。
           await loadDefaults(row, false)
           if (epoch !== formEpoch || closed || row.defaultError) return
           await calculateRowTotal(form.items.indexOf(row))
@@ -546,7 +546,7 @@ async function loadDefaults(row: OrderItem, apply: boolean): Promise<void> {
     row.defaultError = false
     row.defaultConfigured = data.configured
     row.allowedUnits = data.allowedUnits
-    if (props.planSeed && !apply) row.priceUnit = data.priceUnit
+    if (props.planSeed && !apply && !row.priceUnit) row.priceUnit = data.priceUnit
     row.archiveWidthMm = data.pieceWidthMm
     row.archiveLengthMm = data.pieceLengthMm
     if (apply) {

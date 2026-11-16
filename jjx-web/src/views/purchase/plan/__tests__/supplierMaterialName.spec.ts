@@ -1,6 +1,7 @@
 import { shallowMount, flushPromises } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import Plan from '../index.vue'
+import { PurchasePlanSchemeStatusEnum } from '@/enums/purchase/plan'
 
 const api = vi.hoisted(() => ({
   getPlanSuggestions: vi.fn(),
@@ -17,18 +18,27 @@ vi.mock('@/views/purchase/order/components/OrderFormDialog.vue', () => ({
 }))
 vi.mock('@/api/purchase/planEntry', () => ({
   getPlanUnits: vi.fn().mockResolvedValue({ data: [{ value: 'PCS', label: '片' }] }),
-  getPlanMaterial: vi
-    .fn()
-    .mockImplementation(async (id) => ({
-      data: {
-        unit: 'PCS',
-        materialCode: `M${id}`,
-        materialName: `物料${id}`,
-        supplierMaterialName: id === 7 ? '供应商品名' : '手工品名',
-        materialId: id,
-      },
-    })),
-  previewPlanQuantity: vi.fn().mockImplementation(async (row) => ({ data: row })),
+  getPlanMaterial: vi.fn().mockImplementation(async (id) => ({
+    data: {
+      unit: 'PCS',
+      materialCode: `M${id}`,
+      materialName: `物料${id}`,
+      supplierMaterialName: id === 7 ? '供应商品名' : '手工品名',
+      materialId: id,
+      supplierId: 16,
+      supplierName: '供应商',
+    },
+  })),
+  previewPlanScheme: vi.fn().mockImplementation(async (request) => ({
+    data: {
+      item: { ...request.item, quantity: request.item.purchaseQuantity },
+      status: PurchasePlanSchemeStatusEnum.READY.value,
+      supplierName: '供应商',
+      coveredQuantity: null,
+      remainingQuantity: null,
+      message: '数量已校核',
+    },
+  })),
 }))
 vi.mock('@/api/inventory/material', () => ({ materialApi: {} }))
 vi.mock('@/api/inventory/alert', () => ({ alertApi: {} }))
@@ -77,7 +87,10 @@ describe('采购计划供应商品名与只读物料详情', () => {
     vm.draft.purchaseQuantity = 3
     vm.draft.quantity = 3
     await vm.confirmAddMaterial()
-    expect(vm.planRows[0]).toMatchObject({ supplierMaterialName: '手工品名', quantity: 3 })
+    expect(vm.purchaseItem(vm.planRows[0])).toMatchObject({
+      supplierMaterialName: '手工品名',
+      quantity: 3,
+    })
     wrapper.unmount()
   })
 })

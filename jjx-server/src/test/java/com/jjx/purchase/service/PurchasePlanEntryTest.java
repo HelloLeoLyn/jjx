@@ -7,6 +7,7 @@ import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.purchase.domain.dto.PurchaseOrderItemDTO;
 import com.jjx.purchase.domain.enums.ReceiptStatusEnum;
 import com.jjx.purchase.mapper.PurchasePlanContextMapper;
+import com.jjx.purchase.mapper.PurchaseSupplierMapper;
 import com.jjx.purchase.service.impl.*;
 import org.junit.jupiter.api.*;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -20,7 +21,7 @@ class PurchasePlanEntryTest {
     InventoryMaterialMapper materials=mock(InventoryMaterialMapper.class);
     PurchasePlanContextMapper context=mock(PurchasePlanContextMapper.class);
     PurchaseOrderServiceImpl orders=mock(PurchaseOrderServiceImpl.class,CALLS_REAL_METHODS);
-    PurchasePlanEntryService service=new PurchasePlanEntryService(materials,context,orders);
+    PurchasePlanEntryService service=new PurchasePlanEntryService(materials,context,orders,mock(PurchaseSupplierMapper.class));
     @BeforeEach void init(){ReflectionTestUtils.setField(orders,"materialMapper",materials);}
     InventoryMaterial material(long id,String unit,String w,String l){
         var m=new InventoryMaterial();m.setMaterialId(id);m.setUnit(unit);

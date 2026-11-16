@@ -19,6 +19,24 @@ export interface PlanRow extends PurchaseEntryItem {
   lastPrice?: number | null
   /** 物料档案标准价（dev-20261113-010） */
   standardPrice?: number | null
+  procurement?: PlanProcurementScheme
+}
+export type PlanPurchaseItem = Omit<PlanRow, 'procurement'>
+export interface PlanProcurementScheme {
+  purchase: PlanPurchaseItem
+  expectedDeliveryDate?: string
+  status: string
+  coveredQuantity: number | null
+  remainingQuantity: number | null
+  message: string
+}
+export interface PlanSchemePreview {
+  item: PurchaseEntryItem
+  supplierName?: string
+  status: string
+  coveredQuantity: number | null
+  remainingQuantity: number | null
+  message: string
 }
 export interface PlanOrderSeed {
   supplierId: number
@@ -42,3 +60,11 @@ export const getReferencePrices = (materialIds: number[]) =>
   }>('/purchase/order/reference-price', { params: { materialIds: materialIds.join(',') } })
 export const previewPlanQuantity = (item: Partial<PurchaseEntryItem>) =>
   request.post<{ data: PurchaseEntryItem }>('/purchase/plan/quantity-preview', item)
+export const previewPlanScheme = (data: {
+  sourceMaterialId: number
+  demandQuantity?: number | null
+  supplierId?: number
+  needDate?: string
+  expectedDeliveryDate?: string
+  item: Partial<PurchaseEntryItem>
+}) => request.post<{ data: PlanSchemePreview }>('/purchase/plan/scheme-preview', data)
