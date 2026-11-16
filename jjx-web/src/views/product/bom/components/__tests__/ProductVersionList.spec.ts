@@ -89,10 +89,17 @@ for (const domain of ['bom', 'route'] as const)
       expect(calls.at(-1)?.params).toEqual({ outputType: 'PRODUCT', outputId: 2 })
       expect(template).not.toMatch(/tree-props|:lazy/)
       if (domain === 'bom') {
-        // 产品BOM页签支持勾选多个产品做整套送审/审核；路由列表仍不允许勾选。
-        expect(template).toContain('type="selection"')
-        expect(template).toContain('批量送审')
-        expect(template).toContain('批量审核')
+        // 操作集中到版本维护；列表不再承载单条或批量审核入口。
+        expect(template).not.toContain('type="selection"')
+        expect(template).not.toContain('批量送审')
+        expect(template).not.toContain('批量审核')
+        const operations = template.slice(
+          template.indexOf('<el-table-column label="操作"'),
+          template.indexOf('</el-table>', template.indexOf('<el-table-column label="操作"'))
+        )
+        expect(operations).toContain('版本维护')
+        expect(operations).toContain('流水')
+        expect(operations).not.toMatch(/查看整套|送审|审批|驳回/)
         expect(template).toContain('材料BOM')
       } else {
         expect(template).not.toContain('type="selection"')

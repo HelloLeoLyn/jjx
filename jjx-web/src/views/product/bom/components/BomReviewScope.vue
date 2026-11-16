@@ -2,141 +2,173 @@
   <el-dialog
     v-model="visible"
     :title="dialogTitle"
-    width="1200px"
+    width="1280px"
+    append-to-body
+    :close-on-click-modal="false"
     :before-close="handleClose"
-    class="bom-review-scope"
   >
     <div v-loading="loading">
-      <el-alert v-if="error" type="error" :closable="false" show-icon :title="error" />
-      <el-empty v-else-if="!loading && !plans.length" description="没有可展示的整套范围" />
+      <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+      <el-empty v-if="!loading && !plans.length && !error" description="没有可展示的BOM范围" />
       <div v-for="plan in plans" :key="plan.rootBomId" class="scope-plan">
         <div class="scope-head">
-          <div class="scope-title">
-            <strong>{{ plan.productCode || '未命名' }}</strong>
-            <span v-if="plan.productName"> · {{ plan.productName }}</span>
-            <span class="scope-version">
-              {{ plan.rootBomCode || '根方案' }} {{ plan.rootBomVersion || '' }}
-            </span>
-            <el-tag v-if="plan.rootStatus != null" :type="statusTagType(plan.rootStatus)" size="small">
-              {{ statusLabel(plan.rootStatus) }}
-            </el-tag>
-          </div>
-          <div class="scope-meta">
-            <el-tag v-if="plan.executable" type="success" size="small">可执行</el-tag>
-            <el-tag v-else type="danger" size="small">不可执行</el-tag>
-            <span v-if="action === 'APPROVE'">
-              本次通过 {{ plan.actionCount }} 个方案，复用已批准 {{ plan.reuseCount }} 个
-            </span>
-            <span v-else-if="action === 'SUBMIT'">
-              本次送审 {{ plan.actionCount }} 个方案，已批准复用 {{ plan.reuseCount }} 个，审核中复用
-              {{ plan.pendingReuseCount }} 个
-            </span>
-            <span v-else>只退回该产品根方案，不连带公共下层方案</span>
-          </div>
+          <strong
+            >{{ plan.productCode || plan.rootBomCode }}
+            {{
+              plan.productName && plan.productName !== plan.productCode ? plan.productName : ''
+            }}
+            · {{ plan.rootBomVersion }}</strong
+          >
+          <span v-if="decision === 'SUBMIT'"
+            >本次提交 {{ plan.actionCount }} 份，已批准复用 {{ plan.reuseCount }} 份，审核中复用
+            {{ plan.pendingReuseCount }} 份</span
+          >
+          <span v-else-if="decision === 'APPROVE'"
+            >本次审核 {{ plan.actionCount }} 份，已批准复用 {{ plan.reuseCount }} 份</span
+          >
+          <span v-else>退回本版本；下层方案保留原状态</span>
         </div>
-
         <el-alert
-          v-if="plan.blockingIssues?.length"
+          v-if="decision === 'REJECT'"
+          title="填写原因后退回本版本，不连带退回共享下层方案。"
           type="warning"
           :closable="false"
-          show-icon
-          :title="'暂不能执行：' + plan.blockingIssues.length + ' 项待处理'"
-          class="scope-blocking"
+        />
+        <el-alert
+          v-else-if="plan.blockingIssues?.length || plan.reason"
+          :title="
+            plan.blockingIssues?.length
+              ? '有 ' + plan.blockingIssues.length + ' 项待处理，请查看对应位置'
+              : plan.reason
+          "
+          type="warning"
+          :closable="false"
         >
-          <div v-for="(issue, index) in plan.blockingIssues.slice(0, 8)" :key="index" class="blocking-line">
-            · {{ issueLocation(plan, issue) }} {{ issue.message }}
-          </div>
-          <div v-if="plan.blockingIssues.length > 8" class="blocking-line">
-            … 共 {{ plan.blockingIssues.length }} 项
+          <div v-for="(issue, index) in plan.blockingIssues" :key="index" class="blocking-line">
+            {{ issueLocation(plan, issue) }}：{{ issue.message }}
           </div>
         </el-alert>
-        <div v-else-if="plan.reason" class="scope-reason">{{ plan.reason }}</div>
-
-        <el-table :data="plan.nodes" size="small" border>
-          <el-table-column type="expand">
+        <el-table
+          :data="buildBomReviewTree(plan)"
+          row-key="key"
+          :tree-props="{ children: 'children' }"
+          default-expand-all
+          size="small"
+          border
+        >
+          <el-table-column label="产品 / 材料 / 生产BOM" min-width="320">
             <template #default="{ row }">
-              <div class="node-items">
-                <el-table :data="row.items || []" size="small" border>
-                  <el-table-column prop="materialCode" label="物料编码" min-width="140" />
-                  <el-table-column prop="materialName" label="材料名称" min-width="160" />
-                  <el-table-column prop="specification" label="规格" min-width="140" />
-                  <el-table-column label="用量" width="110">
-                    <template #default="{ row: item }">
-                      {{ item.quantity ?? '—' }} {{ item.unit || '' }}
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="行状态" width="110">
-                    <template #default="{ row: item }">
-                      <el-tag size="small" :type="itemStatusTag(item.reviewStatus)">
-                        {{ itemStatusLabel(item.reviewStatus) }}
-                      </el-tag>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="下层方案" width="100">
-                    <template #default="{ row: item }">{{ item.subBomId ? '有' : '—' }}</template>
-                  </el-table-column>
-                </el-table>
-                <div v-if="row.issues?.length" class="node-issues">
-                  <div v-for="(issue, index) in row.issues.slice(0, 5)" :key="index">
-                    · {{ issue.materialCode || issue.materialName || (issue.itemId ? '行#' + issue.itemId : '主表') }}
-                    {{ issue.message }}
-                  </div>
-                </div>
+              <strong v-if="row.kind === 'scheme'">{{
+                row.bomId === plan.rootBomId ? row.label : '生产BOM'
+              }}</strong>
+              <span v-else>{{ row.label }}</span>
+              <span v-if="row.node" class="scheme-code"
+                >{{ row.node.bomCode }} · {{ row.node.bomVersion }}</span
+              >
+              <div v-for="message in row.issues" :key="message" class="node-issue">
+                {{ message }}
               </div>
             </template>
           </el-table-column>
-          <el-table-column prop="bomCode" label="方案编码" min-width="170" />
-          <el-table-column prop="bomName" label="方案名称" min-width="180" />
-          <el-table-column prop="bomVersion" label="版本" width="90" />
-          <el-table-column label="状态" width="100">
-            <template #default="{ row }">
-              <el-tag v-if="row.status != null" size="small" :type="statusTagType(row.status)">
-                {{ statusLabel(row.status) }}
-              </el-tag>
-            </template>
+          <el-table-column label="本层用量" width="140">
+            <template #default="{ row }">{{
+              row.item ? (row.item.quantity ?? '—') + ' ' + (row.item.unit || '') : '—'
+            }}</template>
           </el-table-column>
-          <el-table-column label="本次动作" width="120">
-            <template #default="{ row }">
-              <el-tag size="small" :type="actionTagType(row.plannedAction)">
-                {{ plannedActionLabel(row.plannedAction) }}
-              </el-tag>
-            </template>
+          <el-table-column label="规格" min-width="140">
+            <template #default="{ row }">{{ row.item?.specification || '—' }}</template>
           </el-table-column>
-          <el-table-column label="明细" width="130">
+          <el-table-column label="状态" width="110">
             <template #default="{ row }">
-              {{ row.itemCount || 0 }} 行（待审 {{ row.pendingItemCount || 0 }}）
-            </template>
-          </el-table-column>
-          <el-table-column label="问题" width="80">
-            <template #default="{ row }">
-              <el-tag v-if="row.issues?.length" type="danger" size="small">
-                {{ row.issues.length }}
-              </el-tag>
+              <el-tag
+                v-if="row.node?.status != null"
+                size="small"
+                :type="BomStatusEnum.getTagProps(row.node.status)?.type"
+                >{{ BomStatusEnum.getLabel(row.node.status) }}</el-tag
+              >
+              <span v-else-if="row.item?.reviewStatus != null">{{
+                BomItemReviewStatusEnum.getLabel(row.item.reviewStatus)
+              }}</span>
               <span v-else>—</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="110">
+          <el-table-column label="本次处理" width="130">
+            <template #default="{ row }">{{
+              row.node ? nodeActionLabel(row.node, plan.rootBomId) : '—'
+            }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="150">
             <template #default="{ row }">
-              <el-button link type="primary" @click="emit('open-bom', row.bomId)">打开处理</el-button>
+              <el-button
+                v-if="row.node"
+                link
+                type="primary"
+                :disabled="executing"
+                @click="emit('open-bom', row.bomId, false)"
+                >查看明细</el-button
+              >
+              <el-button
+                v-if="row.issues.length && canProcessRow(plan, row.bomId)"
+                link
+                type="primary"
+                :disabled="executing"
+                @click="emit('open-bom', row.bomId, true)"
+                >打开处理</el-button
+              >
             </template>
           </el-table-column>
         </el-table>
       </div>
-    </div>
-
-    <template #footer>
-      <span class="dialog-footer">
-        <el-button @click="handleClose">{{ readonly ? '关闭' : '取消' }}</el-button>
-        <el-button
-          v-if="!readonly"
-          type="primary"
-          :loading="confirming"
-          :disabled="!executableScopes.length"
-          @click="handleConfirm"
+      <el-collapse v-if="references.length" class="scope-plan">
+        <el-collapse-item
+          :title="'引用此生产BOM的上层产品 / 方案（' + references.length + '）'"
+          name="references"
         >
-          确认{{ actionLabel }}
-        </el-button>
-      </span>
+          <div v-for="item in references" :key="item.bomId">
+            {{ item.outputCode || item.bomCode }} {{ item.outputName }} · {{ item.bomVersion }} ·
+            {{ item.status == null ? '—' : BomStatusEnum.getLabel(item.status) }}
+          </div>
+        </el-collapse-item>
+      </el-collapse>
+      <el-form
+        v-if="action === 'APPROVE' && !readonly"
+        label-width="90px"
+        class="review-form"
+        :disabled="executing"
+      >
+        <el-form-item label="审核结果">
+          <el-radio-group v-model="decision">
+            <el-radio-button v-if="hasPermi('engineering:bom:approve')" value="APPROVE"
+              >整套通过</el-radio-button
+            >
+            <el-radio-button v-if="hasPermi('engineering:bom:reject')" value="REJECT"
+              >退回修改</el-radio-button
+            >
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="审核意见" :required="decision === 'REJECT'">
+          <el-input
+            v-model="remark"
+            type="textarea"
+            :rows="2"
+            maxlength="500"
+            show-word-limit
+            :placeholder="decision === 'REJECT' ? '请填写退回原因' : '审核意见（选填）'"
+          />
+        </el-form-item>
+      </el-form>
+    </div>
+    <template #footer>
+      <el-button :disabled="executing" @click="handleClose">返回版本维护</el-button>
+      <el-button :disabled="loading || executing" @click="loadPlan">重新检查</el-button>
+      <el-button
+        v-if="!readonly"
+        type="primary"
+        :loading="executing"
+        :disabled="!canExecute"
+        @click="execute"
+        >{{ confirmLabel }}</el-button
+      >
     </template>
   </el-dialog>
 </template>
@@ -201,118 +233,235 @@ export function reviewActionLabel(action: ReviewAction): string {
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { productBomApi } from '@/api/product/bom'
+import { hasPermi } from '@/directives'
+import { ManufacturingOutputTypeEnum } from '@/enums/product'
+import { buildBomReviewTree } from './bomReviewTree'
+import type {
+  BomReviewBatchResult,
+  BomReviewPackageNode,
+  BomReferenceImpact,
+} from '@/types/product/bom'
 
-const props = defineProps({
-  modelValue: { type: Boolean, default: false },
-  action: { type: String as () => ReviewAction, default: 'SUBMIT' },
-  rootBomIds: { type: Array as () => number[], default: () => [] },
-  readonly: { type: Boolean, default: false },
-})
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    action?: ReviewAction
+    rootBomIds: number[]
+    readonly?: boolean
+  }>(),
+  { action: 'SUBMIT', readonly: false }
+)
 const emit = defineEmits<{
   (event: 'update:modelValue', value: boolean): void
-  (event: 'confirm', scopes: BomReviewProductScope[], plans: BomReviewPackage[]): void
-  (event: 'open-bom', bomId: number): void
+  (event: 'done', result: BomReviewBatchResult): void
+  (event: 'close'): void
+  (event: 'open-bom', bomId: number, process: boolean): void
 }>()
-
 const visible = computed({
   get: () => props.modelValue,
-  set: (value: boolean) => emit('update:modelValue', value),
+  set: (value) => {
+    if (!executing.value) emit('update:modelValue', value)
+  },
 })
 const loading = ref(false)
-const confirming = ref(false)
+const executing = ref(false)
+const needsRefresh = ref(false)
 const error = ref('')
 const plans = ref<BomReviewPackage[]>([])
-const dialogTitle = computed(() => reviewActionLabel(props.action) + '范围确认')
-const actionLabel = computed(() => reviewActionLabel(props.action))
-const executableScopes = computed(() => buildReviewPackageScopes(plans.value, props.action))
-
+const rejectPlans = ref<BomReviewPackage[]>([])
+const references = ref<BomReferenceImpact[]>([])
+const decision = ref<ReviewAction>('SUBMIT')
+const remark = ref('')
+let loadRequest = 0
+const dialogTitle = computed(() =>
+  props.action === 'SUBMIT' ? '提交审核 · 整套BOM' : '审核 · 整套BOM'
+)
+const confirmLabel = computed(() =>
+  decision.value === 'SUBMIT'
+    ? '确认整套提交'
+    : decision.value === 'APPROVE'
+      ? '整套审核通过'
+      : '确认退回修改'
+)
+const scopes = computed(() =>
+  buildReviewPackageScopes(
+    decision.value === 'REJECT' ? rejectPlans.value : plans.value,
+    decision.value
+  )
+)
+const permitted = computed(() =>
+  hasPermi(
+    decision.value === 'SUBMIT'
+      ? 'engineering:bom:edit'
+      : decision.value === 'APPROVE'
+        ? 'engineering:bom:approve'
+        : 'engineering:bom:reject'
+  )
+)
+const canExecute = computed(
+  () =>
+    !props.readonly &&
+    !loading.value &&
+    !executing.value &&
+    !needsRefresh.value &&
+    permitted.value &&
+    scopes.value.length === props.rootBomIds.length &&
+    scopes.value.length > 0 &&
+    (decision.value !== 'REJECT' || !!remark.value.trim())
+)
 const loadPlan = async () => {
-  if (!props.modelValue) return
-  const ids = (props.rootBomIds || []).filter((id) => Number.isFinite(id) && id > 0)
-  if (!ids.length) {
-    plans.value = []
-    error.value = '请先选择至少一个产品BOM'
-    return
-  }
+  if (!props.modelValue || executing.value) return
+  const token = ++loadRequest
   loading.value = true
+  needsRefresh.value = true
   error.value = ''
   plans.value = []
+  rejectPlans.value = []
+  references.value = []
   try {
-    const response = await productBomApi.planReviewPackages(props.action, ids)
+    const [response, rejection] = await Promise.all([
+      productBomApi.planReviewPackages(props.action, props.rootBomIds),
+      props.action === 'APPROVE'
+        ? productBomApi.planReviewPackages('REJECT', props.rootBomIds)
+        : Promise.resolve(null),
+    ])
+    if (token !== loadRequest) return
     plans.value = response.data || []
+    rejectPlans.value = rejection?.data || []
+    const materialRoot = plans.value.find(
+      (plan) => plan.outputType === ManufacturingOutputTypeEnum.MATERIAL
+    )
+    if (materialRoot && props.action === 'APPROVE') {
+      const impact = await productBomApi.getBomReferenceImpact(materialRoot.rootBomId)
+      if (token !== loadRequest) return
+      references.value = impact.data || []
+    }
+    needsRefresh.value = false
   } catch (e: any) {
-    error.value = e?.message || '整套范围加载失败，请刷新后重试'
+    if (token === loadRequest) error.value = e?.message || '整套范围加载失败，请重新检查'
   } finally {
-    loading.value = false
+    if (token === loadRequest) loading.value = false
   }
 }
-
+const execute = async () => {
+  if (!canExecute.value) return
+  const payload = { action: decision.value, products: scopes.value, remark: remark.value.trim() }
+  executing.value = true
+  error.value = ''
+  try {
+    const response =
+      decision.value === 'SUBMIT'
+        ? await productBomApi.submitReviewPackages(payload)
+        : decision.value === 'APPROVE'
+          ? await productBomApi.approveReviewPackages(payload)
+          : await productBomApi.rejectReviewPackages(payload)
+    const result = response.data
+    if (
+      !result ||
+      result.failures?.length ||
+      result.successes?.length !== payload.products.length
+    ) {
+      needsRefresh.value = true
+      error.value =
+        result?.failures?.map((item) => item.reason).join('；') || '未能完成整套操作，请重新检查'
+      return
+    }
+    ElMessage.success(
+      decision.value === 'SUBMIT'
+        ? '整套BOM已提交审核'
+        : decision.value === 'APPROVE'
+          ? '整套BOM审核通过'
+          : '已退回修改'
+    )
+    emit('done', result)
+    executing.value = false
+    handleClose()
+  } catch (e: any) {
+    needsRefresh.value = true
+    error.value = e?.message || '整套操作失败，请重新检查后重试'
+  } finally {
+    executing.value = false
+  }
+}
+const nodeActionLabel = (node: BomReviewPackageNode, rootId: number) => {
+  if (decision.value === 'REJECT') return node.bomId === rootId ? '本次退回' : '保留原状态'
+  return node.plannedAction
+    ? {
+        SUBMIT: '本次提交',
+        APPROVE: '本次审核',
+        REJECT: '本次退回',
+        REUSE: '已批准复用',
+        REUSE_PENDING: '审核中复用',
+        BLOCKED: '待处理',
+      }[node.plannedAction]
+    : '—'
+}
+const issueLocation = (plan: BomReviewPackage, issue: BomReviewPackageIssue) => {
+  const node = plan.nodes.find((item) => item.bomId === issue.bomId)
+  const item = node?.items?.find((item) => item.itemId === issue.itemId)
+  return [node?.outputName || node?.bomName || plan.rootBomCode, item?.materialName]
+    .filter(Boolean)
+    .join(' › ')
+}
+const canProcessRow = (plan: BomReviewPackage, bomId: number) => {
+  if (props.readonly) return false
+  const status = plan.nodes.find((node) => node.bomId === bomId)?.status
+  return status === BomStatusEnum.REVIEWING.value
+    ? hasPermi(['engineering:bom:approve', 'engineering:bom:reject'])
+    : (status === BomStatusEnum.DRAFT.value || status === BomStatusEnum.REJECTED.value) &&
+        hasPermi('engineering:bom:edit')
+}
+const handleClose = () => {
+  if (executing.value) return
+  ++loadRequest
+  emit('update:modelValue', false)
+  emit('close')
+}
 watch(
   () => [props.modelValue, props.action, props.rootBomIds] as const,
   () => {
-    if (props.modelValue) void loadPlan()
+    ++loadRequest
+    if (props.modelValue) {
+      remark.value = ''
+      decision.value =
+        props.action === 'APPROVE' && !hasPermi('engineering:bom:approve') ? 'REJECT' : props.action
+      void loadPlan()
+    }
   },
   { immediate: true }
 )
-
-const statusLabel = (value: number) => BomStatusEnum.getLabel(value)
-const statusTagType = (value: number) => {
-  const item = BomStatusEnum.items.find((entry) => entry.value === value)
-  return (item as any)?.tagType || 'info'
-}
-const itemStatusLabel = (value?: number) =>
-  value == null ? '—' : BomItemReviewStatusEnum.getLabel(value)
-const itemStatusTag = (value?: number) => {
-  const item = BomItemReviewStatusEnum.items.find((entry) => entry.value === value)
-  return (item as any)?.tagType || 'info'
-}
-const plannedActionLabel = (value?: string) =>
-  ({
-    SUBMIT: '本次送审',
-    APPROVE: '本次通过',
-    REJECT: '退回根方案',
-    REUSE: '已批准复用',
-    REUSE_PENDING: '审核中复用',
-    BLOCKED: '阻断',
-  })[value || ''] || '—'
-const actionTagType = (value?: string) =>
-  value === 'REUSE' || value === 'REUSE_PENDING'
-    ? 'success'
-    : value === 'BLOCKED'
-      ? 'danger'
-      : value
-        ? 'warning'
-        : 'info'
-const issueLocation = (plan: BomReviewPackage, issue: BomReviewPackageIssue) => {
-  const node = (plan.nodes || []).find((item) => item.bomId === issue.bomId)
-  const base =
-    issue.bomId === plan.rootBomId ? plan.rootBomCode || '根方案' : node?.bomCode || '方案'
-  return issue.itemId ? base + ' 行#' + issue.itemId : base
-}
-
-const handleConfirm = () => {
-  if (props.readonly) return
-  const scopes = executableScopes.value
-  if (!scopes.length) return
-  confirming.value = true
-  emit('confirm', scopes, plans.value)
-  confirming.value = false
-}
-const handleClose = () => {
-  visible.value = false
-}
+defineExpose({ loadPlan })
 </script>
 
 <style scoped>
-.scope-plan { margin-bottom: 20px; }
-.scope-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
-.scope-title { font-size: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.scope-version { color: #606266; }
-.scope-meta { color: #606266; font-size: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.scope-blocking { margin-bottom: 8px; }
-.blocking-line { font-size: 12px; line-height: 20px; }
-.scope-reason { color: #909399; font-size: 12px; margin-bottom: 8px; }
-.node-items { padding: 8px 16px; }
-.node-issues { color: #f56c6c; font-size: 12px; margin-top: 6px; }
+.scope-plan {
+  margin-bottom: 16px;
+}
+.scope-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.scheme-code {
+  margin-left: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+.scope-plan > .el-alert {
+  margin-bottom: 12px;
+}
+.node-issue {
+  color: var(--el-color-danger);
+  white-space: pre-wrap;
+}
+.blocking-line {
+  line-height: 22px;
+}
+.review-form {
+  margin-top: 16px;
+}
 </style>

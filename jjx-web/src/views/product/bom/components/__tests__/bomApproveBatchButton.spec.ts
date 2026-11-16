@@ -60,9 +60,9 @@ const bomDetail = (items: Array<Record<string, unknown>>) => ({
   },
 })
 
-const mountDialog = () =>
+const mountDialog = (itemsOnly = false) =>
   mount(BomApproveDialog, {
-    props: { modelValue: true, bomId: 9 },
+    props: { modelValue: true, bomId: 9, itemsOnly },
     global: {
       stubs: {
         ElDialog: ElDialogStub,
@@ -89,6 +89,20 @@ beforeEach(() => {
 })
 
 describe('BOM审核 批量通过后的批准按钮', () => {
+  it('整套辅助处理保留明细能力，隐藏单方案批准与意见，关闭直接返回整套', async () => {
+    api.getEngineeringBomInfo.mockResolvedValue(bomDetail([{ itemId: 11, reviewStatus: BomItemReviewStatusEnum.PENDING.value }]))
+    api.checkBomForApprove.mockResolvedValue({ data: [] })
+    const wrapper = mountDialog(true)
+    await flushPromises()
+    expect(wrapper.findComponent(BomItemReviewTableStub).props('canReview')).toBe(true)
+    expect(approveButton(wrapper)).toBeUndefined()
+    expect(wrapper.findComponent({ name: 'ApprovalOpinionForm' }).exists()).toBe(false)
+    await (wrapper.vm as any).handleSubmit()
+    expect(api.approveEngineeringBom).not.toHaveBeenCalled()
+    await wrapper.findAll('button').find(button => button.text() === '返回整套审核')!.trigger('click')
+    expect(wrapper.emitted('close')).toHaveLength(1)
+    wrapper.unmount()
+  })
   it('批量通过后回读体检结果，批准按钮恢复可点（不需关窗重开）', async () => {
     api.getEngineeringBomInfo.mockResolvedValue(
       bomDetail([{ itemId: 11, reviewStatus: BomItemReviewStatusEnum.PENDING.value }])

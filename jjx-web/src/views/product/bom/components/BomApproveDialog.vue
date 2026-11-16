@@ -3,7 +3,7 @@
     <BomBasicInfo :detail="detail" />
 
     <el-alert
-      v-if="blockingIssues.length"
+      v-if="blockingIssues.length && !itemsOnly"
       type="warning"
       :closable="false"
       show-icon
@@ -33,7 +33,7 @@
       @create="handleCreateMaterial"
     />
 
-    <el-card class="approve-form-card" shadow="never">
+    <el-card v-if="!itemsOnly" class="approve-form-card" shadow="never">
       <template #header>审核意见</template>
       <ApprovalOpinionForm
         ref="approveFormRef"
@@ -47,8 +47,9 @@
 
     <template #footer>
       <span class="dialog-footer">
-        <el-button @click="handleClose">取消</el-button>
+        <el-button @click="handleClose">{{ itemsOnly ? '返回整套审核' : '取消' }}</el-button>
         <el-button
+          v-if="!itemsOnly"
           type="primary"
           v-hasPermi="['engineering:bom:approve']"
           :loading="submitting"
@@ -128,6 +129,8 @@ const props = defineProps({
     type: String,
     default: 'BOM审核',
   },
+  /** 整套审核中的辅助处理，只关联物料/处理明细，不允许单独改变本方案审核状态。 */
+  itemsOnly: { type: Boolean, default: false },
 })
 
 // Emits
@@ -364,6 +367,11 @@ const handleClose = () => {
     ElMessage.warning('正在提交，请稍候...')
     return
   }
+  if (props.itemsOnly) {
+    visible.value = false
+    emit('close')
+    return
+  }
   ElMessageBox.confirm('确定要关闭审核窗口吗？未保存的审核意见将会丢失。', '提示', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
@@ -571,6 +579,7 @@ const handleMaterialCreated = async (material: InventoryMaterial) => {
 
 // 整单审核提交
 const handleSubmit = async () => {
+  if (props.itemsOnly) return
   if (!approveFormRef.value) return
 
   try {
