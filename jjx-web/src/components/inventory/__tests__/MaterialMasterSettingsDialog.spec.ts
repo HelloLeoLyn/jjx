@@ -192,6 +192,59 @@ describe('属性模板界面保存', () => {
     await flushPromises()
     return { wrapper, state }
   }
+  async function loadedOptionPanel(type: 'enum' | 'multienum' = 'enum') {
+    const wrapper = mount(MaterialMasterSettingsPanel, { props: { initialTab: 'template', focusSection: 'template' }, global: { stubs: {
+      ...editableStubs, ElTable: false, ElTableColumn: false, ElInput: false,
+    } } })
+    await flushPromises()
+    const state = wrapper.vm as any
+    state.templateCategoryId = 2
+    await state.loadTemplate(2)
+    state.schema.fields[0].type = type
+    await flushPromises()
+    return { wrapper, state }
+  }
+  it.each(['enum', 'multienum'] as const)('选项文本框（%s）逐字输入、换行、粘贴及删除后保留原文，未失焦也能提交', async type => {
+    const { wrapper, state } = await loadedOptionPanel(type)
+    const textarea = wrapper.get('textarea')
+    for (const value of [
+      'SPRING=弹片\n',
+      'SPRING=弹片\nN',
+      'SPRING=弹片\nNE',
+      'SPRING=弹片\nNEW=',
+      'SPRING=弹片\nNEW=新选项',
+      'SPRING=弹片\nNEW=新选项\n\n',
+      'FIRST=第一项\nSECOND=第二项=附加说明',
+      '',
+      'SPRING=弹片\nNEW=新增',
+    ]) {
+      ;(textarea.element as HTMLTextAreaElement).value = value
+      await textarea.trigger('input')
+      await flushPromises()
+      expect((textarea.element as HTMLTextAreaElement).value).toBe(value)
+    }
+    await state.saveTemplate()
+    expect(api.saveTemplateFields).toHaveBeenCalledWith(expect.objectContaining({ attributeSchema: expect.objectContaining({
+      fields: [expect.objectContaining({ type, options: [{ code: 'SPRING', label: '弹片' }, { code: 'NEW', label: '新增' }] })],
+    }) }))
+    wrapper.unmount()
+  })
+  it('选项文本框保存失败保留草稿，重新加载后显示已保存内容', async () => {
+    const { wrapper, state } = await loadedOptionPanel()
+    const textarea = wrapper.get('textarea')
+    const draft = ' SPRING = 弹片\n\nNEW=新选项\n'
+    ;(textarea.element as HTMLTextAreaElement).value = draft
+    await textarea.trigger('input')
+    await flushPromises()
+    api.saveTemplateFields.mockRejectedValueOnce(new Error('保存失败'))
+    await state.saveTemplate()
+    expect(state.error).toBe('保存失败')
+    expect((textarea.element as HTMLTextAreaElement).value).toBe(draft)
+    await state.loadTemplate(2)
+    await flushPromises()
+    expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('SPRING=弹片')
+    wrapper.unmount()
+  })
   it.each(['name_pattern', 'model_pattern', 'spec_pattern'])('%s 多字符/空串保存回读保真，4字符拒绝保存且中文提示', async block => {
     const { wrapper, state } = await loadedPanel()
     state.toggleNameField('brand', true)

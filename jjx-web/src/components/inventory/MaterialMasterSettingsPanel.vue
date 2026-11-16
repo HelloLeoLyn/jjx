@@ -239,7 +239,7 @@
                     :model-value="optionText(row)"
                     type="textarea"
                     :rows="2"
-                    @change="setOptions(row, $event)"
+                    @update:model-value="setOptions(row, $event)"
                   />
                   <template v-else-if="row.type === 'integer' || row.type === 'decimal'">
                     <el-input-number
@@ -1209,10 +1209,13 @@ function conditionOptions(field: MaterialAttributeField) {
   if (dependency?.type === 'boolean') return [{ code: 'true', label: dependency.true_label || '是' }, { code: 'false', label: dependency.false_label || '否' }]
   return dependency?.options || []
 }
+// 输入期间保留原文，避免重新格式化吞掉空行、空格或尚未写完的编码；重载字段后自然丢弃旧草稿。
+const optionDrafts = reactive(new WeakMap<MaterialAttributeField, string>())
 function optionText(field: MaterialAttributeField) {
-  return (field.options || []).map((o) => `${o.code}=${o.label}`).join('\n')
+  return optionDrafts.get(field) ?? (field.options || []).map((o) => `${o.code}=${o.label}`).join('\n')
 }
 function setOptions(field: MaterialAttributeField, value: string) {
+  optionDrafts.set(field, value)
   field.options = value
     .split('\n')
     .filter((line) => line.trim())
