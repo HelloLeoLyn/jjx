@@ -110,11 +110,12 @@ const Table = defineComponent({
 })
 const Column = defineComponent({
   props: ['label'],
-  setup(_, { slots }) {
+  setup(props, { slots }) {
     const rows = inject<() => any[]>('rows')!
     return () =>
       h(
         'div',
+        { 'data-column': props.label },
         rows().map((row, $index) => slots.default?.({ row, $index }))
       )
   },
@@ -134,10 +135,10 @@ const versions = [
   { bomId: 6, bomVersion: 'V1.0', approveStatus: BomStatusEnum.REVIEWING.value },
 ]
 let wrapper: ReturnType<typeof mount> | undefined
-const setup = async (outputType = 'PRODUCT') => {
+const setup = async (outputType = 'PRODUCT', overrides: Record<string, unknown> = {}) => {
   mocks.get.mockImplementation(async (url: string) =>
     url.endsWith('product-page')
-      ? { data: { records: [{ ...product, outputType }], total: 1 } }
+      ? { data: { records: [{ ...product, outputType, ...overrides }], total: 1 } }
       : { data: versions }
   )
   wrapper = mount(BomPage, {
@@ -153,9 +154,13 @@ const setup = async (outputType = 'PRODUCT') => {
     },
   })
   await flushPromises()
+  if (outputType === 'MATERIAL') {
+    await wrapper.get('#tab-MATERIAL').trigger('click')
+    await flushPromises()
+  }
   await wrapper
     .findAll('button')
-    .find((button) => button.text() === '版本维护')!
+    .find((button) => button.text().startsWith('版本维护（'))!
     .trigger('click')
   await flushPromises()
   return {
@@ -171,6 +176,44 @@ afterEach(() => {
 })
 
 describe('BOM版本维护整套操作接线', () => {
+  it('当前生效与最新维护版本分别打开确切详情ID，保持只读；版本数并入维护入口', async () => {
+    await setup('PRODUCT', {
+      currentId: 4,
+      currentVersion: 'V0.9',
+      currentStatus: BomStatusEnum.APPROVED.value,
+      currentEffectiveDate: '2026-11-01',
+      productName: '控制面板',
+      issueCount: 2,
+    })
+    const links = wrapper!.findAll('.el-link')
+    await links.find((link) => link.text() === 'V1.1')!.trigger('click')
+    expect(wrapper!.findComponent({ name: 'BomDetail' }).props('bomId')).toBe(7)
+    await links.find((link) => link.text() === 'V0.9')!.trigger('click')
+    expect(wrapper!.findComponent({ name: 'BomDetail' }).props('bomId')).toBe(4)
+    expect(wrapper!.findComponent({ name: 'BomFormDialog' }).props('modelValue')).toBe(false)
+    expect(wrapper!.text()).toContain('版本维护（2）')
+    expect(wrapper!.get('[data-column="产品信息"]').text()).toContain('控制面板')
+    expect(wrapper!.get('[data-column="待处理"]').text()).toBe('2 项待处理')
+    expect(wrapper!.find('[data-column="实际引用方案"]').exists()).toBe(false)
+    expect(wrapper!.find('[data-column="状态摘要"]').exists()).toBe(false)
+    expect(wrapper!.find('[data-column="版本数"]').exists()).toBe(false)
+  })
+  it.each([0, -1, undefined])(
+    '缺少版本时不生成查看链接，待处理数量 %s 按实际口径显示',
+    async (issueCount) => {
+      await setup('PRODUCT', {
+        latestId: undefined,
+        latestVersion: undefined,
+        versionCount: 0,
+        issueCount,
+      })
+      expect(wrapper!.findAll('.el-link')).toHaveLength(0)
+      expect(wrapper!.text()).toContain('未生效')
+      expect(wrapper!.text()).toContain('未建BOM')
+      expect(wrapper!.text()).toContain('版本维护（0）')
+      expect(wrapper!.get('[data-column="待处理"]').text()).toBe(issueCount === 0 ? '—' : '待核查')
+    }
+  )
   it.each(['PRODUCT', 'MATERIAL'])(
     '%s 列表仅版本维护和流水，所选历史版本进入整套提交，返回保留上下文',
     async (outputType) => {
@@ -180,6 +223,16 @@ describe('BOM版本维护整套操作接线', () => {
       expect(labels).not.toContain('查看整套')
       expect(labels).not.toContain('送审')
       expect(labels).not.toContain('审批')
+      expect(
+        wrapper!
+          .find(`[data-column="${outputType === 'PRODUCT' ? '产品信息' : '物料信息'}"]`)
+          .exists()
+      ).toBe(true)
+      await wrapper!
+        .findAll('.el-link')
+        .find((link) => link.text() === 'V1.1')!
+        .trigger('click')
+      expect(wrapper!.findComponent({ name: 'BomDetail' }).props('bomId')).toBe(7)
       await version.vm.$emit('action', 'submit', version.props('rows')[1])
       await flushPromises()
       expect(scope.props('rootBomIds')).toEqual([6])

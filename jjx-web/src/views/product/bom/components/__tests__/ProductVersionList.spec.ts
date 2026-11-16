@@ -104,7 +104,7 @@ for (const domain of ['bom', 'route'] as const)
       } else {
         expect(template).not.toContain('type="selection"')
       }
-      expect(template).toContain('当前版本（生效日）')
+      expect(template).toContain(domain === 'bom' ? '当前生效版本' : '当前版本（生效日）')
     })
     it('复制请求默认版本号；设为当前携带已观察到的当前版本，失败保留复制输入', async () => {
       const { state: s, calls, api } = setup(domain)

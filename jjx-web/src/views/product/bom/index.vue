@@ -39,44 +39,47 @@
       <el-button @click="exportList">导出全部版本</el-button>
 
       <el-table v-loading="loading" :data="rows" :row-key="rowKey" style="margin-top: 16px">
-        <el-table-column
-          prop="productCode"
-          :label="activeTab === 'PRODUCT' ? '产品编码' : '物料编码'"
-          min-width="160"
-        />
-        <el-table-column
-          prop="productName"
-          :label="activeTab === 'PRODUCT' ? '产品名称' : '物料名称'"
-          min-width="160"
-        />
+        <el-table-column :label="activeTab === 'PRODUCT' ? '产品信息' : '物料信息'" min-width="220">
+          <template #default="{ row }">
+            <div>{{ row.productCode || '—' }}</div>
+            <div
+              v-if="row.productName && row.productName !== row.productCode"
+              class="secondary-line"
+            >
+              {{ row.productName }}
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="规格" min-width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ formatSpecification(row.specification) }}</template>
         </el-table-column>
-        <el-table-column v-if="activeTab === 'PRODUCT'" label="当前版本（生效日）" min-width="210">
+        <el-table-column v-if="activeTab === 'PRODUCT'" label="当前生效版本" min-width="180">
           <template #default="{ row }">
             <el-link v-if="row.currentId" type="primary" @click="openVersionDetail(row.currentId)">
-              {{ row.currentVersion }}
+              {{ row.currentVersion || '查看' }}
             </el-link>
-            <span v-else>{{ row.currentVersion || '—' }}</span>
+            <span v-else class="secondary-line">未生效</span>
             <el-tag
-              v-if="row.currentStatus != null"
+              v-if="row.currentId && row.currentStatus != null"
               size="small"
               :type="statusTagType(row.currentStatus)"
               class="inline-tag"
             >
               {{ statusLabel(row.currentStatus) }}
             </el-tag>
-            （{{
-              row.currentEffectiveDate ? parseTime(row.currentEffectiveDate, 'yyyy-MM-dd') : '—'
-            }}）
+            <div v-if="row.currentId && row.currentEffectiveDate" class="secondary-line">
+              生效：{{ parseTime(row.currentEffectiveDate, 'yyyy-MM-dd') }}
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="最新维护版本" min-width="170">
           <template #default="{ row }">
-            <span v-if="row.latestVersion">{{ row.latestVersion }}</span>
-            <span v-else>—</span>
+            <el-link v-if="row.latestId" type="primary" @click="openVersionDetail(row.latestId)">
+              {{ row.latestVersion || '查看' }}
+            </el-link>
+            <span v-else class="secondary-line">未建BOM</span>
             <el-tag
-              v-if="row.latestStatus != null"
+              v-if="row.latestId && row.latestStatus != null"
               size="small"
               :type="statusTagType(row.latestStatus)"
               class="inline-tag"
@@ -87,44 +90,28 @@
         </el-table-column>
         <el-table-column
           v-if="activeTab === 'PRODUCT'"
-          label="实际引用方案"
-          min-width="240"
-          show-overflow-tooltip
+          label="待处理"
+          min-width="130"
+          align="center"
         >
           <template #default="{ row }">
-            <span v-if="row.subBomSummary">{{ row.subBomSummary }}</span>
-            <span v-else>—</span>
-          </template>
-        </el-table-column>
-        <el-table-column v-if="activeTab === 'PRODUCT'" label="问题" width="90" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.issueCount === -1" type="warning" size="small">待核查</el-tag>
+            <el-tag v-if="row.issueCount == null || row.issueCount < 0" type="warning" size="small"
+              >待核查</el-tag
+            >
             <el-tag v-else-if="row.issueCount > 0" type="danger" size="small">
-              {{ row.issueCount }}
+              {{ row.issueCount }} 项待处理
             </el-tag>
-            <el-tag v-else type="success" size="small">0</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="versionCount" label="版本数" width="90">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="openVersions(row)">
-              {{ row.versionCount }}
-            </el-button>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态摘要" min-width="150">
-          <template #default="{ row }">
-            <el-tag v-if="row.hasDraft" type="info">有草稿</el-tag>
-            <el-tag v-if="row.hasPending" type="warning">有待审</el-tag>
-            <span v-if="!row.hasDraft && !row.hasPending">—</span>
+            <span v-else class="secondary-line">—</span>
           </template>
         </el-table-column>
         <el-table-column label="最近修改时间" width="170">
           <template #default="{ row }">{{ parseTime(row.updateTime) || '—' }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="180">
+        <el-table-column label="操作" width="200">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openVersions(row)">版本维护</el-button>
+            <el-button link type="primary" @click="openVersions(row)"
+              >版本维护（{{ row.versionCount ?? 0 }}）</el-button
+            >
             <el-button link type="primary" @click="openTrace(row)">流水</el-button>
           </template>
         </el-table-column>
@@ -508,5 +495,9 @@ onBeforeRouteLeave(async () => {
 }
 .inline-tag {
   margin-left: 6px;
+}
+.secondary-line {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 </style>
