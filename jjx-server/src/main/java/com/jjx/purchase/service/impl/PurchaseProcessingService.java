@@ -188,12 +188,15 @@ public class PurchaseProcessingService {
             ReceiptFact fact;
             try{fact=json.readValue(row.getPurchaseProcessingJson(),ReceiptFact.class);}catch(Exception ex){throw new IllegalStateException(ex);}
             int rolls=fact.getRollLengthM()==null?1:fact.getQuantity().intValueExact();
-            BigDecimal allocatedArea=ZERO,allocatedCost=ZERO;
+            BigDecimal allocatedArea=ZERO,allocatedCost=ZERO,allocatedQuantity=ZERO;
             for(int n=1;n<=rolls;n++){
                 var physical=new InventoryInboundItem();org.springframework.beans.BeanUtils.copyProperties(row,physical);
                 var f=new ReceiptFact();org.springframework.beans.BeanUtils.copyProperties(fact,f);
                 if(fact.getRollLengthM()!=null){
-                    f.setQuantity(BigDecimal.ONE);physical.setQuantity(row.getQuantity().divide(BigDecimal.valueOf(rolls),4,RoundingMode.HALF_UP));
+                    f.setQuantity(BigDecimal.ONE);
+                    BigDecimal nextQuantity=row.getQuantity().multiply(BigDecimal.valueOf(n)).divide(BigDecimal.valueOf(rolls),4,RoundingMode.HALF_UP);
+                    physical.setQuantity(nextQuantity.subtract(allocatedQuantity));allocatedQuantity=nextQuantity;
+                    require(physical.getQuantity().signum()>0,"余卷数量小于库存精度，请核对实际尺寸");
                     BigDecimal nextArea=fact.getSettledArea().multiply(BigDecimal.valueOf(n)).divide(BigDecimal.valueOf(rolls),4,RoundingMode.HALF_UP);
                     BigDecimal nextCost=fact.getNetCost().multiply(BigDecimal.valueOf(n)).divide(BigDecimal.valueOf(rolls),2,RoundingMode.HALF_UP);
                     f.setSettledArea(nextArea.subtract(allocatedArea));f.setNetCost(nextCost.subtract(allocatedCost));allocatedArea=nextArea;allocatedCost=nextCost;

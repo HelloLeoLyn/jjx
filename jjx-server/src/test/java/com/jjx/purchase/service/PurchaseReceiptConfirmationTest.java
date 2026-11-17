@@ -37,6 +37,10 @@ import static org.mockito.ArgumentMatchers.*;
 
 class PurchaseReceiptConfirmationTest {
     JdbcTemplate jdbc;
+    PurchaseOrderServiceImpl service;
+    PurchaseOrderItemMapper itemMapper;
+    InventoryInboundService inbound;
+    PurchaseOrder order;
     IPurchaseOrderService orders;
     PurchaseReceiptAttachmentService attachments;
     AttachmentRefService refs;
@@ -47,7 +51,7 @@ class PurchaseReceiptConfirmationTest {
         var ds = new DriverManagerDataSource("jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1", "sa", "");
         jdbc = new JdbcTemplate(ds);
         jdbc.execute("CREATE TABLE purchase_order(order_id BIGINT PRIMARY KEY)");
-        jdbc.execute("CREATE TABLE purchase_order_item(item_id BIGINT PRIMARY KEY, received DECIMAL(12,2))");
+        jdbc.execute("CREATE TABLE purchase_order_item(item_id BIGINT PRIMARY KEY, received DECIMAL(12,4))");
         jdbc.execute("CREATE TABLE inventory_inbound_order(inbound_id BIGINT AUTO_INCREMENT PRIMARY KEY,inbound_no VARCHAR(40),source_type VARCHAR(30),source_id BIGINT,remark VARCHAR(500))");
         jdbc.execute("CREATE TABLE sys_attachment(id BIGINT PRIMARY KEY,upload_state VARCHAR(20),owner VARCHAR(20),mime VARCHAR(80),size BIGINT,expires TIMESTAMP)");
         jdbc.execute("CREATE TABLE sys_attachment_ref(attachment_id BIGINT,source_id BIGINT,source_type VARCHAR(30))");
@@ -78,9 +82,9 @@ class PurchaseReceiptConfirmationTest {
         });
         attachments = new PurchaseReceiptAttachmentService(jdbc, files, refs);
         var orderMapper = mock(PurchaseOrderMapper.class);
-        var itemMapper = mock(PurchaseOrderItemMapper.class);
-        var inbound = mock(InventoryInboundService.class);
-        PurchaseOrder order = new PurchaseOrder(); order.setOrderId(1L); order.setOrderNo("PO-1"); order.setApprovalStatus(ApproveStatusEnum.APPROVED.getValue());
+        itemMapper = mock(PurchaseOrderItemMapper.class);
+        inbound = mock(InventoryInboundService.class);
+        order = new PurchaseOrder(); order.setOrderId(1L); order.setOrderNo("PO-1"); order.setApprovalStatus(ApproveStatusEnum.APPROVED.getValue());
         when(orderMapper.selectById(1L)).thenReturn(order);
         when(itemMapper.selectById(10L)).thenAnswer(c -> {
             var item = new PurchaseOrderItem(); item.setItemId(10L); item.setOrderId(1L); item.setQuantity(new BigDecimal("100"));
@@ -92,7 +96,7 @@ class PurchaseReceiptConfirmationTest {
             jdbc.update("INSERT INTO inventory_inbound_order(inbound_no,source_type,source_id,remark) VALUES('IN-test','PURCHASE',1,'采购收货自动入库')");
             return jdbc.queryForObject("SELECT MAX(inbound_id) FROM inventory_inbound_order", Long.class);
         });
-        var service = mock(PurchaseOrderServiceImpl.class, CALLS_REAL_METHODS);
+        service = mock(PurchaseOrderServiceImpl.class, CALLS_REAL_METHODS);
         ReflectionTestUtils.setField(service, "orderMapper", orderMapper);
         ReflectionTestUtils.setField(service, "orderItemMapper", itemMapper);
         ReflectionTestUtils.setField(service, "inboundService", inbound);
@@ -156,4 +160,33 @@ class PurchaseReceiptConfirmationTest {
         assertThrows(BusinessException.class,()->orders.batchReceiveOrderItems(changed));
         assertEquals(1,count("inventory_inbound_order"));
     }
+    PurchaseProcessingTest processingFixture() {
+        var f=new PurchaseProcessingTest();f.setup();ReflectionTestUtils.setField(service,"processingService",f.processing);
+        jdbc.execute("CREATE TABLE processing_actual(inbound_id BIGINT, material_id BIGINT, quantity DECIMAL(12,4), source_purchase_item_id BIGINT, snapshot CLOB)");
+        when(itemMapper.selectById(10L)).thenAnswer(c->{var source=f.source();source.setItemId(10L);source.setOrderId(1L);source.setReceivedQuantity(jdbc.queryForObject("SELECT received FROM purchase_order_item WHERE item_id=10",BigDecimal.class));return source;});
+        when(itemMapper.selectList(any())).thenAnswer(c->List.of(itemMapper.selectById(10L)));
+        when(inbound.createInboundRecordFromPurchase(eq(1L),anyList())).thenAnswer(c->{
+            jdbc.update("INSERT INTO inventory_inbound_order(inbound_no,source_type,source_id,remark) VALUES('IN-processing','PURCHASE',1,'实际交付')");
+            Long id=jdbc.queryForObject("SELECT MAX(inbound_id) FROM inventory_inbound_order",Long.class);
+            java.util.List<com.jjx.inventory.domain.InventoryInboundItem> actual=c.getArgument(1);
+            for(var row:actual)jdbc.update("INSERT INTO processing_actual VALUES(?,?,?,?,?)",id,row.getMaterialId(),row.getQuantity(),row.getSourcePurchaseItemId(),row.getPurchaseProcessingJson());return id;
+        });return f;
+    }
+    @Test void processingReceiptUsesActualOutputsAndRetryCannotChangeConfirmedQuantities(){
+        var f=processingFixture();var first=request("processing-draft-0001");first.getItems().get(0).setProcessingGroups(f.full());first.getItems().get(0).setReceivedQuantity(new BigDecimal("999999"));
+        assertEquals(1,orders.batchReceiveOrderItems(first));assertEquals(8,count("processing_actual"));
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM processing_actual WHERE material_id=354 OR source_purchase_item_id<>10",Integer.class));
+        assertEquals(0,new BigDecimal("366").compareTo(jdbc.queryForObject("SELECT received FROM purchase_order_item",BigDecimal.class)));
+        var retry=request("processing-draft-0001");retry.getItems().get(0).setProcessingGroups(f.full());assertEquals(0,orders.batchReceiveOrderItems(retry));assertEquals(8,count("processing_actual"));
+        var changed=request("processing-draft-0001");changed.getItems().get(0).setProcessingGroups(f.full());changed.getItems().get(0).getProcessingGroups().get(0).getOutputs().get(0).setQuantity(new BigDecimal("984"));assertThrows(BusinessException.class,()->orders.batchReceiveOrderItems(changed));assertEquals(8,count("processing_actual"));
+    }
+    @Test void processingReceiptBindingFailureRollsBackActualOutputsAndMotherQuantity(){
+        var f=processingFixture();doThrow(new BusinessException("绑定失败")).when(refs).create(any());var dto=request("processing-draft-0002",100L);dto.getItems().get(0).setProcessingGroups(f.full());
+        assertThrows(BusinessException.class,()->orders.batchReceiveOrderItems(dto));assertEquals(0,count("processing_actual"));assertEquals(0,count("inventory_inbound_order"));assertEquals(0,BigDecimal.ZERO.compareTo(jdbc.queryForObject("SELECT received FROM purchase_order_item",BigDecimal.class)));
+    }
+    @Test void processingReceiptRequiresApprovedOrderAndRejectsDuplicateSources(){
+        var f=processingFixture();order.setApprovalStatus(ApproveStatusEnum.PENDING.getValue());var dto=request("processing-draft-0003");dto.getItems().get(0).setProcessingGroups(f.full());assertThrows(BusinessException.class,()->orders.batchReceiveOrderItems(dto));assertEquals(0,count("processing_actual"));
+        order.setApprovalStatus(ApproveStatusEnum.APPROVED.getValue());dto.setItems(List.of(dto.getItems().get(0),dto.getItems().get(0)));assertThrows(BusinessException.class,()->orders.batchReceiveOrderItems(dto));assertEquals(0,count("inventory_inbound_order"));assertEquals(0,BigDecimal.ZERO.compareTo(jdbc.queryForObject("SELECT received FROM purchase_order_item",BigDecimal.class)));
+    }
+
 }

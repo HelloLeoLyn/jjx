@@ -98,6 +98,12 @@ public interface PurchaseOrderItemMapper extends BaseMapper<PurchaseOrderItem> {
             + "ORDER BY o.order_date DESC, o.order_id DESC, i.item_id DESC LIMIT 1")
     java.math.BigDecimal selectLastApprovedPrice(@Param("materialId") Long materialId);
 
+    /** 参考报价需同时承接计价单位与含税口径，审批状态由调用方具名枚举提供。 */
+    @Select("SELECT i.* FROM purchase_order_item i JOIN purchase_order o ON o.order_id=i.order_id "
+        + "WHERE i.material_id=#{materialId} AND o.approval_status=#{approvedStatus} AND i.unit_price>0 "
+        + "ORDER BY o.order_date DESC,o.order_id DESC,i.item_id DESC LIMIT 1")
+    PurchaseOrderItem selectLastApprovedItem(@Param("materialId") Long materialId,@Param("approvedStatus") Integer approvedStatus);
+
     @Select("SELECT * FROM purchase_order_item WHERE material_id = #{materialId} ORDER BY item_id DESC")
     List<PurchaseOrderItem> selectItemsByMaterialId(@Param("materialId") Long materialId);
 

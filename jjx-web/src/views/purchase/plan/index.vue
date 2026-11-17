@@ -1042,7 +1042,12 @@ async function loadReferencePrices(rows: PlanRow[]) {
         const price = row.lastPrice ?? row.standardPrice
         if (price != null) {
           row.unitPrice = price
-          row.amount = Number((Number(row.quantity || 0) * price).toFixed(2))
+          if (row.lastPrice != null) {
+            row.priceUnit = ref.lastPriceUnit || row.priceUnit
+            row.priceTaxInclusive = ref.lastPriceTaxInclusive ?? false
+            row.taxRate = ref.lastTaxRate ?? row.taxRate
+          }
+          // 数量换算、含税拆分和金额在采用或下单前统一由后端重算。
         }
       }
     }

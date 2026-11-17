@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { shallowMount, flushPromises } from '@vue/test-utils'
 import Plan from '../index.vue'
+import { getReferencePrices } from '@/api/purchase/planEntry'
 import { PurchasePlanSchemeStatusEnum as SchemeStatus } from '@/enums/purchase/plan'
 const mocks = vi.hoisted(() => ({
   suggestions: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock('@/api/purchase/planEntry', async (original) => ({
   getPlanMaterial: mocks.material,
   getPlanUnits: mocks.units,
   previewPlanScheme: mocks.preview,
+  getReferencePrices: vi.fn().mockResolvedValue({data:{}}),
 }))
 vi.mock('@/api/inventory/alert', () => ({ alertApi: { batchProcess: mocks.batch } }))
 vi.mock('@/api/inventory/material', () => ({ materialApi: { search: mocks.search } }))
@@ -105,6 +107,11 @@ afterEach(() => {
   wrappers = []
 })
 describe('采购计划数量与订单核对', () => {
+  it('参考采购价保留按卷含税口径，不在浏览器将面积乘单价', async()=>{
+    const {vm}=mount();await flushPromises();const row=vm.baseRow(material);row.quantity=366;row.unitPrice=0;row.amount=0
+    vi.mocked(getReferencePrices).mockResolvedValueOnce({data:{'110':{lastPrice:100,lastPriceUnit:'ROLL',lastPriceTaxInclusive:true,lastTaxRate:13}}} as any)
+    await vm.loadReferencePrices([row]);expect(row).toMatchObject({unitPrice:100,priceUnit:'ROLL',priceTaxInclusive:true,taxRate:13,amount:0})
+  })
   it('缺少主要供应商时可选择本次供应商；不写物料档案且保留原需', async () => {
     mocks.suggestions.mockResolvedValue({
       data: [

@@ -19,6 +19,7 @@ import static org.mockito.Mockito.*;
 class PurchaseOrderSuggestionsSupplierNameTest {
     @Test void lowStockAndShortageBothExposeSupplierMaterialName() {
         var service = mock(InventoryAlertServiceImpl.class, CALLS_REAL_METHODS);
+        ReflectionTestUtils.setField(service,"bomMapper",mock(com.jjx.product.mapper.EngineeringBomMapper.class));
         var stocks = mock(InventoryStockMapper.class);
         var materials = mock(InventoryMaterialMapper.class);
         var alerts = mock(InventoryAlertLogMapper.class);

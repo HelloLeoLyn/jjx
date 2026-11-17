@@ -56,7 +56,7 @@ export const getPlanMaterial = (id: number) =>
 /** 参考价（上次采购价 + 物料标准价），dev-20261113-010 */
 export const getReferencePrices = (materialIds: number[]) =>
   request.get<{
-    data: Record<string, { lastPrice?: number | null; standardPrice?: number | null }>
+    data: Record<string, { lastPrice?: number | null; lastPriceUnit?: string; lastPriceTaxInclusive?: boolean; lastTaxRate?: number | null; standardPrice?: number | null }>
   }>('/purchase/order/reference-price', { params: { materialIds: materialIds.join(',') } })
 export const previewPlanQuantity = (item: Partial<PurchaseEntryItem>) =>
   request.post<{ data: PurchaseEntryItem }>('/purchase/plan/quantity-preview', item)

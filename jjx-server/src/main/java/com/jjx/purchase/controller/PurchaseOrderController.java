@@ -49,7 +49,11 @@ public class PurchaseOrderController extends BaseController {
             for (Long materialId : materialIds) {
                 if (materialId == null) continue;
                 java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
-                row.put("lastPrice", purchaseOrderItemMapper.selectLastApprovedPrice(materialId));
+                var last=purchaseOrderItemMapper.selectLastApprovedItem(materialId,com.jjx.common.enums.ApproveStatusEnum.APPROVED.getValue());
+                row.put("lastPrice",last==null?null:last.getUnitPrice());
+                row.put("lastPriceUnit",last==null?null:last.getPriceUnit());
+                row.put("lastPriceTaxInclusive",last!=null&&Boolean.TRUE.equals(last.getPriceTaxInclusive()));
+                row.put("lastTaxRate",last==null?null:last.getTaxRate());
                 com.jjx.inventory.domain.InventoryMaterial material = inventoryMaterialMapper.selectById(materialId);
                 row.put("standardPrice", material == null ? null : material.getStandardPrice());
                 result.put(materialId, row);
@@ -66,7 +70,8 @@ public class PurchaseOrderController extends BaseController {
         if (materialIds != null) {
             for (Long materialId : materialIds) {
                 if (materialId == null) continue;
-                result.put(materialId, purchaseOrderItemMapper.selectLastApprovedPrice(materialId));
+                var last=purchaseOrderItemMapper.selectLastApprovedItem(materialId,com.jjx.common.enums.ApproveStatusEnum.APPROVED.getValue());
+                result.put(materialId,last==null?null:last.getUnitPrice());
             }
         }
         return Result.success(result);

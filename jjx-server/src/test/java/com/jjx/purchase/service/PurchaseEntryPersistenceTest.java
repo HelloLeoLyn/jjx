@@ -105,6 +105,21 @@ class PurchaseEntryPersistenceTest {
         } finally {pool.shutdown();}
         assertEquals("ROLL",service.read(16L,354L).get("purchaseUnit"));assertEquals("ROLL",service.read(16L,110L).get("purchaseUnit"));
     }
+    @Test void processingAndInclusivePricePersistReopenAndCopyWithoutLosingChildren() {
+        var fixture=new PurchaseProcessingTest();fixture.setup();
+        ReflectionTestUtils.setField(service,"materialMapper",fixture.materials);ReflectionTestUtils.setField(service,"processingService",fixture.processing);
+        var d=fixture.order();d.setOrderNo("PO-PROCESS");d.setSupplierId(16L);d.setSupplierName("test");d.setOrderDate(LocalDate.now());d.setExpectedDeliveryDate(LocalDate.now().plusDays(7));d.setCurrency("CNY");
+        transaction.execute(s->{service.insertOrder(d);return null;});var stored=orders.selectList(null).get(0);
+        var reopened=service.selectOrderById(stored.getOrderId());eq("31110",reopened.getOrderTotalAmount());var line=reopened.getItems().get(0);assertTrue(line.getPriceTaxInclusive());eq("31110",line.getQuotedAmount());assertEquals(3,fixture.processing.parse(line.getProcessingPlan()).getGroups().size());
+        doReturn("PO-PROCESS-COPY").when(service).generateOrderNo();Long copy=transaction.execute(s->service.copyOrder(stored.getOrderId()));var copied=service.selectOrderById(copy).getItems().get(0);assertEquals(line.getProcessingPlan(),copied.getProcessingPlan());assertTrue(copied.getPriceTaxInclusive());eq("31110",copied.getQuotedAmount());
+    }
+    @Test void referencePriceIncludesQuoteUnitAndInclusiveFlagAndOnlyUsesApprovedOrders(){
+        var d=order("PO-REFERENCE");d.getItems().get(0).setPriceTaxInclusive(true);d.getItems().get(0).setPriceUnit("ROLL");d.getItems().get(0).setUnitPrice(bd("100"));transaction.execute(s->{service.insertOrder(d);return null;});
+        var stored=orders.selectList(null).get(0);stored.setApprovalStatus(com.jjx.common.enums.ApproveStatusEnum.APPROVED.getValue());orders.updateById(stored);
+        var pending=order("PO-PENDING");pending.getItems().get(0).setUnitPrice(bd("999"));transaction.execute(s->{service.insertOrder(pending);return null;});var pendingRow=orders.selectList(null).stream().filter(o->o.getOrderNo().equals("PO-PENDING")).findFirst().orElseThrow();pendingRow.setApprovalStatus(com.jjx.common.enums.ApproveStatusEnum.PENDING.getValue());orders.updateById(pendingRow);
+        var controller=new com.jjx.purchase.controller.PurchaseOrderController(service,service,items,materials);var ref=controller.referencePrices(List.of(354L)).getData().get(354L);
+        eq("100",(BigDecimal)ref.get("lastPrice"));assertEquals("ROLL",ref.get("lastPriceUnit"));assertEquals(true,ref.get("lastPriceTaxInclusive"));eq("13",(BigDecimal)ref.get("lastTaxRate"));
+    }
     private void create(Class<?> entity) {
         var info=TableInfoHelper.getTableInfo(entity);var fields=new ArrayList<String>();
         fields.add(info.getKeyColumn()+" BIGINT AUTO_INCREMENT PRIMARY KEY");

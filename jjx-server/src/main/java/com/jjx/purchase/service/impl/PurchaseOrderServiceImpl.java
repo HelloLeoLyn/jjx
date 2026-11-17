@@ -1425,12 +1425,15 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                     throw new BusinessException("普通采购行不能提交加工交付");
                 if(itemDTO.getReceivedQuantity()==null || itemDTO.getReceivedQuantity().signum()<=0)
                     throw new BusinessException("收货数量必须大于0");
-                var receipt=new com.jjx.inventory.domain.InventoryInboundItem();
-                receipt.setSourcePurchaseItemId(item.getItemId());receipt.setMaterialId(item.getMaterialId());
-                receipt.setMaterialCode(item.getMaterialCode());receipt.setMaterialName(item.getMaterialName());receipt.setSpecification(item.getMaterialSpec());
-                receipt.setUnit(item.getUnit());receipt.setQuantity(itemDTO.getReceivedQuantity());receipt.setUnitPrice(baseUnitCost(item));
-                receipt.setAmount(item.getAmount().multiply(itemDTO.getReceivedQuantity()).divide(item.getQuantity(),2,RoundingMode.HALF_UP));
-                receiptLines.add(receipt);
+                if (hasProcessing) {
+                    // 普通订单保留原收货路径；混合加工订单才预建实际交付明细。
+                    var receipt=new com.jjx.inventory.domain.InventoryInboundItem();
+                    receipt.setSourcePurchaseItemId(item.getItemId());receipt.setMaterialId(item.getMaterialId());
+                    receipt.setMaterialCode(item.getMaterialCode());receipt.setMaterialName(item.getMaterialName());receipt.setSpecification(item.getMaterialSpec());
+                    receipt.setUnit(item.getUnit());receipt.setQuantity(itemDTO.getReceivedQuantity());receipt.setUnitPrice(baseUnitCost(item));
+                    receipt.setAmount(item.getAmount().multiply(itemDTO.getReceivedQuantity()).divide(item.getQuantity(),2,RoundingMode.HALF_UP));
+                    receiptLines.add(receipt);
+                }
             }
             // 更新收货数量
             BigDecimal newReceivedQuantity = item.getReceivedQuantity() != null ?
