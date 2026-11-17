@@ -122,7 +122,7 @@
       <template #footer><el-button :disabled="submitting" @click="verifyVisible = false">取消</el-button><el-button type="primary" :loading="submitting" @click="submitVerify">确认核销</el-button></template>
     </el-dialog>
 
-    <el-drawer v-model="detailVisible" title="发票详情" size="560px">
+    <el-dialog v-model="detailVisible" title="发票详情" width="1200px" append-to-body>
       <el-descriptions v-if="current" :column="2" border>
         <el-descriptions-item label="发票号">{{ current.documentNo }}</el-descriptions-item>
         <el-descriptions-item label="订单ID">{{ current.orderId }}</el-descriptions-item>
@@ -145,7 +145,10 @@
         view-perm="purchase:invoice:doc:view"
         edit-perm="purchase:invoice:doc:add"
       />
-    </el-drawer>
+      <template #footer>
+        <el-button @click="detailVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
