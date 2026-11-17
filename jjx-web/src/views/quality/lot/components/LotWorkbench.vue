@@ -497,12 +497,18 @@ const businessNoQueryEnabled = computed(
     (lotType === InspectionType.IQC &&
       (route.path === '/inventory/iqc' || route.query.tab === 'lots')),
 )
+const lotNoQueryEnabled = computed(
+  () =>
+    lotType === InspectionType.IQC &&
+    (route.path === '/inventory/iqc' || route.query.tab === 'lots'),
+)
 const query = reactive({
   pageNum: 1,
   pageSize: 10,
   lotType,
   status: '',
-  lotNo: '',
+  lotNo:
+    lotNoQueryEnabled.value && typeof route.query.lotNo === 'string' ? route.query.lotNo : '',
   businessNo:
     businessNoQueryEnabled.value && typeof route.query.businessNo === 'string'
       ? route.query.businessNo
@@ -512,6 +518,13 @@ const query = reactive({
 watch(() => route.query.businessNo, (businessNo) => {
   if (businessNoQueryEnabled.value && typeof businessNo === 'string') {
     query.businessNo = businessNo
+    void load(1)
+  }
+})
+// 来料检验合并入口：从工作台「去检验批录入」按检验批号定位（dev-20261117-025）
+watch(() => route.query.lotNo, (lotNo) => {
+  if (lotNoQueryEnabled.value && typeof lotNo === 'string') {
+    query.lotNo = lotNo
     void load(1)
   }
 })

@@ -142,6 +142,7 @@ const emit = defineEmits<{
   (e: 'history', row: any): void
   (e: 'disposition-history', row: any): void
   (e: 'dispose', row: any): void
+  (e: 'open-lot', row: any): void
 }>()
 
 /** 该行是否待处置（判据唯一出处：iqcRowRules.iqcNeedsDisposition） */
@@ -179,6 +180,12 @@ const materialActions: TableAction<any>[] = [
     visible: ({ row }) => pendingActionKey(row) === 'edit',
   },
   {
+    key: 'lot-entry',
+    label: '去检验批录入',
+    order: 4,
+    visible: ({ row }) => !!row.lotId,
+  },
+  {
     key: 'review',
     label: '审核',
     type: 'success',
@@ -203,6 +210,7 @@ const materialActions: TableAction<any>[] = [
 ]
 
 function handleMaterialAction(key: string, row: any) {
+  if (key === 'open-lot' || key === 'lot-entry') return emit('open-lot', row)
   if (key === 'print') return emit('print', row)
   if (key === 'history') return emit('history', row)
   if (key === 'disposition-history') return emit('disposition-history', row)

@@ -93,6 +93,7 @@
         @history="openHistory"
         @disposition-history="openDispositionHistory"
         @dispose="openDispositionForMaterial"
+        @open-lot="handleOpenLot"
       />
     </el-card>
     <el-empty v-else description="未选择来料批次" />
@@ -211,13 +212,16 @@ const props = withDefaults(
   }>(),
   { mode: 'view' }
 )
-const emit = defineEmits<{ (e: 'changed'): void }>()
+const emit = defineEmits<{ (e: 'changed'): void; (e: 'open-lot', row: any): void }>()
 const router = useRouter()
 const isInspectMode = computed(() => props.mode === 'handle')
 const canInspect = computed(() => isInspectMode.value && hasPermi('quality:lot:inspect'))
 const canJudge = computed(() => hasPermi('quality:lot:judge'))
 const canDispose = computed(() => hasPermi(['quality:ncr:dispose']))
 const canConfirmInbound = computed(() => hasPermi('inventory:inbound:confirm'))
+function handleOpenLot(row: any) {
+  emit('open-lot', row)
+}
 const flowOptions: Array<{
   key: FlowKey
   label: string

@@ -103,6 +103,7 @@
       :mode="panelMode"
       :action="panelAction"
       @changed="loadList(true)"
+      @open-lot="openLotEntry"
     />
     <el-card v-else shadow="never">
       <el-empty description="请选择上方一张来料批次" />
@@ -177,6 +178,16 @@ function handleTabChange(name: string | number) {
   const tab = name === 'lots' ? 'lots' : 'inbound'
   activeTab.value = tab
   router.replace({ path: '/inventory/iqc', query: { ...route.query, tab } })
+}
+
+/** 材料行「去检验批录入」：切到台账页签并按检验批号定位（dev-20261117-025，加法入口）。 */
+function openLotEntry(row: any) {
+  if (!row?.lotId) return
+  activeTab.value = 'lots'
+  router.replace({
+    path: '/inventory/iqc',
+    query: { tab: 'lots', lotNo: row.qualityLotNo || '' },
+  })
 }
 
 /** 从入库单跳到检验批台账，并按来料单号定位（dev-20261117-022）。 */
