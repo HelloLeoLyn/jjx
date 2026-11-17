@@ -116,6 +116,14 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
         if (payment == null) {
             throw new BusinessException("付款记录不存在");
         }
+        // 详情与列表口径一致：回填订单号/供应商，避免前端只能显示订单ID（dev-20261117-007）
+        if (payment.getOrderId() != null) {
+            PurchaseOrder order = orderMapper.selectById(payment.getOrderId());
+            if (order != null) {
+                payment.setOrderNo(order.getOrderNo());
+                payment.setSupplierName(order.getSupplierName());
+            }
+        }
         return payment;
     }
 

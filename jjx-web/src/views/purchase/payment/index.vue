@@ -18,6 +18,7 @@
             clearable
             style="width: 130px"
             placeholder="状态"
+            @change="handleStatusFilterChange"
           >
             <el-option
               v-for="item in PaymentStatusEnum.items"
@@ -48,6 +49,7 @@
             clearable
             style="width: 130px"
             placeholder="审批状态"
+            @change="handleStatusFilterChange"
           >
             <el-option
               v-for="item in PaymentApprovalStatusEnum.items"
@@ -75,7 +77,22 @@
           >新增申请</el-button
         >
       </div>
-      <el-table v-loading="loading" :data="rows" border>
+
+      <el-tabs v-model="activeTab" class="payment-tabs" @tab-change="handleTabChange">
+        <el-tab-pane label="全部" name="all" />
+        <el-tab-pane label="待审批" name="pending-approval" />
+        <el-tab-pane label="待确认付款" name="pending-payment" />
+        <el-tab-pane label="已付款" name="paid" />
+      </el-tabs>
+
+      <el-table
+        v-loading="loading"
+        :data="rows"
+        border
+        :row-class-name="rowClassName"
+        show-summary
+        :summary-method="summaryMethod"
+      >
         <el-table-column prop="paymentNo" label="付款单号" min-width="150" />
         <el-table-column prop="orderNo" label="采购订单号" min-width="160">
           <template #default="{ row }">
@@ -84,7 +101,12 @@
           </template>
         </el-table-column>
         <el-table-column prop="supplierName" label="供应商" min-width="180" show-overflow-tooltip />
-        <el-table-column prop="paymentDate" label="付款日期" width="110" />
+        <el-table-column prop="paymentDate" label="计划付款日" width="140">
+          <template #default="{ row }">
+            {{ row.paymentDate || '-' }}
+            <el-tag v-if="isOverdue(row)" type="danger" size="small">逾期</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="paymentAmount" label="金额" width="110" align="right">
           <template #default="{ row }">{{ money(row.paymentAmount) }}</template>
         </el-table-column>
@@ -231,17 +253,42 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="confirmVisible" title="确认付款" width="480px">
-      <el-form :model="confirmForm" label-width="90px">
-        <el-form-item label="实际付款日"
+    <el-dialog
+      v-model="confirmVisible"
+      title="确认付款"
+      width="800px"
+      :close-on-click-modal="false"
+    >
+      <el-alert
+        title="确认后付款单将标记为已付款、自动汇总到订单已付金额，且不可撤销。"
+        type="warning"
+        :closable="false"
+        show-icon
+        class="confirm-tip"
+      />
+      <el-descriptions :column="2" border class="confirm-summary">
+        <el-descriptions-item label="付款单号">{{ confirmTarget?.paymentNo || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="采购订单号">{{ confirmTarget?.orderNo || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="供应商">{{ confirmTarget?.supplierName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="申请金额">{{ money(confirmTarget?.paymentAmount) }}</el-descriptions-item>
+        <el-descriptions-item label="计划付款日">{{ confirmTarget?.paymentDate || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="付款方式">{{
+          PaymentMethodEnum.getLabel(confirmTarget?.paymentMethod)
+        }}</el-descriptions-item>
+      </el-descriptions>
+      <el-form ref="confirmFormRef" :model="confirmForm" :rules="confirmRules" label-width="100px">
+        <el-form-item label="实际付款日" prop="actualPaymentDate"
           ><el-date-picker
             v-model="confirmForm.actualPaymentDate"
             type="date"
             value-format="YYYY-MM-DD"
             style="width: 100%"
         /></el-form-item>
-        <el-form-item label="转账流水号"
-          ><el-input v-model="confirmForm.voucherNo" placeholder="银行转账流水号/回单号"
+        <el-form-item label="转账流水号" prop="voucherNo"
+          ><el-input
+            v-model="confirmForm.voucherNo"
+            maxlength="100"
+            placeholder="银行转账流水号/回单号（必填）"
         /></el-form-item>
         <el-form-item label="转账回单">
           <AttachmentCenter
@@ -266,7 +313,16 @@
     <el-drawer v-model="detailVisible" title="付款详情" size="560px">
       <el-descriptions v-if="current" :column="2" border>
         <el-descriptions-item label="付款单号">{{ current.paymentNo }}</el-descriptions-item>
-        <el-descriptions-item label="订单ID">{{ current.orderId }}</el-descriptions-item>
+        <el-descriptions-item label="供应商">{{ current.supplierName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="采购订单号">
+          <el-link
+            v-if="current.orderNo && current.orderId && userStore.hasPermission('purchase:order:view')"
+            type="primary"
+            @click="openSourceOrder(current)"
+            >{{ current.orderNo }}</el-link
+          >
+          <span v-else>{{ current.orderNo || '-' }}</span>
+        </el-descriptions-item>
         <el-descriptions-item label="付款日期">{{
           current.paymentDate || '-'
         }}</el-descriptions-item>
@@ -309,7 +365,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useUserStore } from '@/store/modules/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
@@ -378,6 +434,31 @@ const query = reactive<any>({
 })
 const form = reactive<any>({})
 const paymentSummary = ref<PurchasePaymentSummary | null>(null)
+
+type PaymentTabFilter = { approvalStatus?: string; paymentStatus?: number }
+const activeTab = ref('all')
+const TAB_FILTERS: Record<string, PaymentTabFilter> = {
+  all: {},
+  'pending-approval': { approvalStatus: PaymentApprovalStatus.PENDING },
+  'pending-payment': {
+    approvalStatus: PaymentApprovalStatus.APPROVED,
+    paymentStatus: PaymentStatusEnum.PENDING.value,
+  },
+  paid: { paymentStatus: PaymentStatusEnum.COMPLETED.value },
+}
+
+function handleTabChange(name: string | number) {
+  const filter = TAB_FILTERS[String(name)] ?? {}
+  query.approvalStatus = filter.approvalStatus
+  query.paymentStatus = filter.paymentStatus
+  query.pageNum = 1
+  void load()
+}
+
+/** 手工改状态筛选时回到「全部」页签，避免页签与筛选条件互相矛盾。 */
+function handleStatusFilterChange() {
+  if (activeTab.value !== 'all') activeTab.value = 'all'
+}
 function handleSummaryLoaded(summary: PurchasePaymentSummary | null) {
   paymentSummary.value = summary
   if (summary && !isEdit.value) form.paymentAmount = Number(summary.availableAmount)
@@ -396,10 +477,37 @@ const userStore = useUserStore()
 const approverName = computed(() => userStore.userInfo?.realName?.trim() || userStore.userName || '-')
 const approveForm = reactive({ approvalComment: '' })
 const confirmForm = reactive({ actualPaymentDate: '', voucherNo: '' })
+const confirmFormRef = ref<FormInstance>()
+const confirmRules = {
+  actualPaymentDate: [{ required: true, message: '请选择实际付款日', trigger: 'change' }],
+  voucherNo: [{ required: true, message: '请填写转账流水号', trigger: 'blur' }],
+}
 
 const isPendingPayment = (row: any) =>
   row.approvalStatus === PaymentApprovalStatus.PENDING &&
   row.paymentStatus === PaymentStatusEnum.PENDING.value
+
+/** 逾期 = 未付清、未驳回，且计划付款日早于今天。 */
+function isOverdue(row: any) {
+  if (!row?.paymentDate) return false
+  if (row.paymentStatus === PaymentStatusEnum.COMPLETED.value) return false
+  if (row.approvalStatus === PaymentApprovalStatus.REJECTED) return false
+  return row.paymentDate < today()
+}
+
+function rowClassName({ row }: { row: any }) {
+  return isOverdue(row) ? 'row-overdue' : ''
+}
+
+/** 本页合计：前端派生值，不新增后端接口。 */
+function summaryMethod({ columns }: { columns: any[] }) {
+  const totalAmount = rows.value.reduce((sum, row) => sum + Number(row.paymentAmount || 0), 0)
+  return columns.map((_column, index) => {
+    if (index === 0) return `本页合计（${rows.value.length} 笔）`
+    if (index === 4) return money(totalAmount)
+    return ''
+  })
+}
 
 const paymentActions: TableAction<any>[] = [
   { key: 'detail', label: '详情', order: 10 },
@@ -465,6 +573,10 @@ async function load() {
     const data = res.data || []
     rows.value = Array.isArray(data) ? data : data.records || []
     total.value = Array.isArray(data) ? data.length : data.total || 0
+  } catch (e: any) {
+    rows.value = []
+    total.value = 0
+    ElMessage.error(e?.message || '加载付款列表失败')
   } finally {
     loading.value = false
   }
@@ -578,6 +690,7 @@ function openConfirm(row: any) {
   confirmTarget.value = row
   Object.assign(confirmForm, { actualPaymentDate: today(), voucherNo: row.voucherNo || '' })
   confirmVisible.value = true
+  nextTick(() => confirmFormRef.value?.clearValidate())
 }
 
 const confirmAttachRef = ref<InstanceType<typeof AttachmentCenter> | null>(null)
@@ -588,10 +701,21 @@ function onAttachSave() {
 
 async function submitConfirm() {
   if (!confirmTarget.value) return
+  const valid = await confirmFormRef.value?.validate().catch(() => false)
+  if (!valid) return
   // 资料类型必选（dev-20261016-039，对齐 032）：缺二级类型的待绑定回单先拦
   const missingTypeCount = confirmAttachRef.value?.getMissingTypeCount?.() ?? 0
   if (missingTypeCount > 0) {
     ElMessage.warning(`有 ${missingTypeCount} 个附件未选择资料类型，请先选择后再确认`)
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `将 ${confirmTarget.value.paymentNo} 标记为已付款（${money(confirmTarget.value.paymentAmount)}），确认后不可撤销。`,
+      '确认付款',
+      { type: 'warning', confirmButtonText: '确认付款', cancelButtonText: '再核对' }
+    )
+  } catch {
     return
   }
   submitting.value = true
@@ -647,5 +771,17 @@ onMounted(() => {
 }
 .toolbar {
   margin-bottom: 14px;
+}
+.payment-tabs {
+  margin-bottom: 4px;
+}
+.row-overdue :deep(td) {
+  background-color: var(--el-color-danger-light-9) !important;
+}
+.confirm-tip {
+  margin-bottom: 12px;
+}
+.confirm-summary {
+  margin-bottom: 16px;
 }
 </style>
