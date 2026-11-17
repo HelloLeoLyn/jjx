@@ -7,7 +7,7 @@
         <div class="header">
           <span>来料检验工作台</span>
           <div class="header-actions">
-            <el-button link type="primary" @click="router.push('/inventory/iqc-quarantine')"
+            <el-button v-if="canViewDisposition" link type="primary" @click="handleTabChange('disposition')"
               >跨批次待处置</el-button
             >
             <el-button :loading="listLoading" @click="loadList()">刷新</el-button>
@@ -112,6 +112,9 @@
       <el-tab-pane label="检验批台账" name="lots" lazy>
         <LotWorkbench lot-type="IQC" />
       </el-tab-pane>
+      <el-tab-pane v-if="canViewDisposition" label="不合格处置" name="disposition" lazy>
+        <IqcQuarantinePage v-if="dispositionVisited" />
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -126,12 +129,13 @@
  * - 列表操作列只保留「处理」（导航语义）；具体动作在下方工作区按权限出现。
  * - 明细区锁定批次后不分页（沿用工序执行页口径：全量视图才分页）。
  */
-import { computed, onActivated, onDeactivated, onMounted, reactive, ref } from 'vue'
+import { computed, onActivated, onDeactivated, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { inboundApi } from '@/api/inventory/inbound'
 import { hasPermi } from '@/directives'
 import IqcWorkbenchPanel from './components/IqcWorkbenchPanel.vue'
 import LotWorkbench from '@/views/quality/lot/components/LotWorkbench.vue'
+import IqcQuarantinePage from '@/views/inventory/iqc-quarantine/index.vue'
 import { iqcBatchActions } from './iqcBatchActions'
 import type { IqcPendingVO } from '@/types/inventory/inbound'
 import { InboundOrderStatusEnum } from '@/enums/inventory/InboundEnum'
@@ -172,10 +176,21 @@ const listTotal = ref(0)
 const listLoading = ref(false)
 const selectedRow = ref<IqcPendingVO>()
 const panelAction = ref<'inspect' | 'reinspect' | undefined>()
-const activeTab = ref<'inbound' | 'lots'>('inbound')
+type IqcTab = 'inbound' | 'lots' | 'disposition'
+const activeTab = ref<IqcTab>('inbound')
+const dispositionVisited = ref(false)
+// 首次进入才加载；离开页签不销毁原处置组件，保留筛选及处置弹窗输入。
+watch(activeTab, (tab) => { if (tab === 'disposition') dispositionVisited.value = true }, { flush: 'sync' })
+const canViewDisposition = computed(() => hasPermi('quality:ncr:view'))
+function normalizeTab(name: unknown): IqcTab {
+  if (name === 'lots') return 'lots'
+  if (name === 'disposition' && canViewDisposition.value) return 'disposition'
+  return 'inbound'
+}
+watch(() => route.query.tab, (tab) => { activeTab.value = normalizeTab(tab) }, { immediate: true })
 
 function handleTabChange(name: string | number) {
-  const tab = name === 'lots' ? 'lots' : 'inbound'
+  const tab = normalizeTab(name)
   activeTab.value = tab
   router.replace({ path: '/inventory/iqc', query: { ...route.query, tab } })
 }
@@ -277,8 +292,6 @@ function selectRow(row?: IqcPendingVO, forceHandle = false) {
   }
 }
 onMounted(async () => {
-  const tab = typeof route.query.tab === 'string' ? route.query.tab : ''
-  if (tab === 'lots') activeTab.value = 'lots'
   const inboundNo = typeof route.query.inboundNo === 'string' ? route.query.inboundNo : ''
   if (inboundNo) listQuery.inboundNo = inboundNo
   const action = typeof route.query.action === 'string' ? route.query.action : ''
