@@ -97,6 +97,7 @@
           :lock-reason="submitting ? '提交中，请稍候' : ''"
           :max-size-m-b="10"
           :accept="['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']"
+          default-document-type="DELIVERY_NOTE"
           view-perm="purchase:receipt:doc:view"
           edit-perm="purchase:receipt:doc:add"
         />
