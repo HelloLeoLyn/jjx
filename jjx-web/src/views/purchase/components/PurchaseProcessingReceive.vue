@@ -7,7 +7,7 @@
         <strong>{{ group.name }} · 母卷 {{ group.motherRolls }}卷</strong>
         <div v-if="!plan.tree" class="slits">分切：{{ group.slits.map(s => `${s.widthMm}mm × ${s.rolls}卷`).join(' / ') }}</div>
         <el-table :data="group.outputs" border size="small">
-          <el-table-column label="交付规格" min-width="220"><template #default="{row}">{{ row.materialCode || '未指定物料' }} · {{ row.materialName }}<small v-if="row.nodePath" class="node-path">{{row.nodePath}}</small><div>{{ row.widthMm }}mm × {{ row.unit === 'ROLL' ? `${row.rollLengthM}m/卷` : `${row.lengthMm}mm` }}</div></template></el-table-column>
+          <el-table-column label="交付规格" min-width="220"><template #default="{row}">{{ row.materialCode || '未指定物料' }} · {{ row.materialName }}<small v-if="displayPath(row)" class="node-path">{{ displayPath(row) }}</small><div>{{ row.widthMm }}mm × {{ row.unit === 'ROLL' ? `${row.rollLengthM}m/卷` : `${row.lengthMm}mm` }}</div></template></el-table-column>
           <el-table-column label="计划 / 已收" width="120"><template #default="{row}">{{ row.quantity }} / {{ received(row.outputId) }} {{ row.unit === 'ROLL' ? '卷' : '片' }}</template></el-table-column>
           <el-table-column label="本次实际交付" width="150"><template #default="{row}"><el-input-number v-sync-disabled-aria v-model="entry(group.groupId,row.outputId).quantity" :disabled="disabled" :min="0" :precision="0" :controls="false" aria-label="实际交付片数卷数" /></template></el-table-column>
           <el-table-column label="实际每卷长度(m)" width="170"><template #default="{row}"><el-input-number v-if="row.unit==='ROLL'" v-sync-disabled-aria v-model="entry(group.groupId,row.outputId).rollLengthM" :disabled="disabled" :min="0" :precision="4" :controls="false" aria-label="余卷实际长度" /><span v-else>—</span></template></el-table-column>
@@ -25,13 +25,16 @@
 <script setup lang="ts">
 import { computed,ref,watch,onBeforeUnmount } from 'vue'
 import { getProcessingHistory,readProcessingPlan,previewProcessingReceipt } from '@/api/purchase/orderEntry'
-import type { ProcessingPlan,ProcessingReceiptGroup } from '@/api/purchase/orderEntry'
+import type { ProcessingPlan,ProcessingReceiptGroup,ProcessingOutput } from '@/api/purchase/orderEntry'
+import { processingTreeDisplayRows } from '../order/components/processingTreeDisplay'
 // Element Plus数字输入的aria-disabled只在挂载时设置；连续收货解锁后同步真实disabled。
 function syncDisabledAria(el:HTMLElement){const input=el.querySelector('input');if(input)input.setAttribute('aria-disabled',String(input.disabled))}
 const vSyncDisabledAria={mounted:syncDisabledAria,updated:syncDisabledAria}
 const props=defineProps<{itemId:number;disabled?:boolean;modelValue?:ProcessingReceiptGroup[]}>()
 const emit=defineEmits<{(e:'update:modelValue',value:ProcessingReceiptGroup[]):void}>()
 const plan=ref<ProcessingPlan>(),loading=ref(false),previewing=ref(false),error=ref(''),inputs=ref<ProcessingReceiptGroup[]>([]),facts=ref<{outputId:string;quantity:number}[]>([])
+const displayPaths=computed(()=>new Map(plan.value?.tree?processingTreeDisplayRows(plan.value.tree).filter(r=>!r.children.length).map(r=>[r.node.nodeId,r.path]):[]))
+const displayPath=(output:ProcessingOutput)=>displayPaths.value.get(output.outputId)||output.nodePath
 const preview=ref<Awaited<ReturnType<typeof previewProcessingReceipt>>['data']>()
 let epoch=0,version=0,disposed=false
 const hasInput=computed(()=>inputs.value.some(g=>g.outputs.some(o=>Number(o.quantity)>0)||Number(g.lossArea)>0))

@@ -8,6 +8,8 @@ import Summary from '../../order/components/PurchaseProcessingSummary.vue'
 import Print from '../../order/components/PurchaseItemsPrintTable.vue'
 import Receive from '../PurchaseProcessingReceive.vue'
 import { PurchaseProcessingOperationEnum as Action } from '@/enums/purchase/processing'
+import { ElMessageBox } from 'element-plus'
+import { processingTreeDisplayRows } from '../../order/components/processingTreeDisplay'
 const api = vi.hoisted(() => ({ plan: vi.fn(), history: vi.fn(), receipt: vi.fn() }))
 vi.mock('@/utils/request', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
 vi.mock('@/api/purchase/orderEntry', async (original) => ({
@@ -65,6 +67,44 @@ const split = {
   children: [slit, remainder, original],
 }
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
+function fullTree() {
+  const tree: any = clone(split)
+  const leaf = (
+    id: string,
+    role: string,
+    unit: string,
+    width: number,
+    length: number,
+    quantity: number
+  ) => ({ nodeId: id, role, unit, widthMm: width, lengthMm: length, quantity, children: [] })
+  const first = tree.children[0]
+  first.operation = {
+    type: Action.CUT.value,
+    useQuantity: 2,
+    pieceWidthMm: 285,
+    pieceLengthMm: 315,
+  }
+  first.children = [
+    leaf('root-s0-pieces', '切片', 'PCS', 285, 315, 634),
+    leaf('root-s0-tail', '尾料', 'PCS', 285, 145, 2),
+  ]
+  const width = tree.children[1]
+  width.operation = { type: Action.SLIT.value, useQuantity: 1, slits: [{ widthMm: 315, rolls: 1 }] }
+  const second = leaf('root-width-s0', '分切料', 'ROLL', 315, 100000, 1) as any
+  second.operation = {
+    type: Action.CUT.value,
+    useQuantity: 1,
+    pieceWidthMm: 285,
+    pieceLengthMm: 315,
+    rotated: true,
+  }
+  second.children = [
+    leaf('root-width-s0-pieces', '切片', 'PCS', 285, 315, 350),
+    leaf('root-width-s0-tail', '尾料', 'PCS', 315, 250, 1),
+  ]
+  width.children = [second, leaf('root-width-width', '宽度余料', 'ROLL', 335, 100000, 1)]
+  return tree
+}
 const snapshot = (tree: any) =>
   JSON.stringify({
     tree,
@@ -249,7 +289,7 @@ describe('加工树及自动余料交互', () => {
   it('树表与打印显示缩进所属关系、原卷2卷和含税主行金额', () => {
     const w = mount(Rows, { props: { tree: split, materialName: 'EBA180' } })
     wrappers.push(w)
-    expect(w.findAll('tbody tr')).toHaveLength(4)
+    expect(w.findAll('tbody tr')).toHaveLength(5)
     expect(w.text()).toContain('1.1')
     expect(w.text()).toContain('650mm')
     expect(w.text()).toContain('未加工原料')
@@ -295,5 +335,162 @@ describe('加工树及自动余料交互', () => {
       expect((input.element as HTMLInputElement).disabled).toBe(false)
       expect(input.attributes('aria-disabled')).toBe('false')
     }
+  })
+  it('同一卷分出的285、315、335同层，634和350片分属各自窄卷，原卷2与加工1并列', () => {
+    const tree = fullTree(),
+      before = JSON.stringify(tree)
+    const rows = processingTreeDisplayRows(tree)
+    const at = (id: string) => rows.find((r) => r.key === id)!
+    expect(at('root::used')).toMatchObject({
+      number: '1.1',
+      quantity: 1,
+      role: '加工其中1卷',
+      group: true,
+    })
+    expect(at('root-unused')).toMatchObject({ number: '1.2', quantity: 2, depth: 1 })
+    expect(
+      ['root-s0', 'root-width-s0', 'root-width-width'].map((id) => [
+        at(id).number,
+        at(id).depth,
+        at(id).node.widthMm,
+      ])
+    ).toEqual([
+      ['1.1.1', 2, 285],
+      ['1.1.2', 2, 315],
+      ['1.1.3', 2, 335],
+    ])
+    expect(at('root-s0-pieces')).toMatchObject({ number: '1.1.1.1', quantity: 634, depth: 3 })
+    expect(at('root-width-s0-pieces')).toMatchObject({ number: '1.1.2.1', quantity: 350, depth: 3 })
+    expect(rows.some((r) => r.key === 'root-width')).toBe(false)
+    expect(at('root-width-s0-pieces').path).toContain('315mm × 100m')
+    expect(at('root-width-s0-pieces').path).not.toContain('650mm')
+    expect(at('root::used').slitSources.map((n) => n.nodeId)).toEqual(['root', 'root-width'])
+    expect(at('root-width-s0').node).toBe(tree.children[1].children[0])
+    expect(JSON.stringify(tree)).toBe(before)
+  })
+  it('实际表格、预览及打印都收起650过程节点，显示同一母卷分组', () => {
+    const tree = fullTree()
+    const saved = snapshot(tree)
+    for (const [component, props] of [
+      [Rows, { tree }],
+      [Summary, { modelValue: saved }],
+      [Print, { items: [{ ...item, processingPlan: saved }] }],
+    ] as const) {
+      const w = mount(component as any, { props })
+      wrappers.push(w)
+      expect(w.text()).toContain('加工其中1卷')
+      expect(w.text()).toContain('634片')
+      expect(w.text()).toContain('350片')
+      expect(w.text()).not.toContain('650mm')
+      const strips = ['root-s0', 'root-width-s0', 'root-width-width'].map((id) =>
+        w.find(`tr[data-node-id="${id}"]`).findAll('td')[1].attributes('style')
+      )
+      expect(new Set(strips).size).toBe(1)
+    }
+  })
+  it('尚未加工的650余料保留；全部3卷一起加工不虚构部分加工分组', () => {
+    expect(processingTreeDisplayRows(clone(split)).some((r) => r.key === 'root-width')).toBe(true)
+    const all = clone(split)
+    all.operation.useQuantity = 3
+    all.children = all.children.slice(0, 2)
+    expect(processingTreeDisplayRows(all).some((r) => r.group)).toBe(false)
+  })
+  it('余料只加工一部分时保留来源和未用部分，不能直接混入上层母卷', () => {
+    const tree = fullTree(),
+      width = tree.children[1]
+    width.quantity = 2
+    width.children.push({
+      ...clone(width),
+      nodeId: 'root-width-unused',
+      operation: null,
+      quantity: 1,
+      children: [],
+    })
+    const rows = processingTreeDisplayRows(tree)
+    expect(rows.find((r) => r.key === 'root-width')).toMatchObject({
+      sourceOnly: true,
+      quantity: 2,
+    })
+    expect(rows.find((r) => r.key === 'root-width::used')).toMatchObject({ quantity: 1, depth: 3 })
+    expect(rows.find((r) => r.key === 'root-width-unused')).toMatchObject({ quantity: 1, depth: 3 })
+  })
+  it('余料用于切片时仍是切片来源，不作为临时分切步骤收起', () => {
+    const tree = fullTree()
+    tree.children[1].operation = {
+      type: Action.CUT.value,
+      useQuantity: 1,
+      pieceWidthMm: 285,
+      pieceLengthMm: 315,
+    }
+    expect(processingTreeDisplayRows(tree).some((r) => r.key === 'root-width')).toBe(true)
+  })
+  it('从母卷加工分组切换追加分切步骤，修改仍发往原650节点而不改285或其切片', async () => {
+    const tree = fullTree(),
+      saved = snapshot(tree)
+    api.plan.mockResolvedValue({ data: { ...item, processingPlan: saved } })
+    const { s } = wrap(TreeEditor, { item, modelValue: saved })
+    await s.open()
+    const group = processingTreeDisplayRows(s.tree).find((r) => r.group)!
+    s.edit(group.node, Action.SLIT.value, group.sourceLabel, group.slitSources)
+    s.selectSlitStep('root-width')
+    expect(s.active.widthMm).toBe(650)
+    expect(s.activeLabel).toBe('序号1 采购原卷')
+    s.operation.slits[0].widthMm = 300
+    await s.applyOperation()
+    const sent = JSON.parse(api.plan.mock.calls.at(-1)![0].processingPlan).tree
+    expect(sent.children[1].operation.slits[0].widthMm).toBe(300)
+    expect(sent.operation.slits[0].widthMm).toBe(285)
+    expect(sent.children[0]).toEqual(tree.children[0])
+    expect(sent.children[2].quantity).toBe(2)
+  })
+  it('收起的追加分切步骤可以单独清除，不清掉另一条切片分支', async () => {
+    const tree = fullTree(),
+      saved = snapshot(tree)
+    api.plan.mockResolvedValue({ data: { ...item, processingPlan: saved } })
+    const { s } = wrap(TreeEditor, { item, modelValue: saved })
+    await s.open()
+    const group = processingTreeDisplayRows(s.tree).find((r) => r.group)!
+    s.edit(group.node, Action.SLIT.value, group.sourceLabel, group.slitSources)
+    s.selectSlitStep('root-width')
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm')
+    try {
+      await s.clearActive()
+    } finally {
+      confirm.mockRestore()
+    }
+    const sent = JSON.parse(api.plan.mock.calls.at(-1)![0].processingPlan).tree
+    expect(sent.children[1].operation).toBeNull()
+    expect(sent.children[1].children).toEqual([])
+    expect(sent.children[0]).toEqual(tree.children[0])
+    expect(s.operationVisible).toBe(false)
+  })
+  it('收货所属路径复用同一显示层级，提交仍使用原终端节点标识', async () => {
+    const tree = fullTree(),
+      parsed = JSON.parse(snapshot(tree))
+    parsed.groups[0].outputs = [
+      {
+        outputId: 'root-width-s0-pieces',
+        nodePath: '原卷1220 / 临时余料650mm / 切片',
+        unit: 'PCS',
+        quantity: 350,
+        widthMm: 285,
+        lengthMm: 315,
+      },
+    ]
+    api.history.mockResolvedValue({
+      data: { processingPlan: JSON.stringify(parsed), receipts: [] },
+    })
+    const w = mount(Receive, { props: { itemId: 99 }, global: { plugins: [ElementPlus] } })
+    wrappers.push(w)
+    await flushPromises()
+    expect(w.find('.node-path').text()).toContain('加工其中1卷')
+    expect(w.find('.node-path').text()).toContain('315mm × 100m')
+    expect(w.find('.node-path').text()).not.toContain('650mm')
+    const s = (w.vm as any).$?.setupState
+    s.inputs[0].outputs[0].quantity = 100
+    await s.validate()
+    expect(api.receipt.mock.calls.at(-1)![1][0].outputs).toEqual([
+      { outputId: 'root-width-s0-pieces', quantity: 100 },
+    ])
   })
 })

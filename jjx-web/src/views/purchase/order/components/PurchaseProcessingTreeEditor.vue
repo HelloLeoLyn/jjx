@@ -32,20 +32,34 @@
           :tree="tree"
           :material-name="item.supplierMaterialName || item.materialName"
         >
-          <template #actions="{ node }">
+          <template #actions="{ node, sourceLabel, slitSources }">
             <el-button
               link
               type="primary"
               :disabled="busy || disabled"
-              @click="edit(node, PurchaseProcessingOperationEnum.SLIT.value)"
-              >分切</el-button
+              @click="
+                edit(node, PurchaseProcessingOperationEnum.SLIT.value, sourceLabel, slitSources)
+              "
+              >{{
+                node.operation?.type === PurchaseProcessingOperationEnum.SLIT.value
+                  ? '修改分切'
+                  : node.operation
+                    ? '改为分切'
+                    : '分切'
+              }}</el-button
             >
             <el-button
               link
               type="primary"
               :disabled="busy || disabled"
-              @click="edit(node, PurchaseProcessingOperationEnum.CUT.value)"
-              >切片</el-button
+              @click="edit(node, PurchaseProcessingOperationEnum.CUT.value, sourceLabel)"
+              >{{
+                node.operation?.type === PurchaseProcessingOperationEnum.CUT.value
+                  ? '修改切片'
+                  : node.operation
+                    ? '改为切片'
+                    : '切片'
+              }}</el-button
             >
             <el-button
               v-if="node.operation"
@@ -55,7 +69,7 @@
               @click="clear(node)"
               >清除下级加工</el-button
             >
-            <el-button v-else link :disabled="busy || disabled" @click="bind(node)"
+            <el-button v-else link :disabled="busy || disabled" @click="bind(node, sourceLabel)"
               >指定交货物料</el-button
             >
           </template>
@@ -82,12 +96,27 @@
       :close-on-press-escape="!busy"
     >
       <el-form label-width="145px" :disabled="busy">
+        <p v-if="activeLabel">所属：{{ activeLabel }}</p>
         <p v-if="active">
-          来源：{{ active.widthMm }}mm ×
+          来源：{{ active.role }} · {{ active.widthMm }}mm ×
           {{ active.unit === 'ROLL' ? Number(active.lengthMm) / 1000 : active.lengthMm
           }}{{ active.unit === 'ROLL' ? 'm' : 'mm' }}，{{ active.quantity
           }}{{ active.unit === 'ROLL' ? '卷' : '块' }}
         </p>
+        <el-form-item v-if="slitSteps.length > 1" label="分切步骤">
+          <el-select
+            :model-value="active?.nodeId"
+            aria-label="选择分切步骤"
+            @change="selectSlitStep"
+          >
+            <el-option
+              v-for="(step, i) in slitSteps"
+              :key="step.nodeId"
+              :value="step.nodeId"
+              :label="`${i ? '剩余宽度' : '来源原料'} ${step.widthMm}mm → ${step.operation?.slits?.map((s) => `${s.widthMm}mm×${s.rolls}份`).join('、')}`"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item :label="active?.unit === 'ROLL' ? '本次使用卷数' : '本次使用块数'"
           ><el-input-number
             v-model="operation.useQuantity"
@@ -158,6 +187,13 @@
       </el-form>
       <el-alert v-if="error" :title="error" type="error" :closable="false" />
       <template #footer
+        ><el-button
+          v-if="active?.operation"
+          type="danger"
+          link
+          :disabled="busy"
+          @click="clearActive"
+          >清除本步及下级加工</el-button
         ><el-button :disabled="busy" @click="operationVisible = false">取消</el-button
         ><el-button type="primary" :loading="busy" @click="applyOperation"
           >确定并生成余料</el-button
@@ -173,7 +209,7 @@
       :show-close="!busy"
     >
       <p v-if="active">
-        {{ active.role }}：{{ active.widthMm }}mm ×
+        {{ activeLabel || active.role }}：{{ active.widthMm }}mm ×
         {{ active.unit === 'ROLL' ? Number(active.lengthMm) / 1000 : active.lengthMm
         }}{{ active.unit === 'ROLL' ? 'm' : 'mm' }}，{{ active.quantity
         }}{{ active.unit === 'ROLL' ? '卷' : '片' }}
@@ -227,6 +263,8 @@ const emit = defineEmits<{
   (e: 'cancel'): void
 }>()
 const normalizedPlan = ref('')
+const activeLabel = ref('')
+const slitSteps = ref<ProcessingTreeNode[]>([])
 const savedTree = computed(() => readProcessingPlan(props.modelValue)?.tree)
 const visible = ref(false),
   busy = ref(false),
@@ -310,8 +348,15 @@ async function open() {
     )
   )
 }
-function edit(n: ProcessingTreeNode, type: ProcessingTreeOperation['type']) {
+function edit(
+  n: ProcessingTreeNode,
+  type: ProcessingTreeOperation['type'],
+  sourceLabel = '',
+  sources: ProcessingTreeNode[] = []
+) {
   active.value = n
+  activeLabel.value = sourceLabel
+  slitSteps.value = type === PurchaseProcessingOperationEnum.SLIT.value ? sources : []
   error.value = ''
   operation.value =
     n.operation?.type === type
@@ -326,6 +371,11 @@ function edit(n: ProcessingTreeNode, type: ProcessingTreeOperation['type']) {
           piecesPerUnit: null,
         }
   operationVisible.value = true
+}
+function selectSlitStep(id: string) {
+  const node = slitSteps.value.find((n) => n.nodeId === id)
+  if (node)
+    edit(node, PurchaseProcessingOperationEnum.SLIT.value, activeLabel.value, slitSteps.value)
 }
 async function applyOperation() {
   if (!tree.value || !active.value || busy.value) return
@@ -342,13 +392,18 @@ async function clear(n: ProcessingTreeNode) {
       node = find(candidate, n.nodeId)!
     node.operation = null
     node.children = []
-    await recalculate(candidate)
+    return await recalculate(candidate)
   } catch {
     /* 取消保留加工树。 */
+    return false
   }
 }
-function bind(n: ProcessingTreeNode) {
+async function clearActive() {
+  if (active.value && (await clear(active.value))) operationVisible.value = false
+}
+function bind(n: ProcessingTreeNode, sourceLabel = '') {
   active.value = n
+  activeLabel.value = sourceLabel
   bindingId.value = n.materialId || undefined
   materialOptions.value = n.materialId
     ? [

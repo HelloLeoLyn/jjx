@@ -13,22 +13,26 @@
     <tbody>
       <tr
         v-for="row in rows"
-        :key="row.node.nodeId"
-        :class="{ 'tree-leaf': !row.node.children?.length }"
+        :key="row.key"
+        :data-node-id="row.key"
+        :class="{ 'tree-leaf': !row.children.length, 'tree-group': row.group }"
       >
         <td>{{ row.number }}</td>
         <td v-if="materialName">{{ materialName }}</td>
         <td :style="{ paddingLeft: `${8 + row.depth * 22}px` }">
           <span class="branch">{{ row.depth ? '└ ' : '' }}</span
-          ><strong>{{ row.node.role }}</strong
-          ><span v-if="row.node.operation">
+          ><strong>{{ row.role }}</strong
+          ><span v-if="row.node.operation && !row.sourceOnly">
             · {{ PurchaseProcessingOperationEnum.getLabel(row.node.operation.type) }}</span
           >
-          <div>{{ spec(row.node) }}</div>
+          <div>{{ processingTreeSpec(row.node) }}</div>
         </td>
-        <td>{{ row.node.quantity }}{{ row.node.unit === 'ROLL' ? '卷' : '片' }}</td>
+        <td>{{ row.quantity }}{{ row.node.unit === 'ROLL' ? '卷' : '片' }}</td>
         <td>
-          <template v-if="row.node.children?.length">加工中间料</template
+          <template v-if="row.sourceOnly || (row.depth === 0 && row.children.length)"
+            >来源原料</template
+          ><template v-else-if="row.group">加工分组</template
+          ><template v-else-if="row.children.length">加工中间料</template
           ><template v-else
             ><span :class="{ unbound: !row.node.materialId }">{{
               row.node.materialCode || '待指定交货物料'
@@ -36,7 +40,16 @@
             ><small v-if="row.node.bindingMessage">{{ row.node.bindingMessage }}</small></template
           >
         </td>
-        <td v-if="$slots.actions"><slot name="actions" :node="row.node" /></td>
+        <td v-if="$slots.actions">
+          <span v-if="row.sourceOnly">在下方加工分组维护</span>
+          <slot
+            v-else
+            name="actions"
+            :node="row.node"
+            :source-label="row.sourceLabel"
+            :slit-sources="row.slitSources"
+          />
+        </td>
       </tr>
     </tbody>
   </table>
@@ -44,20 +57,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { PurchaseProcessingOperationEnum } from '@/enums/purchase/processing'
-import { entryNumber } from '@/api/purchase/orderEntry'
 import type { ProcessingTreeNode } from '@/api/purchase/orderEntry'
+import { processingTreeDisplayRows, processingTreeSpec } from './processingTreeDisplay'
 const props = defineProps<{ tree: ProcessingTreeNode; materialName?: string }>()
-const rows = computed(() => {
-  const all: { node: ProcessingTreeNode; depth: number; number: string }[] = []
-  function visit(n: ProcessingTreeNode, depth: number, number: string) {
-    all.push({ node: n, depth, number })
-    n.children?.forEach((c, i) => visit(c, depth + 1, `${number}.${i + 1}`))
-  }
-  visit(props.tree, 0, '1')
-  return all
-})
-const spec = (n: ProcessingTreeNode) =>
-  `${entryNumber(n.widthMm)}mm × ${entryNumber(n.unit === 'ROLL' ? Number(n.lengthMm) / 1000 : n.lengthMm)}${n.unit === 'ROLL' ? 'm' : 'mm'}`
+const rows = computed(() => processingTreeDisplayRows(props.tree))
 </script>
 <style scoped>
 .processing-tree-table {
@@ -88,6 +91,9 @@ const spec = (n: ProcessingTreeNode) =>
 }
 .tree-leaf {
   background: #fbfdf9;
+}
+.tree-group {
+  background: #f0f7ff;
 }
 .unbound {
   color: #b88230;
