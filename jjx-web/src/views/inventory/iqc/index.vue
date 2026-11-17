@@ -1,5 +1,7 @@
 <template>
   <div class="iqc-workbench">
+    <el-tabs v-model="activeTab" class="iqc-tabs" @tab-change="handleTabChange">
+      <el-tab-pane label="按入库单作业" name="inbound">
     <el-card>
       <template #header>
         <div class="header">
@@ -75,9 +77,10 @@
             ><span v-else>-</span></template
           >
         </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click.stop="selectRow(row, true)">处理</el-button>
+            <el-button link type="primary" @click.stop="openLotTab(row)">检验批</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -104,6 +107,11 @@
     <el-card v-else shadow="never">
       <el-empty description="请选择上方一张来料批次" />
     </el-card>
+      </el-tab-pane>
+      <el-tab-pane label="检验批台账" name="lots" lazy>
+        <LotWorkbench lot-type="IQC" />
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
@@ -122,6 +130,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { inboundApi } from '@/api/inventory/inbound'
 import { hasPermi } from '@/directives'
 import IqcWorkbenchPanel from './components/IqcWorkbenchPanel.vue'
+import LotWorkbench from '@/views/quality/lot/components/LotWorkbench.vue'
 import { iqcBatchActions } from './iqcBatchActions'
 import type { IqcPendingVO } from '@/types/inventory/inbound'
 import { InboundOrderStatusEnum } from '@/enums/inventory/InboundEnum'
@@ -162,6 +171,19 @@ const listTotal = ref(0)
 const listLoading = ref(false)
 const selectedRow = ref<IqcPendingVO>()
 const panelAction = ref<'inspect' | 'reinspect' | undefined>()
+const activeTab = ref<'inbound' | 'lots'>('inbound')
+
+function handleTabChange(name: string | number) {
+  const tab = name === 'lots' ? 'lots' : 'inbound'
+  activeTab.value = tab
+  router.replace({ path: '/inventory/iqc', query: { ...route.query, tab } })
+}
+
+/** 从入库单跳到检验批台账，并按来料单号定位（dev-20261117-022）。 */
+function openLotTab(row: IqcPendingVO) {
+  activeTab.value = 'lots'
+  router.replace({ path: '/inventory/iqc', query: { tab: 'lots', businessNo: row.inboundNo } })
+}
 let returningToList = false
 onDeactivated(() => {
   returningToList = true
@@ -244,6 +266,8 @@ function selectRow(row?: IqcPendingVO, forceHandle = false) {
   }
 }
 onMounted(async () => {
+  const tab = typeof route.query.tab === 'string' ? route.query.tab : ''
+  if (tab === 'lots') activeTab.value = 'lots'
   const inboundNo = typeof route.query.inboundNo === 'string' ? route.query.inboundNo : ''
   if (inboundNo) listQuery.inboundNo = inboundNo
   const action = typeof route.query.action === 'string' ? route.query.action : ''

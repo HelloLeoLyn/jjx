@@ -77,6 +77,12 @@
           <template #default="{ row }">
             <div>{{ sourceLabel(row) }}</div>
             <div v-if="sourceContext(row)" class="sub">{{ sourceContext(row) }}</div>
+            <el-link
+              v-if="row.sourceType === 'INBOUND' && row.sourceId"
+              type="primary"
+              @click="goInbound(row.sourceId)"
+              >查看入库单</el-link
+            >
           </template>
         </el-table-column>
         <el-table-column label="物料/产品" min-width="170">
@@ -485,12 +491,26 @@ const needSync = (row: QualityLot) =>
 const loading = ref(false)
 const rows = ref<QualityLot[]>([])
 const total = ref(0)
-const query = reactive({ pageNum: 1, pageSize: 10, lotType, status: '', lotNo: '',
-  businessNo: lotType === InspectionType.OQC && typeof route.query.businessNo === 'string' ? route.query.businessNo : '',
+const businessNoQueryEnabled = computed(
+  () =>
+    lotType === InspectionType.OQC ||
+    (lotType === InspectionType.IQC &&
+      (route.path === '/inventory/iqc' || route.query.tab === 'lots')),
+)
+const query = reactive({
+  pageNum: 1,
+  pageSize: 10,
+  lotType,
+  status: '',
+  lotNo: '',
+  businessNo:
+    businessNoQueryEnabled.value && typeof route.query.businessNo === 'string'
+      ? route.query.businessNo
+      : '',
 })
-// 从待发货单跳转时按业务单号定位；同一路由再次跳转也更新筛选。
+// 从待发货单/来料工作台跳转时按业务单号定位；同一路由再次跳转也更新筛选。
 watch(() => route.query.businessNo, (businessNo) => {
-  if (lotType === InspectionType.OQC && route.path === '/quality/lot/oqc' && typeof businessNo === 'string') {
+  if (businessNoQueryEnabled.value && typeof businessNo === 'string') {
     query.businessNo = businessNo
     void load(1)
   }
@@ -978,6 +998,10 @@ const showHistorySnapshot = (row: QualityLotHistory) => {
 /** 打印检验报告（QR-037 进料 / QR-039 成品，报告数据来自检验批） */
 const printReport = (row: QualityLot) => {
   router.push({ path: '/quality/print/lot-report', query: { lotId: row.lotId } })
+}
+/** 回跳到来源入库单作业页（合并入口后的反向导航，dev-20261117-022）。 */
+function goInbound(inboundId: number) {
+  router.push({ path: '/inventory/iqc', query: { tab: 'inbound', inboundId: String(inboundId) } })
 }
 
 onMounted(() => load(1))

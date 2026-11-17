@@ -63,6 +63,12 @@ export const constantRoutes: RouteRecordRaw[] = [
     }),
   },
   {
+    // 来料检验 P0 合并（dev-20261117-022）：原「来料检验批」菜单并入 /inventory/iqc 的
+    // 「检验批台账」页签；旧书签与外部链接重定向，不 404。
+    path: '/quality/lot/iqc',
+    redirect: { path: '/inventory/iqc', query: { tab: 'lots' } },
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/login/index.vue'),
