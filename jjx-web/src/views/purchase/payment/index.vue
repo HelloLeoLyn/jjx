@@ -338,62 +338,88 @@
       >
     </el-dialog>
 
-    <el-dialog v-model="detailVisible" title="付款详情" width="1200px" append-to-body>
-      <el-descriptions v-if="current" :column="2" border>
-        <el-descriptions-item label="付款单号">{{ current.paymentNo }}</el-descriptions-item>
-        <el-descriptions-item label="供应商">{{
-          current.supplierName || '-'
-        }}</el-descriptions-item>
-        <el-descriptions-item label="采购订单号">
-          <el-link
-            v-if="
-              current.orderNo && current.orderId && userStore.hasPermission('purchase:order:view')
-            "
-            type="primary"
-            @click="openSourceOrder(current)"
-            >{{ current.orderNo }}</el-link
-          >
-          <span v-else>{{ current.orderNo || '-' }}</span>
-        </el-descriptions-item>
-        <el-descriptions-item label="付款日期">{{
-          current.paymentDate || '-'
-        }}</el-descriptions-item>
-        <el-descriptions-item label="金额">{{ money(current.paymentAmount) }}</el-descriptions-item>
-        <el-descriptions-item label="付款方式">{{
-          PaymentMethodEnum.getLabel(current.paymentMethod)
-        }}</el-descriptions-item>
-        <el-descriptions-item label="银行账号">{{
-          current.bankAccount || '-'
-        }}</el-descriptions-item>
-        <el-descriptions-item label="付款状态">{{
-          PaymentStatusEnum.getLabel(current.paymentStatus)
-        }}</el-descriptions-item>
-        <el-descriptions-item label="审批状态">{{
-          PaymentApprovalStatusEnum.getLabel(current.approvalStatus)
-        }}</el-descriptions-item>
-        <el-descriptions-item label="实际付款日">{{
-          current.actualPaymentDate || '-'
-        }}</el-descriptions-item>
-        <el-descriptions-item label="转账流水号">{{
-          current.voucherNo || '-'
-        }}</el-descriptions-item>
-        <el-descriptions-item label="转账回单" :span="2">
+    <el-dialog
+      v-model="detailVisible"
+      title="付款详情"
+      width="1200px"
+      append-to-body
+      class="payment-detail-dialog"
+    >
+      <template v-if="current">
+        <div class="detail-section-title">付款信息</div>
+        <el-descriptions :column="3" border>
+          <el-descriptions-item label="付款单号">{{ current.paymentNo }}</el-descriptions-item>
+          <el-descriptions-item label="采购订单号">
+            <el-link
+              v-if="
+                current.orderNo && current.orderId && userStore.hasPermission('purchase:order:view')
+              "
+              type="primary"
+              @click="openSourceOrder(current)"
+              >{{ current.orderNo }}</el-link
+            >
+            <span v-else>{{ current.orderNo || '-' }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="供应商">{{
+            current.supplierName || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="计划付款日">{{
+            current.paymentDate || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="申请金额">
+            <span class="detail-amount">{{ money(current.paymentAmount) }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="付款方式">{{
+            PaymentMethodEnum.getLabel(current.paymentMethod)
+          }}</el-descriptions-item>
+          <el-descriptions-item label="银行账号" :span="3">{{
+            current.bankAccount || '-'
+          }}</el-descriptions-item>
+        </el-descriptions>
+
+        <div class="detail-section-title">审批与状态</div>
+        <el-descriptions :column="3" border>
+          <el-descriptions-item label="付款状态">
+            <el-tag :type="PaymentStatusEnum.getTagProps(current.paymentStatus).type">{{
+              PaymentStatusEnum.getLabel(current.paymentStatus)
+            }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="审批状态">
+            <el-tag :type="PaymentApprovalStatusEnum.getTagProps(current.approvalStatus).type">{{
+              PaymentApprovalStatusEnum.getLabel(current.approvalStatus)
+            }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="审批人">{{
+            current.approverName || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="实际付款日">{{
+            current.actualPaymentDate || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="转账流水号">{{
+            current.voucherNo || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="审批时间">{{
+            current.approvalTime || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="审批意见" :span="3">{{
+            current.approvalComment || '-'
+          }}</el-descriptions-item>
+        </el-descriptions>
+
+        <div class="detail-section-title">转账回单</div>
+        <div class="detail-attachment">
           <AttachmentCenter
             v-if="current?.paymentId"
             source-type="purchase_payment"
             :source-id="current.paymentId"
-            title="转账回单"
             readonly
           />
           <span v-else>-</span>
-        </el-descriptions-item>
-        <el-descriptions-item label="审批时间">{{
-          current.approvalTime || '-'
-        }}</el-descriptions-item>
-        <el-descriptions-item label="备注" :span="2">{{
-          current.remark || '-'
-        }}</el-descriptions-item>
-      </el-descriptions>
+        </div>
+
+        <div class="detail-section-title">备注</div>
+        <div class="detail-remark">{{ current.remark || '-' }}</div>
+      </template>
       <template #footer>
         <el-button @click="detailVisible = false">关闭</el-button>
       </template>
@@ -831,5 +857,40 @@ onMounted(() => {
 }
 .confirm-summary {
   margin-bottom: 16px;
+}
+.payment-detail-dialog :deep(.el-dialog__body) {
+  max-height: 68vh;
+  overflow-y: auto;
+}
+.detail-section-title {
+  margin: 18px 0 8px;
+  padding-left: 8px;
+  border-left: 3px solid var(--el-color-primary);
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 16px;
+  color: var(--el-text-color-primary);
+}
+.detail-section-title:first-of-type {
+  margin-top: 0;
+}
+.detail-amount {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.detail-attachment {
+  padding: 8px 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+}
+.detail-attachment :deep(.ac-title) {
+  display: none;
+}
+.detail-remark {
+  padding: 8px 12px;
+  border-radius: 4px;
+  background: var(--el-fill-color-lighter);
+  color: var(--el-text-color-regular);
+  white-space: pre-wrap;
 }
 </style>
