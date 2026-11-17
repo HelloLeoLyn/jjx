@@ -149,7 +149,8 @@ public class PurchaseInvoiceController extends BaseController {
     @GetMapping("/pending-orders")
     @SaCheckPermission("purchase:invoice:view")
     public Result<List<PurchaseOrderVO>> pendingOrders() {
-        return Result.success(purchaseOrderService.selectPendingReceiptOrders());
+        // 开票对象=部分收货/已收货订单，不能复用待收货查询（dev-20261117-014）
+        return Result.success(purchaseOrderService.selectInvoiceCandidateOrders());
     }
 
     /**

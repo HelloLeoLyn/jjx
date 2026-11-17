@@ -683,6 +683,11 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     }
 
     @Override
+    public List<PurchaseOrderVO> selectInvoiceCandidateOrders() {
+        return purchaseConverter.toVOList(orderMapper.selectInvoiceCandidateOrders());
+    }
+
+    @Override
     public List<PurchaseOrderVO> selectPendingPaymentOrders() {
         List<PurchaseOrder> orders = orderMapper.selectPendingPaymentOrders(ApproveStatusEnum.APPROVED.getValue(),
                 com.jjx.purchase.domain.enums.PurchasePaymentStatusEnum.PENDING.getValue(),

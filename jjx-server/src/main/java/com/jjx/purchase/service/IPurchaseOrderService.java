@@ -174,6 +174,11 @@ public interface IPurchaseOrderService extends IService<PurchaseOrder> {
     List<PurchaseOrderVO> selectPendingReceiptOrders();
 
     /**
+     * 可开票订单（部分收货/已收货 且 已批准/执行中），供采购发票下拉使用。
+     */
+    List<PurchaseOrderVO> selectInvoiceCandidateOrders();
+
+    /**
      * 查询待付款的订单列表
      *
      * @return 待付款订单列表

@@ -58,7 +58,7 @@
     <el-dialog v-model="createVisible" title="新增发票（按文件批量开票）" width="800px" destroy-on-close @closed="resetCreate">
       <el-form :model="createForm" label-width="90px" :disabled="submitting">
         <el-form-item label="采购订单" required>
-          <el-select v-model="createForm.orderId" filterable placeholder="选择已收货的采购订单" style="width: 100%" @change="onOrderChange">
+          <el-select v-model="createForm.orderId" filterable placeholder="选择已收货或部分收货的采购订单" style="width: 100%" @change="onOrderChange">
             <el-option v-for="o in pendingOrders" :key="o.orderId" :label="`${o.orderNo} - ${o.supplierName}`" :value="o.orderId" />
           </el-select>
         </el-form-item>

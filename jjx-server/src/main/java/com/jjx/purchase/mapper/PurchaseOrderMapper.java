@@ -124,6 +124,13 @@ public interface PurchaseOrderMapper extends BaseMapper<PurchaseOrder> {
     List<PurchaseOrder> selectPendingReceiptOrders();
 
     /**
+     * 查询可开票的采购订单（部分收货或已收货，且已批准/执行中）。
+     * 独立于待收货列表：开票场景不能复用 receipt_status IN (0,1)，否则已收货订单永远选不到（dev-20261117-014）。
+     */
+    @Select("SELECT * FROM purchase_order WHERE receipt_status IN (1, 2) AND approval_status IN (3, 4) ORDER BY order_date DESC")
+    List<PurchaseOrder> selectInvoiceCandidateOrders();
+
+    /**
      * 查询待付款的订单列表
      */
     @Select("SELECT * FROM purchase_order WHERE payment_status IN (#{pending}, #{partial}) AND approval_status = #{approved} ORDER BY order_date DESC")
