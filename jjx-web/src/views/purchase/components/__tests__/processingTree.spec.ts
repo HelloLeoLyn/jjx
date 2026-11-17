@@ -299,6 +299,31 @@ describe('加工树及自动余料交互', () => {
       piecesPerUnit: null,
     })
   })
+  it('卷宽可作为成品长L，另一边自行填写；切换和重开保留尺寸', async () => {
+    const { s } = wrap(TreeEditor, { item, modelValue: snapshot(split) })
+    api.plan.mockResolvedValue({ data: { ...item, processingPlan: snapshot(split) } })
+    await s.open()
+    const source = s.tree.children[0]
+    source.widthMm = 315
+    s.edit(source, Action.CUT.value)
+    s.changeCutAxis(true)
+    expect(s.operation.pieceLengthMm).toBe(315)
+    expect(s.operation.pieceWidthMm).toBeUndefined()
+    s.operation.pieceWidthMm = 285
+    await s.applyOperation()
+    const request = JSON.parse(api.plan.mock.calls.at(-1)[0].processingPlan)
+    expect(request.tree.children[0].operation).toMatchObject({
+      pieceWidthMm: 285,
+      pieceLengthMm: 315,
+      rotated: true,
+    })
+    s.edit(request.tree.children[0], Action.CUT.value)
+    expect(s.operation).toMatchObject({ pieceWidthMm: 285, pieceLengthMm: 315, rotated: true })
+    s.changeCutAxis(false)
+    expect(s.operation).toMatchObject({ pieceWidthMm: 315, pieceLengthMm: 285, rotated: false })
+    s.changeCutAxis(true)
+    expect(s.operation).toMatchObject({ pieceWidthMm: 285, pieceLengthMm: 315, rotated: true })
+  })
   it('树表与打印显示缩进所属关系、原卷2卷和含税主行金额', () => {
     const w = mount(Rows, { props: { tree: split, materialName: 'EBA180' } })
     wrappers.push(w)

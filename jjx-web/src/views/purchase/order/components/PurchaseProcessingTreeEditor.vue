@@ -155,36 +155,43 @@
           >
         </template>
         <template v-else>
-          <el-form-item label="成品宽 W(mm)"
-            ><el-input-number
-              v-model="operation.pieceWidthMm"
+          <el-form-item :label="active?.unit === 'ROLL' ? '卷宽作为' : '来源宽度作为'">
+            <el-select
+              :model-value="!!operation.rotated"
+              aria-label="卷宽作为"
+              @change="changeCutAxis"
+            >
+              <el-option :value="false" label="成品宽 W" />
+              <el-option :value="true" label="成品长 L" />
+            </el-select>
+          </el-form-item>
+          <el-form-item :label="operation.rotated ? '成品长 L(mm)' : '成品宽 W(mm)'">
+            <el-input-number
+              v-model="operation[operation.rotated ? 'pieceLengthMm' : 'pieceWidthMm']"
               :min="0"
               :precision="2"
               :controls="false"
-              aria-label="成品宽W"
-          /></el-form-item>
-          <el-form-item label="成品长 L(mm)"
-            ><el-input-number
-              v-model="operation.pieceLengthMm"
+              :aria-label="operation.rotated ? '成品长L' : '成品宽W'"
+            />
+            <span class="hint">从来源宽度带出，可修改</span>
+          </el-form-item>
+          <el-form-item :label="operation.rotated ? '成品宽 W(mm)' : '成品长 L(mm)'">
+            <el-input-number
+              v-model="operation[operation.rotated ? 'pieceWidthMm' : 'pieceLengthMm']"
               :min="0"
               :precision="2"
               :controls="false"
-              aria-label="成品长L"
-          /></el-form-item>
-          <el-form-item label="沿卷宽排哪条边">
-            <el-radio-group v-model="operation.rotated" aria-label="沿卷宽排哪条边">
-              <el-radio-button :value="false">{{
-                processingCutLayout(operation, false)
-              }}</el-radio-button>
-              <el-radio-button :value="true">{{
-                processingCutLayout(operation, true)
-              }}</el-radio-button>
-            </el-radio-group>
+              :aria-label="operation.rotated ? '成品宽W' : '成品长L'"
+              placeholder="填写切片尺寸"
+            />
           </el-form-item>
           <p class="hint">
-            成品规格：{{
-              processingPieceSpec(operation)
-            }}。选择排版方向只改变摆放方式，成品W/L保持不变。
+            成品规格：{{ processingPieceSpec(operation) }}。
+            {{
+              operation.rotated
+                ? '成品长L沿来源宽度，按成品宽W切片。'
+                : '成品宽W沿来源宽度，按成品长L切片。'
+            }}
           </p>
           <el-form-item label="每卷 / 块切片数"
             ><el-input-number
@@ -324,11 +331,7 @@ import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { Permissions } from '@/enums/permissions'
 import PurchaseProcessingTreeRows from './PurchaseProcessingTreeRows.vue'
-import {
-  processingTreeSpec,
-  processingPieceSpec,
-  processingCutLayout,
-} from './processingTreeDisplay'
+import { processingTreeSpec, processingPieceSpec } from './processingTreeDisplay'
 const props = defineProps<{
   modelValue?: string | null
   item: PurchaseEntryItem
@@ -470,6 +473,13 @@ function edit(
   operationVisible.value = true
   if (type === PurchaseProcessingOperationEnum.CUT.value)
     operation.value.rotated = !!operation.value.rotated
+}
+function changeCutAxis(rotated: boolean) {
+  if (rotated === !!operation.value.rotated) return
+  const { pieceWidthMm, pieceLengthMm } = operation.value
+  operation.value.pieceWidthMm = pieceLengthMm
+  operation.value.pieceLengthMm = pieceWidthMm
+  operation.value.rotated = rotated
 }
 function selectSlitStep(id: string) {
   const node = slitSteps.value.find((n) => n.nodeId === id)
