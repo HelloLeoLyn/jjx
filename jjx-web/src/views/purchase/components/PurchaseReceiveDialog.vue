@@ -107,17 +107,12 @@
         </div>
       </el-form-item>
 
-      <el-form-item v-if="canViewDoc && (historyFiles.length || imageList.length)" label="历史票据">
+      <el-form-item v-if="canViewDoc && historyFiles.length" label="历史票据">
         <div>
           <div v-for="file in historyFiles" :key="file.refId">
             <span>{{ file.inboundNo }}：</span>
             <el-button link type="primary" @click="previewAttachment(file.attachmentId)">{{ file.fileName }}</el-button>
             <el-link :href="attachmentApi.downloadUrl(file.attachmentId)" target="_blank">下载</el-link>
-          </div>
-          <div v-for="file in imageList" :key="file.fileUrl">
-            <span>旧票据：</span>
-            <el-button link type="primary" @click="previewLegacy(file.fileUrl)">{{ file.fileName }}</el-button>
-            <el-link :href="file.fileUrl" target="_blank">下载</el-link>
           </div>
         </div>
       </el-form-item>
@@ -167,7 +162,6 @@ import {
   getReceiptsByOrder,
   confirmBatchReceive,
   getReceiptDocRefs,
-  getReceiptDocDiskFiles,
 } from '@/api/purchase/receipt'
 
 /**
@@ -196,14 +190,6 @@ interface ReceiveItem {
   processingPlan?: string
   processingGroups?: ProcessingReceiptGroup[]
   receiveQuantity: number | undefined
-}
-
-interface DiskFileInfo {
-  fileName: string
-  storageName?: string
-  fileUrl: string
-  fileSize: number
-  orderNo?: string
 }
 
 const props = defineProps<{
@@ -245,7 +231,6 @@ function setProcessingRef(id:number,el:unknown){if(el)processingRefs.set(id,el a
 function expandProcessing(row:ReceiveItem){receiptTable.value?.toggleRowExpansion(row,true)}
 function processingFilled(row:ReceiveItem){return !!row.processingGroups?.some(g=>g.outputs.some(o=>Number(o.quantity)>0)||Number(g.lossArea)>0)}
 
-const imageList = ref<DiskFileInfo[]>([])
 const previewVisible = ref(false)
 const previewUrl = ref('')
 
@@ -346,17 +331,16 @@ const loadItems = async () => {
   }
 }
 
-/** 新引用按入库单展示；旧目录只读，不再扫描后批量重复登记。 */
+/** 历史票据只按附件中心引用展示（不再扫描磁盘旧目录，dev-20261117-023）：一套账、有引用、可追溯。 */
 const loadImages = async () => {
-  imageList.value = []
   historyFiles.value = []
   if (!props.orderId || !canViewDoc.value) return
-  const [legacy, current] = await Promise.allSettled([
-    getReceiptDocDiskFiles(Number(props.orderId)), getReceiptDocRefs(Number(props.orderId)),
-  ])
-  if (legacy.status === 'fulfilled') imageList.value = legacy.value.data || []
-  if (current.status === 'fulfilled') historyFiles.value = current.value.data || []
-  if (legacy.status === 'rejected' || current.status === 'rejected') ElMessage.warning('部分历史票据加载失败，请重新打开查看')
+  try {
+    const res = await getReceiptDocRefs(Number(props.orderId))
+    historyFiles.value = res.data || []
+  } catch {
+    ElMessage.warning('历史票据加载失败，请重新打开查看')
+  }
 }
 
 function previewAttachment(id: number) {
@@ -431,7 +415,6 @@ const handleClose = () => {
   historyFiles.value = []
   previewVisible.value = false
   form.items = []
-  imageList.value = []
   lastInboundNo.value = ''
   qtyRefs.value = []
   emit('update:visible', false)

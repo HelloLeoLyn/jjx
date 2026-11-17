@@ -246,14 +246,6 @@ export function uploadReceiptDocTemp(orderId: number, file: File) {
   })
 }
 
-/** 收货票据临时文件列表（扫磁盘目录） */
-export function getReceiptDocDiskFiles(orderId: number) {
-  return request({
-    url: `/purchase/receipt/doc/disk-files/${orderId}`,
-    method: 'get',
-  })
-}
-
 /** 删除收货票据临时文件 */
 export function deleteReceiptDocTemp(fileUrl: string) {
   return request({
