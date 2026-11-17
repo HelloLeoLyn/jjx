@@ -104,9 +104,7 @@
       <el-form label-width="145px" :disabled="busy">
         <p v-if="activeLabel">所属：{{ activeLabel }}</p>
         <p v-if="active">
-          来源：{{ active.role }} · {{ active.widthMm }}mm ×
-          {{ active.unit === 'ROLL' ? Number(active.lengthMm) / 1000 : active.lengthMm
-          }}{{ active.unit === 'ROLL' ? 'm' : 'mm' }}，{{ active.quantity
+          来源：{{ active.role }} · {{ processingTreeSpec(active) }}，{{ active.quantity
           }}{{ active.unit === 'ROLL' ? '卷' : '块' }}
         </p>
         <el-form-item v-if="slitSteps.length > 1" label="分切步骤">
@@ -157,25 +155,37 @@
           >
         </template>
         <template v-else>
-          <el-form-item label="切片宽度(mm)"
+          <el-form-item label="成品宽 W(mm)"
             ><el-input-number
               v-model="operation.pieceWidthMm"
               :min="0"
               :precision="2"
               :controls="false"
-              aria-label="切片宽度"
+              aria-label="成品宽W"
           /></el-form-item>
-          <el-form-item label="切片长度(mm)"
+          <el-form-item label="成品长 L(mm)"
             ><el-input-number
               v-model="operation.pieceLengthMm"
               :min="0"
               :precision="2"
               :controls="false"
-              aria-label="切片长度"
+              aria-label="成品长L"
           /></el-form-item>
-          <el-form-item label="排版方向"
-            ><el-checkbox v-model="operation.rotated">旋转90°排版</el-checkbox></el-form-item
-          >
+          <el-form-item label="沿卷宽排哪条边">
+            <el-radio-group v-model="operation.rotated" aria-label="沿卷宽排哪条边">
+              <el-radio-button :value="false">{{
+                processingCutLayout(operation, false)
+              }}</el-radio-button>
+              <el-radio-button :value="true">{{
+                processingCutLayout(operation, true)
+              }}</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <p class="hint">
+            成品规格：{{
+              processingPieceSpec(operation)
+            }}。选择排版方向只改变摆放方式，成品W/L保持不变。
+          </p>
           <el-form-item label="每卷 / 块切片数"
             ><el-input-number
               v-model="operation.piecesPerUnit"
@@ -215,9 +225,7 @@
       :show-close="!busy"
     >
       <p v-if="active">
-        {{ activeLabel || active.role }}：{{ active.widthMm }}mm ×
-        {{ active.unit === 'ROLL' ? Number(active.lengthMm) / 1000 : active.lengthMm
-        }}{{ active.unit === 'ROLL' ? 'm' : 'mm' }}，{{ active.quantity
+        {{ activeLabel || active.role }}：{{ processingTreeSpec(active) }}，{{ active.quantity
         }}{{ active.unit === 'ROLL' ? '卷' : '片' }}
       </p>
       <el-select
@@ -316,6 +324,11 @@ import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { Permissions } from '@/enums/permissions'
 import PurchaseProcessingTreeRows from './PurchaseProcessingTreeRows.vue'
+import {
+  processingTreeSpec,
+  processingPieceSpec,
+  processingCutLayout,
+} from './processingTreeDisplay'
 const props = defineProps<{
   modelValue?: string | null
   item: PurchaseEntryItem
@@ -455,6 +468,8 @@ function edit(
           piecesPerUnit: null,
         }
   operationVisible.value = true
+  if (type === PurchaseProcessingOperationEnum.CUT.value)
+    operation.value.rotated = !!operation.value.rotated
 }
 function selectSlitStep(id: string) {
   const node = slitSteps.value.find((n) => n.nodeId === id)

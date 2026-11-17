@@ -26,6 +26,12 @@
             · {{ PurchaseProcessingOperationEnum.getLabel(row.node.operation.type) }}</span
           >
           <div>{{ processingTreeSpec(row.node) }}</div>
+          <div
+            v-if="row.node.operation?.type === PurchaseProcessingOperationEnum.CUT.value"
+            class="cut-layout"
+          >
+            {{ processingCutLayout(row.node.operation) }}
+          </div>
         </td>
         <td>{{ row.quantity }}{{ row.node.unit === 'ROLL' ? '卷' : '片' }}</td>
         <td>
@@ -64,7 +70,11 @@ import {
   PurchaseProcessingDeliveryEnum,
 } from '@/enums/purchase/processing'
 import type { ProcessingTreeNode } from '@/api/purchase/orderEntry'
-import { processingTreeDisplayRows, processingTreeSpec } from './processingTreeDisplay'
+import {
+  processingTreeDisplayRows,
+  processingTreeSpec,
+  processingCutLayout,
+} from './processingTreeDisplay'
 const props = defineProps<{ tree: ProcessingTreeNode; materialName?: string }>()
 const rows = computed(() => processingTreeDisplayRows(props.tree))
 </script>
@@ -100,6 +110,10 @@ const rows = computed(() => processingTreeDisplayRows(props.tree))
 }
 .tree-group {
   background: #f0f7ff;
+}
+.cut-layout {
+  color: #606266;
+  font-size: 11px;
 }
 .unbound {
   color: #b88230;

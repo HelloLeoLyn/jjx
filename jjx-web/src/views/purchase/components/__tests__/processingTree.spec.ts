@@ -375,7 +375,7 @@ describe('加工树及自动余料交互', () => {
     expect(at('root-s0-pieces')).toMatchObject({ number: '1.1.1.1', quantity: 634, depth: 3 })
     expect(at('root-width-s0-pieces')).toMatchObject({ number: '1.1.2.1', quantity: 350, depth: 3 })
     expect(rows.some((r) => r.key === 'root-width')).toBe(false)
-    expect(at('root-width-s0-pieces').path).toContain('315mm × 100m')
+    expect(at('root-width-s0-pieces').path).toContain('W315mm × L100m')
     expect(at('root-width-s0-pieces').path).not.toContain('650mm')
     expect(at('root::used').slitSources.map((n) => n.nodeId)).toEqual(['root', 'root-width'])
     expect(at('root-width-s0').node).toBe(tree.children[1].children[0])
@@ -497,7 +497,7 @@ describe('加工树及自动余料交互', () => {
     wrappers.push(w)
     await flushPromises()
     expect(w.find('.node-path').text()).toContain('加工其中1卷')
-    expect(w.find('.node-path').text()).toContain('315mm × 100m')
+    expect(w.find('.node-path').text()).toContain('W315mm × L100m')
     expect(w.find('.node-path').text()).not.toContain('650mm')
     const s = (w.vm as any).$?.setupState
     s.inputs[0].outputs[0].quantity = 100

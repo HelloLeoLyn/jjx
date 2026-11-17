@@ -7,7 +7,7 @@
         <strong>{{ group.name }} · 母卷 {{ group.motherRolls }}卷</strong>
         <div v-if="!plan.tree" class="slits">分切：{{ group.slits.map(s => `${s.widthMm}mm × ${s.rolls}卷`).join(' / ') }}</div>
         <el-table :data="group.outputs" border size="small">
-          <el-table-column label="交付规格" min-width="220"><template #default="{row}"><template v-if="isScrap(row)"><strong class="scrap-label">报废不入库</strong><div>{{ row.disposalReason }}</div></template><template v-else>{{ row.materialCode || '未指定物料' }} · {{ row.materialName }}</template><small v-if="displayPath(row)" class="node-path">{{ displayPath(row) }}</small><div>{{ row.widthMm }}mm × {{ row.unit === 'ROLL' ? `${row.rollLengthM}m/卷` : `${row.lengthMm}mm` }}</div></template></el-table-column>
+          <el-table-column label="交付规格" min-width="220"><template #default="{row}"><template v-if="isScrap(row)"><strong class="scrap-label">报废不入库</strong><div>{{ row.disposalReason }}</div></template><template v-else>{{ row.materialCode || '未指定物料' }} · {{ row.materialName }}</template><small v-if="displayPath(row)" class="node-path">{{ displayPath(row) }}</small><div>{{ processingOutputSpec(row) }}</div></template></el-table-column>
           <el-table-column label="计划 / 已确认" width="120"><template #default="{row}">{{ row.quantity }} / {{ received(row.outputId) }} {{ row.unit === 'ROLL' ? '卷' : '片' }}</template></el-table-column>
           <el-table-column label="本次交货 / 报废" width="150"><template #default="{row}"><el-input-number v-sync-disabled-aria v-model="entry(group.groupId,row.outputId).quantity" :disabled="disabled" :min="0" :precision="0" :controls="false" :aria-label="isScrap(row) ? '本次报废数量' : '实际交付片数卷数'" /></template></el-table-column>
           <el-table-column label="实际每卷长度(m)" width="170"><template #default="{row}"><el-input-number v-if="row.unit==='ROLL'" v-sync-disabled-aria v-model="entry(group.groupId,row.outputId).rollLengthM" :disabled="disabled" :min="0" :precision="4" :controls="false" aria-label="余卷实际长度" /><span v-else>—</span></template></el-table-column>
@@ -28,7 +28,7 @@
 import { computed,ref,watch,onBeforeUnmount } from 'vue'
 import { getProcessingHistory,readProcessingPlan,previewProcessingReceipt } from '@/api/purchase/orderEntry'
 import type { ProcessingPlan,ProcessingReceiptGroup,ProcessingOutput } from '@/api/purchase/orderEntry'
-import { processingTreeDisplayRows } from '../order/components/processingTreeDisplay'
+import { processingTreeDisplayRows, processingOutputSpec } from '../order/components/processingTreeDisplay'
 import { PurchaseProcessingDeliveryEnum } from '@/enums/purchase/processing'
 const isScrap=(output:ProcessingOutput)=>output.delivery===PurchaseProcessingDeliveryEnum.SCRAP.value
 // Element Plus数字输入的aria-disabled只在挂载时设置；连续收货解锁后同步真实disabled。

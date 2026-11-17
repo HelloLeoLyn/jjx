@@ -1,9 +1,29 @@
 import { entryNumber } from '@/api/purchase/orderEntry'
-import type { ProcessingTreeNode } from '@/api/purchase/orderEntry'
+import type {
+  ProcessingTreeNode,
+  ProcessingTreeOperation,
+  ProcessingOutput,
+} from '@/api/purchase/orderEntry'
 import { PurchaseProcessingOperationEnum } from '@/enums/purchase/processing'
 
+const axisSpec = (width: number | undefined, length: number | undefined, unit: string) =>
+  `W${entryNumber(width)}mm × L${entryNumber(length)}${unit}`
 export const processingTreeSpec = (n: ProcessingTreeNode) =>
-  `${entryNumber(n.widthMm)}mm × ${entryNumber(n.unit === 'ROLL' ? Number(n.lengthMm) / 1000 : n.lengthMm)}${n.unit === 'ROLL' ? 'm' : 'mm'}`
+  axisSpec(
+    n.widthMm,
+    n.unit === 'ROLL' ? Number(n.lengthMm) / 1000 : n.lengthMm,
+    n.unit === 'ROLL' ? 'm' : 'mm'
+  )
+export const processingOutputSpec = (n: ProcessingOutput) =>
+  axisSpec(
+    n.widthMm,
+    n.unit === 'ROLL' ? n.rollLengthM : n.lengthMm,
+    n.unit === 'ROLL' ? 'm' : 'mm'
+  )
+export const processingPieceSpec = (op: ProcessingTreeOperation) =>
+  axisSpec(op.pieceWidthMm, op.pieceLengthMm, 'mm')
+export const processingCutLayout = (op: ProcessingTreeOperation, rotated = !!op.rotated) =>
+  `${rotated ? 'L' : 'W'}边（${entryNumber(rotated ? op.pieceLengthMm : op.pieceWidthMm)}mm）沿卷宽`
 
 interface DisplayBranch {
   key: string
