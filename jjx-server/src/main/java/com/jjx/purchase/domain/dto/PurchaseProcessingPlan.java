@@ -22,6 +22,8 @@ public class PurchaseProcessingPlan {
         private String materialName;
         private String bindingMessage;
         private String remark;
+        private com.jjx.purchase.domain.enums.PurchaseProcessingDelivery delivery;
+        private String disposalReason;
         private Operation operation;
         private List<Node> children;
     }
@@ -59,6 +61,8 @@ public class PurchaseProcessingPlan {
         private BigDecimal lengthMm;
         private BigDecimal rollLengthM;
         private String remark;
+        private com.jjx.purchase.domain.enums.PurchaseProcessingDelivery delivery;
+        private String disposalReason;
     }
     @Data public static class ReceiptGroup {
         private String groupId;

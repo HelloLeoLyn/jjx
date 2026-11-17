@@ -411,6 +411,7 @@ public class PurchaseReceiptController extends BaseController {
         Map<String, Object> result = new java.util.HashMap<>();
         result.put("inboundId", dto.getInboundId());
         result.put("inboundNo", dto.getInboundNo());
+        result.put("disposalOnly",dto.isDisposalOnly());
         return Result.success(result);
     }
 

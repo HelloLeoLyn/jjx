@@ -15,6 +15,10 @@ public class MaterialQueryDTO extends PageQuery{
     private Long materialId;
 
     private String keyword;
+    /** 加工终端精确匹配，必须在数据库分页前过滤。 */
+    private java.math.BigDecimal processingWidthMm;
+    private java.math.BigDecimal processingLengthMm;
+    private String processingUnit;
 
     private String materialCode;
 

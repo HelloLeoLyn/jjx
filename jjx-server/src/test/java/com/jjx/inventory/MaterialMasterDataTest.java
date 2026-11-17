@@ -483,6 +483,19 @@ class MaterialMasterDataTest {
         }
     }
 
+    @Test void processingSearchFiltersExactGeometryAndBaseUnitBeforePagination(){
+        var query=new MaterialQueryDTO();query.setProcessingWidthMm(new BigDecimal("285"));query.setProcessingLengthMm(new BigDecimal("315"));query.setProcessingUnit(com.jjx.common.util.UnitCodes.PCS);
+        service.search(query);
+        var wrapper=ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);verify(mapper).selectPage(any(),wrapper.capture());
+        var captured=(com.baomidou.mybatisplus.core.conditions.AbstractWrapper)wrapper.getValue();String sql=captured.getSqlSegment();assertTrue(sql.contains("width_mm ="));assertTrue(sql.contains("length_mm ="));assertTrue(sql.contains("unit IN"));assertTrue(captured.getParamNameValuePairs().containsValue(new BigDecimal("285")));assertTrue(captured.getParamNameValuePairs().containsValue(new BigDecimal("315")));
+        clearInvocations(mapper);query.setProcessingUnit(com.jjx.common.util.UnitCodes.ROLL);service.search(query);verify(mapper).selectPage(any(),wrapper.capture());sql=wrapper.getValue().getSqlSegment();assertTrue(sql.contains("width_mm ="));assertFalse(sql.contains("length_mm ="));assertTrue(sql.contains("unit ="));
+    }
+    @Test void processingSearchRejectsIncompleteOrUnsupportedShape(){
+        var query=new MaterialQueryDTO();query.setProcessingUnit(com.jjx.common.util.UnitCodes.PCS);assertThrows(com.jjx.common.exception.BusinessException.class,()->service.search(query));
+        query.setProcessingWidthMm(new BigDecimal("285"));assertThrows(com.jjx.common.exception.BusinessException.class,()->service.search(query));
+        query.setProcessingUnit(com.jjx.common.util.UnitCodes.KG);assertThrows(com.jjx.common.exception.BusinessException.class,()->service.search(query));
+    }
+
     @Test void textFiltersUseContainsSemantics() {
         when(mapper.selectList(any())).thenReturn(List.of());
         MaterialQueryDTO dto = new MaterialQueryDTO();

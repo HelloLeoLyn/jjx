@@ -54,6 +54,16 @@ public class PurchaseReceiptAttachmentService {
                 dto.setInboundNo((String) row.get("inbound_no"));
                 return true;
             }
+            var disposed=jdbc.queryForList("SELECT request_marker,inbound_id FROM purchase_processing_disposition WHERE order_id=? AND operator_id=? AND receipt_request_key=? ORDER BY disposition_id LIMIT 1",
+                dto.getOrderId(),com.jjx.system.utils.SecurityUtils.getUserId(),key);
+            if(!disposed.isEmpty()){
+                var row=disposed.get(0);
+                if(!marker(dto).equals(row.get("request_marker")))throw new BusinessException("本次加工处置已经确认，不能修改后重复提交，请换新的草稿");
+                Number id=(Number)row.get("inbound_id");
+                dto.setDisposalOnly(id==null);
+                if(id!=null){dto.setInboundId(id.longValue());dto.setInboundNo(jdbc.queryForObject("SELECT inbound_no FROM inventory_inbound_order WHERE inbound_id=?",String.class,id.longValue()));}
+                return true;
+            }
         } else if (!ids.isEmpty()) {
             throw new BusinessException("上传收货票据必须提供收货草稿标识");
         }
@@ -74,6 +84,10 @@ public class PurchaseReceiptAttachmentService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void complete(PurchaseOrderReceiveDTO dto, Long inboundId) {
         if (inboundId == null) {
+            if(dto.isDisposalOnly()){
+                if(!ids(dto).isEmpty())throw new BusinessException("本次仅确认报废，没有入库单，请移除收货票据后提交");
+                return;
+            }
             if (dto.getReceiptRequestKey() != null || !ids(dto).isEmpty()) throw new BusinessException("本次收货未生成入库凭证，票据未绑定");
             return;
         }
@@ -92,6 +106,21 @@ public class PurchaseReceiptAttachmentService {
             "UPDATE inventory_inbound_order SET remark=? WHERE inbound_id=?", marker(dto), inboundId);
         dto.setInboundId(inboundId);
         dto.setInboundNo(inboundNo);
+    }
+
+    /** 与批量收货同事务。只留独立报废事实；正常交货仍以原入库明细为准。 */
+    @Transactional(propagation=Propagation.MANDATORY)
+    public void recordDisposals(PurchaseOrderReceiveDTO dto,Long inboundId,
+            Map<Long,List<com.jjx.purchase.service.impl.PurchaseProcessingService.ReceiptFact>> facts){
+        if(facts.isEmpty())return;
+        if(dto.getReceiptRequestKey()==null)throw new BusinessException("确认加工报废必须提供收货草稿标识");
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();
+        for(var entry:facts.entrySet()){
+            String value;
+            try{value=json.writeValueAsString(entry.getValue());}catch(Exception ex){throw new IllegalStateException("加工处置序列化失败",ex);}
+            jdbc.update("INSERT INTO purchase_processing_disposition(order_id,item_id,receipt_request_key,request_marker,operator_id,operator_name,inbound_id,receipt_json) VALUES(?,?,?,?,?,?,?,?)",
+                dto.getOrderId(),entry.getKey(),dto.getReceiptRequestKey(),marker(dto),com.jjx.system.utils.SecurityUtils.getUserId(),com.jjx.system.utils.SecurityUtils.getUsername(),inboundId,value);
+        }
     }
 
     public List<Map<String, Object>> list(Long orderId) {

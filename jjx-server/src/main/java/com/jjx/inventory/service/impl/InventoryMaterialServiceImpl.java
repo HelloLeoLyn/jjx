@@ -437,6 +437,17 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
             wrapper.eq(InventoryMaterial::getSupplierId, queryDTO.getSupplierId());
         }
         applyAttributeFilters(wrapper, queryDTO);
+        if(queryDTO.getProcessingUnit()!=null){
+            String processingUnit=queryDTO.getProcessingUnit();
+            if(!com.jjx.common.util.UnitCodes.ROLL.equals(processingUnit)&&!com.jjx.common.util.UnitCodes.PCS.equals(processingUnit))throw new BusinessException("加工交货单位无效");
+            if(queryDTO.getProcessingWidthMm()==null||queryDTO.getProcessingWidthMm().signum()<=0)throw new BusinessException("加工终端宽度无效");
+            wrapper.eq(InventoryMaterial::getWidthMm,queryDTO.getProcessingWidthMm());
+            if(com.jjx.common.util.UnitCodes.ROLL.equals(processingUnit))wrapper.eq(InventoryMaterial::getUnit,com.jjx.common.util.UnitCodes.SQM);
+            else{
+                if(queryDTO.getProcessingLengthMm()==null||queryDTO.getProcessingLengthMm().signum()<=0)throw new BusinessException("加工终端长度无效");
+                wrapper.eq(InventoryMaterial::getLengthMm,queryDTO.getProcessingLengthMm()).in(InventoryMaterial::getUnit,com.jjx.common.util.UnitCodes.SQM,com.jjx.common.util.UnitCodes.PCS);
+            }
+        }
         wrapper.eq(InventoryMaterial::getStatus, StatusEnum.NORMAL.getCode())
                 .orderByDesc(InventoryMaterial::getCreateTime)
                 .orderByDesc(InventoryMaterial::getMaterialId);

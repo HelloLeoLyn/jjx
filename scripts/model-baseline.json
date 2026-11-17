@@ -249,6 +249,13 @@
       "date": "2026-11-13",
       "proposalLink": "jjx-docs/sql/migrations/applied/366_bom_change_request.sql",
       "reason": "BOM变更单明细：一张变更单打包多张BOM，含版本与逐张校验结果快照；用户2026-11-13任务卡明确新建"
+    },
+    {
+      "table": "purchase_processing_disposition",
+      "taskCode": "dev-20261117-002",
+      "date": "2026-11-17",
+      "proposalLink": "jjx-docs/history/purchase-processing-disposition-dev-20261117-002.md",
+      "reason": "独立采购加工处置事实：支持未入库且未建档的余料单独确认报废；原入库明细/IQC/不良单表强制业务关联不适用。用户授权实施并在新增记录表说明后确认本次结构变更手工备份。"
     }
   ],
   "typeSuffixAllowlist": [

@@ -36,7 +36,9 @@
             <el-button
               link
               type="primary"
-              :disabled="busy || disabled"
+              :disabled="
+                busy || disabled || node.delivery === PurchaseProcessingDeliveryEnum.SCRAP.value
+              "
               @click="
                 edit(node, PurchaseProcessingOperationEnum.SLIT.value, sourceLabel, slitSources)
               "
@@ -51,7 +53,9 @@
             <el-button
               link
               type="primary"
-              :disabled="busy || disabled"
+              :disabled="
+                busy || disabled || node.delivery === PurchaseProcessingDeliveryEnum.SCRAP.value
+              "
               @click="edit(node, PurchaseProcessingOperationEnum.CUT.value, sourceLabel)"
               >{{
                 node.operation?.type === PurchaseProcessingOperationEnum.CUT.value
@@ -69,9 +73,11 @@
               @click="clear(node)"
               >清除下级加工</el-button
             >
-            <el-button v-else link :disabled="busy || disabled" @click="bind(node, sourceLabel)"
-              >指定交货物料</el-button
-            >
+            <el-button v-else link :disabled="busy || disabled" @click="bind(node, sourceLabel)">{{
+              node.delivery === PurchaseProcessingDeliveryEnum.SCRAP.value
+                ? '修改报废处理'
+                : '指定交货物料'
+            }}</el-button>
           </template>
         </PurchaseProcessingTreeRows>
       </div>
@@ -215,12 +221,15 @@
         }}{{ active.unit === 'ROLL' ? '卷' : '片' }}
       </p>
       <el-select
+        v-if="!bindingScrap"
         v-model="bindingId"
         remote
         filterable
+        clearable
         :remote-method="search"
         :loading="searching"
-        :disabled="busy"
+        @visible-change="materialSelectOpen = $event"
+        :disabled="busy || disabled"
         placeholder="选择对应规格物料"
         style="width: 100%"
         ><el-option
@@ -228,15 +237,64 @@
           :key="m.materialId"
           :value="m.materialId"
           :label="`${m.materialCode} · ${m.materialName} · ${m.specification || ''}`"
-      /></el-select>
+        />
+        <template #empty>
+          <div class="empty-materials">
+            <el-button
+              v-if="canCreateFromSearch"
+              link
+              type="primary"
+              :disabled="busy || disabled"
+              @click="createMaterial"
+              >未找到对应规格？新建此规格档案</el-button
+            >
+            <span v-else>{{ searching ? '正在搜索…' : '暂无匹配物料' }}</span>
+          </div>
+        </template>
+      </el-select>
+      <el-button
+        v-if="canCreateFromSearch && !materialSelectOpen"
+        link
+        type="primary"
+        :disabled="busy || disabled"
+        @click="createMaterial"
+      >
+        未找到对应规格？新建此规格档案
+      </el-button>
+      <p v-if="!bindingScrap" class="hint">
+        仅搜索与当前终端规格匹配的启用物料；没有对应档案时可在搜索后新建。
+      </p>
+      <el-checkbox v-model="bindingScrap" :disabled="busy || disabled" @change="changeDelivery"
+        >报废不入库</el-checkbox
+      >
+      <el-input
+        v-if="bindingScrap"
+        v-model="disposalReason"
+        type="textarea"
+        :disabled="busy || disabled"
+        maxlength="200"
+        show-word-limit
+        placeholder="填写报废原因；实际报废数量在收货时确认，不生成该节点的库存"
+        aria-label="报废原因"
+      />
       <el-alert v-if="error" :title="error" type="error" :closable="false" class="notice" />
       <template #footer
         ><el-button :disabled="busy" @click="bindingVisible = false">取消</el-button
-        ><el-button type="primary" :disabled="!bindingId" :loading="busy" @click="applyBinding"
-          >确定物料</el-button
+        ><el-button
+          type="primary"
+          :disabled="disabled || (bindingScrap ? !disposalReason.trim() : !bindingId)"
+          :loading="busy"
+          @click="applyBinding"
+          >{{ bindingScrap ? '确定报废处理' : '确定物料' }}</el-button
         ></template
       >
     </el-dialog>
+    <MaterialFormDialog
+      v-if="materialFormVisible"
+      v-model="materialFormVisible"
+      :preset-data="materialPreset"
+      @success="materialCreated"
+    />
   </div>
 </template>
 <script setup lang="ts">
@@ -250,7 +308,13 @@ import type {
   ProcessingTreeOperation,
 } from '@/api/purchase/orderEntry'
 import type { InventoryMaterial } from '@/types/inventory/material'
-import { PurchaseProcessingOperationEnum } from '@/enums/purchase/processing'
+import {
+  PurchaseProcessingOperationEnum,
+  PurchaseProcessingDeliveryEnum,
+} from '@/enums/purchase/processing'
+import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
+import { usePermission } from '@/composables/usePermission'
+import { Permissions } from '@/enums/permissions'
 import PurchaseProcessingTreeRows from './PurchaseProcessingTreeRows.vue'
 const props = defineProps<{
   modelValue?: string | null
@@ -265,6 +329,24 @@ const emit = defineEmits<{
 const normalizedPlan = ref('')
 const activeLabel = ref('')
 const slitSteps = ref<ProcessingTreeNode[]>([])
+const { hasPermission } = usePermission()
+const materialSelectOpen = ref(false)
+const bindingScrap = ref(false),
+  disposalReason = ref(''),
+  searchCompleted = ref(false),
+  noMatches = ref(false)
+const materialFormVisible = ref(false),
+  materialPreset = ref({ materialName: '', specification: '', unit: '' })
+let createContext: { nodeId: string; version: number } | undefined
+const canCreateFromSearch = computed(
+  () =>
+    !bindingScrap.value &&
+    !bindingId.value &&
+    searchCompleted.value &&
+    noMatches.value &&
+    !searching.value &&
+    hasPermission(Permissions.INVENTORY_MATERIAL_ADD)
+)
 const savedTree = computed(() => readProcessingPlan(props.modelValue)?.tree)
 const visible = ref(false),
   busy = ref(false),
@@ -291,6 +373,8 @@ function invalidate() {
   busy.value = false
   operationVisible.value = false
   bindingVisible.value = false
+  materialFormVisible.value = false
+  ++searchVersion
   if (!adopted) emit('cancel')
   adopted = false
 }
@@ -405,6 +489,10 @@ function bind(n: ProcessingTreeNode, sourceLabel = '') {
   active.value = n
   activeLabel.value = sourceLabel
   bindingId.value = n.materialId || undefined
+  bindingScrap.value = n.delivery === PurchaseProcessingDeliveryEnum.SCRAP.value
+  disposalReason.value = n.disposalReason || ''
+  searchCompleted.value = false
+  materialSelectOpen.value = false
   materialOptions.value = n.materialId
     ? [
         {
@@ -417,26 +505,100 @@ function bind(n: ProcessingTreeNode, sourceLabel = '') {
     : []
   error.value = ''
   bindingVisible.value = true
+  if (!bindingScrap.value) void search('')
+}
+function changeDelivery() {
+  ++searchVersion
+  searchCompleted.value = false
+  searching.value = false
+  error.value = ''
+  if (!bindingScrap.value) void search('')
 }
 async function search(keyword: string) {
+  const node = active.value
+  if (!node || !bindingVisible.value || bindingScrap.value) return
   const v = ++searchVersion
   searching.value = true
+  searchCompleted.value = false
+  error.value = ''
   try {
-    const r = await materialApi.search({ keyword, pageNum: 1, pageSize: 30 })
-    if (v === searchVersion && !disposed) materialOptions.value = r.data?.records || []
+    const r = await materialApi.search({
+      keyword,
+      pageNum: 1,
+      pageSize: 30,
+      processingWidthMm: Number(node.widthMm),
+      processingLengthMm: Number(node.lengthMm),
+      processingUnit: node.unit,
+    })
+    if (
+      v === searchVersion &&
+      !disposed &&
+      bindingVisible.value &&
+      active.value?.nodeId === node.nodeId
+    ) {
+      if (!Array.isArray(r.data?.records)) throw new Error('物料搜索响应无效，请重试')
+      materialOptions.value = r.data.records
+      noMatches.value = materialOptions.value.length === 0
+      searchCompleted.value = true
+    }
   } catch (ex: any) {
     if (v === searchVersion) error.value = ex?.message || '物料搜索失败'
   } finally {
     if (v === searchVersion) searching.value = false
   }
 }
+function createMaterial() {
+  if (!canCreateFromSearch.value || !active.value || busy.value || props.disabled) return
+  createContext = { nodeId: active.value.nodeId, version }
+  materialPreset.value = {
+    materialName: props.item.materialName || props.item.supplierMaterialName || '',
+    specification: `${active.value.widthMm}*${active.value.lengthMm}mm`,
+    unit: active.value.unit === 'ROLL' ? '㎡' : 'PCS',
+  }
+  materialFormVisible.value = true
+}
+async function materialCreated(material: InventoryMaterial) {
+  materialFormVisible.value = false
+  if (
+    !createContext ||
+    disposed ||
+    !visible.value ||
+    !bindingVisible.value ||
+    bindingScrap.value ||
+    busy.value ||
+    props.disabled ||
+    createContext.version !== version ||
+    createContext.nodeId !== active.value?.nodeId
+  )
+    return
+  materialOptions.value = [material]
+  bindingId.value = material.materialId
+  await applyBinding()
+}
 async function applyBinding() {
-  if (!tree.value || !active.value || !bindingId.value || busy.value) return
+  if (
+    !tree.value ||
+    !active.value ||
+    (bindingScrap.value ? !disposalReason.value.trim() : !bindingId.value) ||
+    busy.value ||
+    props.disabled
+  )
+    return
   const candidate = clone(tree.value),
     id = active.value.nodeId
-  find(candidate, id)!.materialId = bindingId.value
+  const target = find(candidate, id)!
+  target.materialId = bindingScrap.value ? null : bindingId.value
+  target.delivery = bindingScrap.value
+    ? PurchaseProcessingDeliveryEnum.SCRAP.value
+    : PurchaseProcessingDeliveryEnum.INBOUND.value
+  target.disposalReason = bindingScrap.value ? disposalReason.value.trim() : null
   if (await recalculate(candidate)) {
-    if (find(tree.value!, id)?.materialId === bindingId.value) bindingVisible.value = false
+    if (
+      bindingScrap.value
+        ? find(tree.value!, id)?.delivery === PurchaseProcessingDeliveryEnum.SCRAP.value
+        : find(tree.value!, id)?.materialId === bindingId.value
+    )
+      bindingVisible.value = false
     else error.value = '所选物料与终端规格不匹配，请重新选择'
   }
 }
@@ -481,6 +643,14 @@ onBeforeUnmount(() => {
   ++version
   ++searchVersion
 })
+watch(bindingVisible, (value) => {
+  if (!value) {
+    ++searchVersion
+    searchCompleted.value = false
+    materialFormVisible.value = false
+    createContext = undefined
+  }
+})
 </script>
 <style scoped>
 .toolbar {
@@ -500,6 +670,10 @@ onBeforeUnmount(() => {
 }
 .notice {
   margin-top: 12px;
+}
+.empty-materials {
+  padding: 12px;
+  text-align: center;
 }
 .slit-row {
   display: flex;

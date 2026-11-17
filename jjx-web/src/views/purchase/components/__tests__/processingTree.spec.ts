@@ -10,7 +10,18 @@ import Receive from '../PurchaseProcessingReceive.vue'
 import { PurchaseProcessingOperationEnum as Action } from '@/enums/purchase/processing'
 import { ElMessageBox } from 'element-plus'
 import { processingTreeDisplayRows } from '../../order/components/processingTreeDisplay'
-const api = vi.hoisted(() => ({ plan: vi.fn(), history: vi.fn(), receipt: vi.fn() }))
+import { PurchaseProcessingDeliveryEnum as Delivery } from '@/enums/purchase/processing'
+import { parseMaterialSize } from '@/components/inventory/materialSize'
+const api = vi.hoisted(() => ({
+  plan: vi.fn(),
+  history: vi.fn(),
+  receipt: vi.fn(),
+  materials: vi.fn(),
+  permission: true,
+}))
+vi.mock('@/composables/usePermission', () => ({
+  usePermission: () => ({ hasPermission: () => api.permission }),
+}))
 vi.mock('@/utils/request', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
 vi.mock('@/api/purchase/orderEntry', async (original) => ({
   ...(await original<typeof import('@/api/purchase/orderEntry')>()),
@@ -19,7 +30,7 @@ vi.mock('@/api/purchase/orderEntry', async (original) => ({
   previewProcessingReceipt: api.receipt,
 }))
 vi.mock('@/api/inventory/material', () => ({
-  materialApi: { search: vi.fn().mockResolvedValue({ data: { records: [] } }) },
+  materialApi: { search: api.materials },
 }))
 const original = {
   nodeId: 'root-unused',
@@ -174,6 +185,8 @@ function wrap(component: any, props: any) {
 }
 beforeEach(() => {
   vi.clearAllMocks()
+  api.permission = true
+  api.materials.mockResolvedValue({ data: { records: [] } })
   api.plan.mockResolvedValue({ data: { ...item, processingPlan: snapshot(initial) } })
   api.history.mockResolvedValue({ data: { processingPlan: snapshot(split), receipts: [] } })
   api.receipt.mockResolvedValue({
@@ -491,6 +504,161 @@ describe('加工树及自动余料交互', () => {
     await s.validate()
     expect(api.receipt.mock.calls.at(-1)![1][0].outputs).toEqual([
       { outputId: 'root-width-s0-pieces', quantity: 100 },
+    ])
+  })
+  async function binding() {
+    const saved = snapshot(split)
+    api.plan.mockResolvedValue({ data: { ...item, processingPlan: saved } })
+    const wrapped = wrap(TreeEditor, { item, modelValue: saved })
+    await wrapped.s.open()
+    wrapped.s.bind(wrapped.s.tree.children[1], '序号1.1.2 宽度余料')
+    await flushPromises()
+    return wrapped
+  }
+  it('先按当前节点精确规格搜索，无匹配才显示新建入口', async () => {
+    const { s } = await binding()
+    expect(api.materials).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        processingWidthMm: 650,
+        processingLengthMm: 100000,
+        processingUnit: 'ROLL',
+      })
+    )
+    expect(s.canCreateFromSearch).toBe(true)
+    api.materials.mockResolvedValue({
+      data: { records: [{ materialId: 777, materialCode: '匹配料' }] },
+    })
+    await s.search('EBA180')
+    expect(s.canCreateFromSearch).toBe(false)
+  })
+  it('搜索失败或尚未返回时不将结果当成无档案，无新建权限也不显示入口', async () => {
+    const { s } = await binding()
+    api.materials.mockRejectedValueOnce(new Error('搜索失败'))
+    await s.search('test')
+    expect(s.canCreateFromSearch).toBe(false)
+    expect(s.error).toContain('搜索失败')
+    api.permission = false
+    await s.search('')
+    expect(s.canCreateFromSearch).toBe(false)
+    s.createMaterial()
+    expect(s.materialFormVisible).toBe(false)
+  })
+  it('建档规格可被现有建档弹窗解析，创建成功后自动绑定当前节点', async () => {
+    const { s } = await binding()
+    s.createMaterial()
+    expect(s.materialPreset).toEqual({
+      materialName: 'EBA180',
+      specification: '650*100000mm',
+      unit: '㎡',
+    })
+    expect(parseMaterialSize(s.materialPreset.specification)).toMatchObject({
+      width: '650',
+      length: '100000',
+    })
+    api.plan.mockImplementation(async (payload: any) => ({
+      data: { ...item, processingPlan: payload.processingPlan },
+    }))
+    await s.materialCreated({
+      materialId: 777,
+      materialCode: 'NEW-650',
+      widthMm: 650,
+      lengthMm: 100000,
+      unit: '㎡',
+    })
+    expect(s.tree.children[1].materialId).toBe(777)
+    expect(s.bindingVisible).toBe(false)
+    const sent = JSON.parse(api.plan.mock.calls.at(-1)![0].processingPlan).tree
+    expect(sent.children[1]).toMatchObject({ materialId: 777, delivery: Delivery.INBOUND.value })
+  })
+  it('取消建档不改关联，关闭外层后迟到建档成功不串到其他加工节点', async () => {
+    const { s } = await binding()
+    s.createMaterial()
+    s.materialFormVisible = false
+    expect(s.tree.children[1].materialId).toBeUndefined()
+    s.createMaterial()
+    s.visible = false
+    s.invalidate()
+    const before = api.plan.mock.calls.length
+    await s.materialCreated({ materialId: 777 })
+    expect(api.plan.mock.calls.length).toBe(before)
+    expect(s.tree.children[1].materialId).toBeUndefined()
+  })
+  it('报废独立勾选并须填写原因，保存不绑定物料，树和打印保留报废节点', async () => {
+    const { s } = await binding()
+    s.bindingScrap = true
+    s.changeDelivery()
+    const before = api.plan.mock.calls.length
+    await s.applyBinding()
+    expect(api.plan.mock.calls.length).toBe(before)
+    expect(s.canCreateFromSearch).toBe(false)
+    s.disposalReason = '余料不用'
+    api.plan.mockImplementation(async (payload: any) => ({
+      data: { ...item, processingPlan: payload.processingPlan },
+    }))
+    await s.applyBinding()
+    expect(s.tree.children[1]).toMatchObject({
+      materialId: null,
+      delivery: Delivery.SCRAP.value,
+      disposalReason: '余料不用',
+    })
+    const p = mount(Print, { props: { items: [{ ...item, processingPlan: snapshot(s.tree) }] } })
+    wrappers.push(p)
+    expect(p.text()).toContain('报废不入库')
+    expect(p.text()).toContain('余料不用')
+    expect(p.text()).toContain('650mm')
+  })
+  it('取消报废可以重新搜索档案，尚未选择物料不提交空绑定', async () => {
+    const { s } = await binding()
+    s.bindingScrap = true
+    s.changeDelivery()
+    s.disposalReason = '尾料'
+    s.bindingScrap = false
+    s.changeDelivery()
+    await flushPromises()
+    expect(s.searchCompleted).toBe(true)
+    const before = api.plan.mock.calls.length
+    await s.applyBinding()
+    expect(api.plan.mock.calls.length).toBe(before)
+  })
+  it('报废确认显示实际数量，零入库预览不产生假入库行且禁用重复手填损耗', async () => {
+    const parsed = JSON.parse(snapshot(split))
+    parsed.tree.children[1].delivery = Delivery.SCRAP.value
+    parsed.tree.children[1].disposalReason = '余料不用'
+    parsed.groups[0].outputs = [
+      {
+        ...parsed.groups[0].outputs[1],
+        delivery: Delivery.SCRAP.value,
+        materialId: null,
+        disposalReason: '余料不用',
+      },
+    ]
+    api.history.mockResolvedValue({
+      data: { processingPlan: JSON.stringify(parsed), receipts: [] },
+    })
+    api.receipt.mockResolvedValue({
+      data: {
+        receivedQuantity: 65,
+        items: [],
+        disposals: [{ outputId: 'root-width', quantity: 1, scrapArea: 65, lossReason: '余料不用' }],
+      },
+    })
+    const w = mount(Receive, { props: { itemId: 99 }, global: { plugins: [ElementPlus] } })
+    wrappers.push(w)
+    await flushPromises()
+    expect(w.text()).toContain('报废不入库')
+    expect(w.find('input[aria-label="加工损耗面积"]').exists()).toBe(false)
+    const s = (w.vm as any).$?.setupState
+    s.inputs[0].outputs[0].quantity = 1
+    s.inputs[0].outputs[0].rollLengthM = 100
+    const result = await s.validate()
+    await flushPromises()
+    expect(result.inboundItemCount).toBe(0)
+    expect(w.text()).toContain('本次仅确认报废，不生成入库单')
+    expect(api.receipt).toHaveBeenCalledWith(99, [
+      expect.objectContaining({
+        lossArea: 0,
+        outputs: [{ outputId: 'root-width', quantity: 1, rollLengthM: 100 }],
+      }),
     ])
   })
 })

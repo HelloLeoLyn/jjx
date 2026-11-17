@@ -8,3 +8,11 @@ export const PurchaseProcessingOperationEnum = createNamedEnum(
   },
   { type: 'info' }
 )
+
+export const PurchaseProcessingDeliveryEnum = createNamedEnum(
+  {
+    INBOUND: { value: 'INBOUND', label: '交货入库', tagProps: { type: 'success' } },
+    SCRAP: { value: 'SCRAP', label: '报废不入库', tagProps: { type: 'danger' } },
+  },
+  { type: 'info' }
+)

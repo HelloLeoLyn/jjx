@@ -8,8 +8,10 @@ import com.jjx.inventory.domain.*;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.purchase.domain.dto.*;
 import com.jjx.purchase.domain.entity.PurchaseOrderItem;
+import com.jjx.purchase.domain.enums.PurchaseProcessingDelivery;
 import com.jjx.purchase.domain.model.PurchaseQuantityPricing;
 import com.jjx.purchase.mapper.PurchaseProcessingReceiptMapper;
+import com.jjx.purchase.mapper.PurchaseProcessingDispositionMapper;
 import lombok.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +26,7 @@ public class PurchaseProcessingService {
     private final PurchaseProcessingReceiptMapper receipts;
     private final ObjectMapper json;
     private final PurchaseProcessingTreeService trees;
+    private final PurchaseProcessingDispositionMapper dispositions;
     private static final BigDecimal ZERO=BigDecimal.ZERO;
     @Data public static class ReceiptFact {
         private String groupId;
@@ -35,8 +38,12 @@ public class PurchaseProcessingService {
         private BigDecimal netCost;
         private BigDecimal lossArea;
         private String lossReason;
+        private PurchaseProcessingDelivery delivery;
+        private BigDecimal scrapArea;
+        /** true表示本组报废结算已分摊到正常交货事实，不能再次累加。 */
+        private Boolean allocatedToInbound;
     }
-    public record ReceiptPreview(BigDecimal receivedQuantity,List<InventoryInboundItem> items) {}
+    public record ReceiptPreview(BigDecimal receivedQuantity,List<InventoryInboundItem> items,List<ReceiptFact> disposals) {}
     public record History(String processingPlan,List<ReceiptFact> receipts) {}
     public PurchaseProcessingPlan parse(String value) {
         if(value==null||value.isBlank())return null;
@@ -64,6 +71,19 @@ public class PurchaseProcessingService {
     private static BigDecimal motherArea(PurchaseOrderItemDTO item,PurchaseProcessingPlan.Group group){
         return item.getRollWidthMm().multiply(item.getRollLengthM()).multiply(BigDecimal.valueOf(group.getMotherRolls())).movePointLeft(3);
     }
+    private static BigDecimal rawSettledArea(PurchaseProcessingPlan.Group group,List<ReceiptFact> facts){
+        BigDecimal total=ZERO;
+        for(var fact:facts){
+            if(!group.getGroupId().equals(fact.getGroupId()))continue;
+            if(fact.getDelivery()==PurchaseProcessingDelivery.SCRAP){
+                if(!Boolean.TRUE.equals(fact.getAllocatedToInbound()))total=total.add(fact.getScrapArea());
+            }else{
+                var output=group.getOutputs().stream().filter(o->o.getOutputId().equals(fact.getOutputId())).findFirst().orElseThrow(()->new BusinessException("历史交货节点已不存在，不能继续结算"));
+                total=total.add(area(output,fact.getQuantity(),fact.getRollLengthM())).add(fact.getLossArea()==null?ZERO:fact.getLossArea());
+            }
+        }
+        return total;
+    }
     /** 保存、预览共用；输出元数据以档案为准，调用者不能用名称或相同面积冒充物料。 */
     @Transactional(readOnly=true)
     public String normalize(PurchaseOrderItemDTO item){
@@ -89,6 +109,7 @@ public class PurchaseProcessingService {
             require(g.getOutputs()!=null&&!g.getOutputs().isEmpty()&&g.getOutputs().size()<=100,"请填写切片或余卷交货要求");
             BigDecimal plannedArea=ZERO;
             for(var o:g.getOutputs()){
+                require(o.getDelivery()!=PurchaseProcessingDelivery.SCRAP,"请改用加工树登记报废，旧分组仅支持交货入库");
                 require(o!=null,"交货要求不能为空");key(o.getOutputId(),"交付行标识");require(outputKeys.add(o.getOutputId()),"交付行标识重复");
                 whole(o.getQuantity(),"计划交货片数/卷数");
                 require(UnitCodes.PCS.equals(o.getUnit())||UnitCodes.ROLL.equals(o.getUnit()),"交货单位请选择片或卷");
@@ -120,6 +141,8 @@ public class PurchaseProcessingService {
         var facts=new ArrayList<ReceiptFact>();
         for(String raw:receipts.history(itemId))try{facts.add(json.readValue(raw,ReceiptFact.class));}
         catch(Exception ex){throw new BusinessException("原加工收货快照无效，不能继续收货");}
+        for(String raw:dispositions.history(itemId))try{facts.addAll(json.readValue(raw,new com.fasterxml.jackson.core.type.TypeReference<List<ReceiptFact>>(){}));}
+        catch(Exception ex){throw new BusinessException("原加工报废凭证无效，不能继续确认");}
         return facts;
     }
     @Transactional(readOnly=true)
@@ -129,17 +152,19 @@ public class PurchaseProcessingService {
         var plan=parse(source.getProcessingPlan());require(plan!=null,"该采购行没有加工方案");
         var mother=new PurchaseOrderItemDTO();org.springframework.beans.BeanUtils.copyProperties(source,mother);
         if(plan.getTree()!=null)trees.normalize(mother,plan,true);
+        else require(plan.getGroups().stream().flatMap(g->g.getOutputs().stream()).noneMatch(o->o.getDelivery()==PurchaseProcessingDelivery.SCRAP),"旧分组不支持报废，请改用加工树");
         var past=facts(source.getItemId());
         require(input!=null&&!input.isEmpty()&&input.size()<=100,"请填写本次加工交货明细");
-        var groupKeys=new HashSet<String>();var outputKeys=new HashSet<String>();var items=new ArrayList<InventoryInboundItem>();BigDecimal totalSettled=ZERO;
+        var groupKeys=new HashSet<String>();var outputKeys=new HashSet<String>();var items=new ArrayList<InventoryInboundItem>();var disposalFacts=new ArrayList<ReceiptFact>();BigDecimal totalSettled=ZERO;
         for(var actual:input){
             require(actual!=null&&groupKeys.add(actual.getGroupId()),"本次母卷分组重复或无效");
             var group=plan.getGroups().stream().filter(g->g.getGroupId().equals(actual.getGroupId())).findFirst().orElseThrow(()->new BusinessException("母卷分组不属于该采购行"));
             require(actual.getOutputs()!=null&&!actual.getOutputs().isEmpty()&&actual.getOutputs().size()<=100,"本次分组须至少有一项实际交付，不能只登记损耗");
             BigDecimal loss=actual.getLossArea()==null?ZERO:actual.getLossArea();PurchaseQuantityPricing.bounded(loss,4,8,"损耗面积",false);
+            require(loss.signum()==0||group.getOutputs().stream().noneMatch(o->o.getDelivery()==PurchaseProcessingDelivery.SCRAP),"已有报废节点，请按节点确认数量，不要重复填写损耗面积");
             require(loss.signum()==0||actual.getLossReason()!=null&&!actual.getLossReason().isBlank(),"有加工损耗时必须填写原因");
             require(actual.getLossReason()==null||actual.getLossReason().length()<=200,"损耗原因最多200字");
-            var groupItems=new ArrayList<InventoryInboundItem>();var groupFacts=new ArrayList<ReceiptFact>();var areas=new ArrayList<BigDecimal>();BigDecimal totalArea=ZERO;
+            var groupItems=new ArrayList<InventoryInboundItem>();var groupFacts=new ArrayList<ReceiptFact>();var scraps=new ArrayList<ReceiptFact>();var areas=new ArrayList<BigDecimal>();BigDecimal totalArea=ZERO;
             for(var receive:actual.getOutputs()){
                 require(receive!=null&&outputKeys.add(receive.getOutputId()),"本次交付行重复或无效");
                 var output=group.getOutputs().stream().filter(o->o.getOutputId().equals(receive.getOutputId())).findFirst().orElseThrow(()->new BusinessException("交付行不属于该母卷分组"));
@@ -149,6 +174,10 @@ public class PurchaseProcessingService {
                 BigDecimal length=receive.getRollLengthM();
                 if(UnitCodes.ROLL.equals(output.getUnit())){require(receive.getQuantity().compareTo(BigDecimal.valueOf(500))<=0,"一次余卷收货最多500卷");positive(length,"余卷实际每卷长度");require(length.compareTo(output.getRollLengthM())<=0,"余卷实际长度超过计划，请先核对方案");}
                 else require(length==null,"切片交货不能填写卷长");
+                if(output.getDelivery()==PurchaseProcessingDelivery.SCRAP){
+                    var fact=new ReceiptFact();fact.setGroupId(group.getGroupId());fact.setOutputId(output.getOutputId());fact.setNodePath(output.getNodePath());fact.setQuantity(receive.getQuantity());fact.setRollLengthM(length);fact.setDelivery(PurchaseProcessingDelivery.SCRAP);
+                    fact.setScrapArea(area(output,receive.getQuantity(),length));fact.setLossReason(output.getDisposalReason());fact.setSettledArea(ZERO);fact.setLossArea(ZERO);fact.setNetCost(ZERO);scraps.add(fact);loss=loss.add(fact.getScrapArea());continue;
+                }
                 var m=material(output.getMaterialId());
                 require(m.getWidthMm()!=null&&m.getWidthMm().compareTo(output.getWidthMm())==0,"交付档案宽度已变化，请核对方案");
                 if(UnitCodes.PCS.equals(output.getUnit()))require(m.getLengthMm()!=null&&m.getLengthMm().compareTo(output.getLengthMm())==0,"交付档案长度已变化，请核对方案");
@@ -161,10 +190,15 @@ public class PurchaseProcessingService {
                 String origin=output.getNodePath()==null?group.getName():output.getNodePath();
                 if(origin.length()>330)origin=origin.substring(origin.length()-330);
                 row.setRemark(origin+" · "+receive.getQuantity().stripTrailingZeros().toPlainString()+" "+output.getUnit()+"；来源采购行 "+source.getItemId());
-                var f=new ReceiptFact();f.setGroupId(group.getGroupId());f.setOutputId(output.getOutputId());f.setNodePath(output.getNodePath());f.setQuantity(receive.getQuantity());f.setRollLengthM(length);groupItems.add(row);groupFacts.add(f);
+                var f=new ReceiptFact();f.setGroupId(group.getGroupId());f.setOutputId(output.getOutputId());f.setNodePath(output.getNodePath());f.setQuantity(receive.getQuantity());f.setRollLengthM(length);f.setDelivery(PurchaseProcessingDelivery.INBOUND);groupItems.add(row);groupFacts.add(f);
             }
             BigDecimal settled=totalArea.add(loss).setScale(4,RoundingMode.HALF_UP);
             BigDecimal previous=past.stream().filter(f->group.getGroupId().equals(f.getGroupId())).map(ReceiptFact::getSettledArea).reduce(ZERO,BigDecimal::add);
+            if(plan.getTree()!=null&&group.getOutputs().stream().anyMatch(o->o.getDelivery()==PurchaseProcessingDelivery.SCRAP)){
+                // 分批报废采用累计舍入，0.08265与0.07875分别确认仍合计0.1614，不制造尾差。
+                settled=rawSettledArea(group,past).add(totalArea).add(loss).setScale(4,RoundingMode.HALF_UP).subtract(previous);
+            }
+            require(settled.signum()>0,"本次交货或报废面积小于结算精度，请合并确认");
             require(previous.add(settled).compareTo(motherArea(mother,group))<=0,"本组累计交付及损耗超过母卷面积");
             BigDecimal assignedArea=ZERO,cumulativeArea=ZERO;
             for(int i=0;i<groupItems.size();i++){
@@ -174,6 +208,17 @@ public class PurchaseProcessingService {
                 BigDecimal allocated=nextArea.subtract(assignedArea);assignedArea=nextArea;
                 f.setSettledArea(allocated);f.setLossArea(last?loss:ZERO);f.setLossReason(actual.getLossReason());row.setPurchaseProcessingJson(write(f));
             }
+            for(var scrap:scraps)scrap.setAllocatedToInbound(!groupItems.isEmpty());
+            if(groupItems.isEmpty()){
+                require(!scraps.isEmpty(),"本次没有交货或报废数量");
+                BigDecimal allocated=ZERO,cumulative=ZERO;
+                for(int i=0;i<scraps.size();i++){
+                    var fact=scraps.get(i);cumulative=cumulative.add(fact.getScrapArea());
+                    BigDecimal next=i==scraps.size()-1?settled:settled.multiply(cumulative).divide(loss,4,RoundingMode.HALF_UP);
+                    fact.setSettledArea(next.subtract(allocated));allocated=next;
+                }
+            }
+            disposalFacts.addAll(scraps);
             totalSettled=totalSettled.add(settled);items.addAll(groupItems);
         }
         require(items.size()<=500,"一次加工收货最多500项");
@@ -181,15 +226,19 @@ public class PurchaseProcessingService {
         BigDecimal priorArea=past.stream().map(ReceiptFact::getSettledArea).reduce(ZERO,BigDecimal::add);
         BigDecimal priorCost=past.stream().map(ReceiptFact::getNetCost).reduce(ZERO,BigDecimal::add);
         BigDecimal batchCost=source.getAmount().multiply(priorArea.add(totalSettled)).divide(source.getQuantity(),2,RoundingMode.HALF_UP).subtract(priorCost);
+        var costFacts=new ArrayList<ReceiptFact>();
+        for(var row:items)try{costFacts.add(json.readValue(row.getPurchaseProcessingJson(),ReceiptFact.class));}catch(Exception ex){throw new IllegalStateException(ex);}
+        costFacts.addAll(disposalFacts.stream().filter(f->f.getSettledArea().signum()>0).toList());
         BigDecimal cumulative=ZERO,assigned=ZERO;
-        for(int i=0;i<items.size();i++){
-            var row=items.get(i);ReceiptFact f;
-            try{f=json.readValue(row.getPurchaseProcessingJson(),ReceiptFact.class);}catch(Exception ex){throw new IllegalStateException(ex);}
+        for(int i=0;i<costFacts.size();i++){
+            var f=costFacts.get(i);
             cumulative=cumulative.add(f.getSettledArea());
-            BigDecimal next=i==items.size()-1?batchCost:batchCost.multiply(cumulative).divide(totalSettled,2,RoundingMode.HALF_UP);
+            BigDecimal next=i==costFacts.size()-1?batchCost:batchCost.multiply(cumulative).divide(totalSettled,2,RoundingMode.HALF_UP);
             BigDecimal cost=next.subtract(assigned);assigned=next;
             require(cost.signum()>=0,"分摊成本不能为负，请核对原始收货凭证");f.setNetCost(cost);
-            row.setAmount(cost);row.setUnitPrice(cost.divide(row.getQuantity(),4,RoundingMode.HALF_UP));row.setPurchaseProcessingJson(write(f));
+            if(i<items.size()){
+                var row=items.get(i);row.setAmount(cost);row.setUnitPrice(cost.divide(row.getQuantity(),4,RoundingMode.HALF_UP));row.setPurchaseProcessingJson(write(f));
+            }
         }
         // 每个余卷生成独立原始明细，仓库沿用既有逐卷入库与红冲，不把多卷揉成一个批次。
         var physicalItems=new ArrayList<InventoryInboundItem>();
@@ -216,6 +265,6 @@ public class PurchaseProcessingService {
             }
         }
         require(physicalItems.size()<=500,"一次实际交付最多500项，余卷按每卷计一项");
-        return new ReceiptPreview(totalSettled,physicalItems);
+        return new ReceiptPreview(totalSettled,physicalItems,disposalFacts);
     }
 }

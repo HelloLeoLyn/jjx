@@ -9,6 +9,7 @@ import com.jjx.purchase.domain.dto.PurchaseOrderItemDTO;
 import com.jjx.purchase.domain.dto.PurchaseProcessingPlan;
 import com.jjx.purchase.domain.dto.PurchaseProcessingPlan.*;
 import com.jjx.purchase.domain.enums.PurchaseProcessingOperation;
+import com.jjx.purchase.domain.enums.PurchaseProcessingDelivery;
 import com.jjx.purchase.domain.model.PurchaseQuantityPricing;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -46,6 +47,8 @@ public class PurchaseProcessingTreeService {
         var old=new HashMap<String,Node>();if(node.getChildren()!=null){require(node.getChildren().size()<=100,"单层节点最多100项");for(var c:node.getChildren())if(c!=null&&c.getNodeId()!=null)require(old.put(c.getNodeId(),c)==null,"子节点标识重复");}
         var op=node.getOperation();
         if(op==null){node.setChildren(List.of());bind(node,item,bindingsRequired);return;}
+        require(node.getDelivery()!=PurchaseProcessingDelivery.SCRAP,"报废节点不能继续加工，请先取消报废");
+        node.setDelivery(null);node.setDisposalReason(null);
         require(op.getType()!=null,"请选择分切或切片");require(op.getUseQuantity()!=null&&op.getUseQuantity()>0&&BigDecimal.valueOf(op.getUseQuantity()).compareTo(node.getQuantity())<=0,"本次加工数量超过来源卷数/块数");
         var children=new ArrayList<Node>();BigDecimal used=BigDecimal.valueOf(op.getUseQuantity());
         if(op.getType()==PurchaseProcessingOperation.SLIT){
@@ -81,9 +84,19 @@ public class PurchaseProcessingTreeService {
         if(width.signum()==0||length.signum()==0||qty.signum()==0)return;require(width.signum()>0&&length.signum()>0&&qty.signum()>0,"加工参数导致负余料");
         PurchaseQuantityPricing.bounded(qty,0,8,"节点数量",true);
         String id=parent.getNodeId()+"-"+suffix;require(id.length()<=128,"加工树路径过长");
-        var n=old.getOrDefault(id,new Node());set(n,id,role,unit,width,length,qty);children.add(n);
+        var n=old.getOrDefault(id,new Node());
+        if(n.getWidthMm()!=null&&(n.getWidthMm().compareTo(width)!=0||n.getLengthMm()==null||n.getLengthMm().compareTo(length)!=0||n.getQuantity()==null||n.getQuantity().compareTo(qty)!=0)){
+            n.setDelivery(null);n.setDisposalReason(null);
+        }
+        set(n,id,role,unit,width,length,qty);children.add(n);
     }
     private void bind(Node n,PurchaseOrderItemDTO item,boolean required){
+        if(n.getDelivery()==null)n.setDelivery(PurchaseProcessingDelivery.INBOUND);
+        if(n.getDelivery()==PurchaseProcessingDelivery.SCRAP){
+            require(n.getDisposalReason()!=null&&!n.getDisposalReason().isBlank()&&n.getDisposalReason().length()<=200,"报废不入库须填写200字以内原因");
+            n.setDisposalReason(n.getDisposalReason().trim());n.setMaterialId(null);n.setMaterialCode(null);n.setMaterialName(null);n.setBindingMessage(null);return;
+        }
+        n.setDisposalReason(null);
         boolean original=UnitCodes.ROLL.equals(n.getUnit())&&n.getWidthMm().compareTo(item.getRollWidthMm())==0&&n.getLengthMm().compareTo(item.getRollLengthM().movePointRight(3))==0;
         if(original)n.setMaterialId(item.getMaterialId());
         n.setMaterialCode(null);n.setMaterialName(null);n.setBindingMessage(null);
@@ -102,6 +115,6 @@ public class PurchaseProcessingTreeService {
         if(n.getChildren()!=null&&!n.getChildren().isEmpty()){for(var c:n.getChildren())collect(c,full,outputs);return;}
         var o=new Output();o.setOutputId(n.getNodeId());o.setNodePath(full);o.setMaterialId(n.getMaterialId());o.setMaterialCode(n.getMaterialCode());o.setMaterialName(n.getMaterialName());
         o.setMaterialSpec(n.getWidthMm().stripTrailingZeros().toPlainString()+"×"+n.getLengthMm().stripTrailingZeros().toPlainString()+"mm");o.setUnit(n.getUnit());o.setQuantity(n.getQuantity());o.setWidthMm(n.getWidthMm());o.setLengthMm(n.getLengthMm());
-        if(UnitCodes.ROLL.equals(n.getUnit()))o.setRollLengthM(n.getLengthMm().movePointLeft(3));o.setRemark(n.getRemark());outputs.add(o);
+        if(UnitCodes.ROLL.equals(n.getUnit()))o.setRollLengthM(n.getLengthMm().movePointLeft(3));o.setRemark(n.getRemark());o.setDelivery(n.getDelivery());o.setDisposalReason(n.getDisposalReason());outputs.add(o);
     }
 }

@@ -8,6 +8,7 @@ import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.purchase.domain.dto.*;
 import com.jjx.purchase.domain.entity.PurchaseOrderItem;
 import com.jjx.purchase.mapper.PurchaseProcessingReceiptMapper;
+import com.jjx.purchase.mapper.PurchaseProcessingDispositionMapper;
 import com.jjx.purchase.service.impl.*;
 import org.junit.jupiter.api.*;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -21,7 +22,8 @@ class PurchaseProcessingTest {
     InventoryMaterialMapper materials=mock(InventoryMaterialMapper.class);
     PurchaseProcessingReceiptMapper receipts=mock(PurchaseProcessingReceiptMapper.class);
     ObjectMapper json=new ObjectMapper();
-    PurchaseProcessingService processing=new PurchaseProcessingService(materials,receipts,json,new PurchaseProcessingTreeService(materials));
+    PurchaseProcessingDispositionMapper dispositions=mock(PurchaseProcessingDispositionMapper.class);
+    PurchaseProcessingService processing=new PurchaseProcessingService(materials,receipts,json,new PurchaseProcessingTreeService(materials),dispositions);
     PurchaseOrderServiceImpl orders=mock(PurchaseOrderServiceImpl.class,CALLS_REAL_METHODS);
     static BigDecimal bd(String s){return new BigDecimal(s);}
     static void eq(String s,BigDecimal n){assertNotNull(n);assertEquals(0,bd(s).compareTo(n));}

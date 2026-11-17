@@ -33,6 +33,9 @@
             >来源原料</template
           ><template v-else-if="row.group">加工分组</template
           ><template v-else-if="row.children.length">加工中间料</template
+          ><template v-else-if="row.node.delivery === PurchaseProcessingDeliveryEnum.SCRAP.value"
+            ><strong class="scrap">报废不入库</strong
+            ><small>{{ row.node.disposalReason }}</small></template
           ><template v-else
             ><span :class="{ unbound: !row.node.materialId }">{{
               row.node.materialCode || '待指定交货物料'
@@ -56,7 +59,10 @@
 </template>
 <script setup lang="ts">
 import { computed } from 'vue'
-import { PurchaseProcessingOperationEnum } from '@/enums/purchase/processing'
+import {
+  PurchaseProcessingOperationEnum,
+  PurchaseProcessingDeliveryEnum,
+} from '@/enums/purchase/processing'
 import type { ProcessingTreeNode } from '@/api/purchase/orderEntry'
 import { processingTreeDisplayRows, processingTreeSpec } from './processingTreeDisplay'
 const props = defineProps<{ tree: ProcessingTreeNode; materialName?: string }>()
@@ -97,6 +103,9 @@ const rows = computed(() => processingTreeDisplayRows(props.tree))
 }
 .unbound {
   color: #b88230;
+}
+.scrap {
+  color: #f56c6c;
 }
 .branch {
   color: #909399;

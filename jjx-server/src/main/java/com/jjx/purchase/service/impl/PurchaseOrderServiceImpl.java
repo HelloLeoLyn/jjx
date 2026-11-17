@@ -1406,6 +1406,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         boolean hasProcessing = selectOrderItemEntities(dto.getOrderId()).stream()
             .anyMatch(i -> i.getProcessingPlan()!=null&&!i.getProcessingPlan().isBlank());
         var receiptLines = new java.util.ArrayList<com.jjx.inventory.domain.InventoryInboundItem>();
+        var disposalFacts = new java.util.LinkedHashMap<Long,java.util.List<PurchaseProcessingService.ReceiptFact>>();
         var receivedIds = new java.util.HashSet<Long>();
         int totalCount = 0;
         for (PurchaseOrderReceiveDTO.ReceiveItemDTO itemDTO : dto.getItems()) {
@@ -1425,6 +1426,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                     throw new BusinessException("加工方案须随采购订单审核通过后才能登记实际交付");
                 var preview=processingService.preview(item,itemDTO.getProcessingGroups());
                 itemDTO.setReceivedQuantity(preview.receivedQuantity());receiptLines.addAll(preview.items());
+                if(!preview.disposals().isEmpty())disposalFacts.put(item.getItemId(),preview.disposals());
             } else {
                 if(itemDTO.getProcessingGroups()!=null&&!itemDTO.getProcessingGroups().isEmpty())
                     throw new BusinessException("普通采购行不能提交加工交付");
@@ -1471,9 +1473,11 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
         // 采购收货→自动生成入库单（DEV-624）：生成待仓库确认的入库单，仓库确认后才加库存（业务定稿 2026-08-11：收货≠入库）
         // 失败不吞异常：与收货同一事务，保证“收了货必有入库单”的一致性
-        Long receiptInboundId = hasProcessing
+        dto.setDisposalOnly(hasProcessing&&receiptLines.isEmpty()&&!disposalFacts.isEmpty());
+        Long receiptInboundId = dto.isDisposalOnly()?null:hasProcessing
             ? inboundService.createInboundRecordFromPurchase(dto.getOrderId(),receiptLines)
             : inboundService.createInboundRecordFromPurchase(dto.getOrderId());
+        receiptAttachments.recordDisposals(dto,receiptInboundId,disposalFacts);
         receiptAttachments.complete(dto, receiptInboundId);
 
         // 2026-09-18：事件改为手写 payload 后置发布，把业务单号/供应商带进通知模板

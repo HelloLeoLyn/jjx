@@ -36,6 +36,9 @@ public class PurchaseOrderReceiveDTO {
     private Long inboundId;
     @com.fasterxml.jackson.annotation.JsonIgnore
     private String inboundNo;
+    /** 本次仅确认加工报废，没有入库单。 */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private boolean disposalOnly;
 
     /**
      * 收货明细列表

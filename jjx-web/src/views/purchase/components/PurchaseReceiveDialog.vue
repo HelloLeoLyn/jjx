@@ -39,16 +39,16 @@
           <template #default="{ row }">{{ fmt(row.quantity) }}</template>
         </el-table-column>
         <!-- 修②：已收数量只读展示，不再与「本次收货」共用同一字段 -->
-        <el-table-column label="已收数量" width="90" align="right">
+        <el-table-column label="已收 / 已处置" width="110" align="right">
           <template #default="{ row }">{{ fmt(row.receivedQuantity) }}</template>
         </el-table-column>
-        <el-table-column label="未收" width="90" align="right">
+        <el-table-column label="未收 / 待处置" width="110" align="right">
           <template #default="{ row }">{{ fmt(remainOf(row)) }}</template>
         </el-table-column>
         <!-- ①②：默认填满「未收」；超出不夹断而是标红并拦截提交 -->
         <el-table-column label="本次收货" width="180">
           <template #default="{ row, $index }">
-            <el-button v-if="row.processingPlan" link type="primary" @click="expandProcessing(row)">展开登记实际交货</el-button>
+            <el-button v-if="row.processingPlan" link type="primary" @click="expandProcessing(row)">登记交货 / 报废</el-button>
             <div v-else class="qty-cell" :class="{ 'is-over': overOf(row) > 0 }">
               <el-input-number
                 :ref="(el: any) => setQtyRef(el, $index)"
@@ -380,6 +380,7 @@ const handleSubmit = async () => {
   preparing.value=true
   try {
     const receiveItems: {itemId:number;receivedQuantity?:number;processingGroups?:ProcessingReceiptGroup[]}[]=[]
+    let hasInbound = false
     for(const item of form.items){
       if(item.processingPlan){
         if(!processingFilled(item))continue
@@ -388,16 +389,19 @@ const handleSubmit = async () => {
         const validated=await component.validate()
         if(!validated)return
         receiveItems.push({itemId:item.itemId,receivedQuantity:validated.receivedQuantity,processingGroups:validated.groups})
+        if(validated.inboundItemCount !== 0) hasInbound = true
       }else if(Number(item.receiveQuantity)>0){
+        hasInbound = true
         receiveItems.push({itemId:Number(item.itemId),receivedQuantity:Math.round(Number(item.receiveQuantity)*100)/100})
       }
     }
     if (!receiveItems.length) {ElMessage.warning('请至少输入一个物料的收货数量');return}
     const missingTypeCount = receiptAttachments.value?.getMissingTypeCount?.() ?? 0
     if (missingTypeCount > 0) {ElMessage.warning(`有 ${missingTypeCount} 个票据未选择资料类型，请先选择后再提交`);return}
+    if(!hasInbound && pendingFiles.value.length){ElMessage.warning('本次仅确认报废，没有入库单，请移除收货票据后提交');return}
     try {
       await ElMessageBox.confirm(
-        `确认收货？涉及 ${receiveItems.length} 行采购明细（订单 ${props.orderNo}），加工行按已核对的原卷、切片与余料登记。收货后自动生成待确认入库单，库存尚未增加。`,
+        `确认本次交货或报废？涉及 ${receiveItems.length} 行采购明细（订单 ${props.orderNo}）。${hasInbound ? '实际交货生成待确认入库单，库存尚未增加；报废只登记损耗。' : '本次仅登记报废损耗，不生成入库单。'}`,
         '收货确认', { type: 'warning', confirmButtonText: '确认收货', cancelButtonText: '再改改' }
       )
     } catch {return}
@@ -407,7 +411,7 @@ const handleSubmit = async () => {
     })
     const inboundNo = String(response.data?.inboundNo || '')
     newDraft();lastInboundNo.value = inboundNo
-    ElMessage.success(inboundNo ? `收货成功，已生成入库单 ${inboundNo}（待来料检验）` : '收货成功')
+    ElMessage.success(response.data?.disposalOnly ? '报废确认成功，本次未生成入库单' : inboundNo ? `收货成功，已生成入库单 ${inboundNo}（待来料检验）` : '收货成功')
     await loadItems();await loadImages();emit('success', { inboundNo })
   } catch (error: any) {
     console.error('收货失败:', error);ElMessage.error(error?.message || '收货失败')

@@ -5,6 +5,7 @@ import com.jjx.purchase.domain.dto.*;
 import com.jjx.purchase.domain.dto.PurchaseProcessingPlan.*;
 import com.jjx.purchase.domain.entity.PurchaseOrderItem;
 import com.jjx.purchase.domain.enums.PurchaseProcessingOperation;
+import com.jjx.purchase.domain.enums.PurchaseProcessingDelivery;
 import org.junit.jupiter.api.*;
 import java.math.BigDecimal;
 import java.util.*;
@@ -51,6 +52,47 @@ class PurchaseProcessingTreeTest {
     }
     @Test void splitCountsCannotCreateMoreThanSupportedInventoryQuantity(){
         var i=item();i.setPurchaseQuantity(bd("100000"));var t=tree(i);t.setOperation(slit(100000,"0.0001",10000));assertTrue(assertThrows(BusinessException.class,()->saveTree(i,t)).getMessage().contains("节点数量"));
+    }
+
+    PurchaseOrderItemDTO withScrapTails(){var i=full(true);var t=tree(i);for(String id:List.of("root-s0-tail","root-width-s0-tail")){var n=find(t,id);n.setDelivery(PurchaseProcessingDelivery.SCRAP);n.setDisposalReason("尾料不用，报废不回收");}saveTree(i,t);return i;}
+    @Test void scrapLeavesRequireReasonButNoMaterialAndCanPassApproval(){
+        var i=withScrapTails();assertDoesNotThrow(()->f.processing.requireTreeBindings(source(i)));
+        assertNull(find(tree(i),"root-s0-tail").getMaterialId());
+        var t=tree(i);find(t,"root-s0-tail").setDisposalReason(" ");assertThrows(BusinessException.class,()->saveTree(i,t));
+    }
+    @Test void scrapCannotBecomeAnIntermediateNodeAndChangedGeometryClearsOldDecision(){
+        var i=withScrapTails();String saved=i.getProcessingPlan();var invalid=tree(i);find(invalid,"root-s0").setDelivery(PurchaseProcessingDelivery.SCRAP);find(invalid,"root-s0").setDisposalReason("不再加工");assertThrows(BusinessException.class,()->saveTree(i,invalid));
+        i.setProcessingPlan(saved);var t=tree(i);t.getOperation().getSlits().get(0).setWidthMm(bd("300"));saveTree(i,t);assertEquals(PurchaseProcessingDelivery.INBOUND,find(tree(i),"root-s0-tail").getDelivery());assertNull(find(tree(i),"root-s0-tail").getDisposalReason());
+    }
+    @Test void mixedGoodsAndScrapSettle366ButOnlyGoodsCreateInboundRows(){
+        var i=withScrapTails();var result=f.processing.preview(source(i),all(i));eq("366",result.receivedQuantity());assertEquals(5,result.items().size());assertEquals(2,result.disposals().size());
+        assertTrue(result.items().stream().noneMatch(r->r.getMaterialId()==701L||r.getMaterialId()==702L));
+        eq("0.1614",result.disposals().stream().map(r->r.getScrapArea()).reduce(BigDecimal.ZERO,BigDecimal::add));
+        eq("0",result.disposals().stream().map(r->r.getSettledArea()).reduce(BigDecimal.ZERO,BigDecimal::add));
+        assertTrue(result.disposals().stream().allMatch(r->Boolean.TRUE.equals(r.getAllocatedToInbound())));
+        eq("27530.97",result.items().stream().map(r->r.getAmount()).reduce(BigDecimal.ZERO,BigDecimal::add));
+    }
+    @Test void pureScrapHasNoInboundRowsAndPersistsQuantityAreaCostForOveruseChecks(){
+        var i=withScrapTails();var s=source(i);var one=f.processing.preview(s,List.of(f.actual("root","0",f.receive("root-s0-tail","1",null))));
+        assertTrue(one.items().isEmpty());eq("0.0413",one.receivedQuantity());assertEquals(1,one.disposals().size());assertTrue(one.disposals().get(0).getNetCost().signum()>0);
+        assertEquals(Boolean.FALSE,one.disposals().get(0).getAllocatedToInbound());
+        when(f.dispositions.history(99L)).thenReturn(List.of(f.processing.write(one.disposals())));s.setReceivedQuantity(one.receivedQuantity());
+        assertThrows(BusinessException.class,()->f.processing.preview(s,List.of(f.actual("root","0",f.receive("root-s0-tail","2",null)))));
+        assertDoesNotThrow(()->f.processing.preview(s,List.of(f.actual("root","0",f.receive("root-s0-tail","1",null)))));
+    }
+    @Test void separateTailDisposalsThenGoodsCloseExactlyWithoutRoundingDrift(){
+        var i=withScrapTails();var s=source(i);var disposed=new ArrayList<String>();
+        var a=f.processing.preview(s,List.of(f.actual("root","0",f.receive("root-s0-tail","2",null))));disposed.add(f.processing.write(a.disposals()));s.setReceivedQuantity(a.receivedQuantity());when(f.dispositions.history(99L)).thenReturn(disposed);
+        var b=f.processing.preview(s,List.of(f.actual("root","0",f.receive("root-width-s0-tail","1",null))));disposed.add(f.processing.write(b.disposals()));s.setReceivedQuantity(s.getReceivedQuantity().add(b.receivedQuantity()));
+        eq("0.1614",s.getReceivedQuantity());
+        var goods=all(i);goods.get(0).setOutputs(goods.get(0).getOutputs().stream().filter(o->!o.getOutputId().endsWith("tail")).toList());
+        var c=f.processing.preview(s,goods);eq("366",s.getReceivedQuantity().add(c.receivedQuantity()));
+        eq("27530.97",a.disposals().get(0).getNetCost().add(b.disposals().get(0).getNetCost()).add(c.items().stream().map(r->r.getAmount()).reduce(BigDecimal.ZERO,BigDecimal::add)));
+    }
+    @Test void confirmedMixedScrapCannotBeRepeatedAndManualLossCannotDuplicateNodeScrap(){
+        var i=withScrapTails();var result=f.processing.preview(source(i),all(i));when(f.receipts.history(99L)).thenReturn(result.items().stream().map(r->r.getPurchaseProcessingJson()).toList());when(f.dispositions.history(99L)).thenReturn(List.of(f.processing.write(result.disposals())));
+        assertThrows(BusinessException.class,()->f.processing.preview(source(i),List.of(f.actual("root","0",f.receive("root-s0-tail","1",null)))));
+        assertThrows(BusinessException.class,()->f.processing.preview(source(i),List.of(f.actual("root","0.1",f.receive("root-s0-tail","1",null)))));
     }
 
 }

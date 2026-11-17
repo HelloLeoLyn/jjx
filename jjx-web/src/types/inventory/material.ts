@@ -111,6 +111,9 @@ export interface InventoryMaterialQueryParams extends PageQuery {
   orderDirection?: string
 }
 export interface MaterialQueryDTO extends PageQuery {
+  processingWidthMm?: number
+  processingLengthMm?: number
+  processingUnit?: string
   rootType?: string
   keyword?: string
   materialCode?: string

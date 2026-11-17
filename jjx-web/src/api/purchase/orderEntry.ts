@@ -1,5 +1,6 @@
 import request from '@/utils/request'
-import { PurchaseProcessingOperationEnum } from '@/enums/purchase/processing'
+import { PurchaseProcessingOperationEnum, PurchaseProcessingDeliveryEnum } from '@/enums/purchase/processing'
+export type ProcessingDelivery = typeof PurchaseProcessingDeliveryEnum.INBOUND.value | typeof PurchaseProcessingDeliveryEnum.SCRAP.value
 
 export interface PurchaseUnitOption { value: string; label: string }
 export interface PurchaseMaterialDefault {
@@ -73,6 +74,7 @@ export function entrySpecification(item: Partial<PurchaseEntryItem>): string {
 export interface ProcessingOutput {
   outputId: string; nodePath?: string; materialId?: number; materialCode?: string; materialName?: string; materialSpec?: string
   unit: 'PCS' | 'ROLL'; quantity: number; widthMm?: number; lengthMm?: number; rollLengthM?: number; remark?: string
+  delivery?: ProcessingDelivery; disposalReason?: string | null
 }
 export interface ProcessingGroup {
   groupId: string; name: string; motherRolls: number
@@ -87,6 +89,7 @@ export interface ProcessingTreeNode {
   nodeId: string; role: string; unit: string; widthMm: number; lengthMm: number; quantity: number
   materialId?: number | null; materialCode?: string | null; materialName?: string | null; bindingMessage?: string | null; remark?: string
   operation?: ProcessingTreeOperation | null; children: ProcessingTreeNode[]
+  delivery?: ProcessingDelivery | null; disposalReason?: string | null
 }
 export interface ProcessingPlan { groups: ProcessingGroup[]; tree?: ProcessingTreeNode }
 export interface ProcessingReceiptGroup {
@@ -95,7 +98,7 @@ export interface ProcessingReceiptGroup {
 }
 export const previewProcessingPlan = (item: Partial<PurchaseEntryItem>) => request.post<{data: PurchaseEntryItem}>('/purchase/processing/preview', item)
 export const getProcessingHistory = (itemId: number) => request.get<{data: {processingPlan: string; receipts: {groupId: string; outputId: string; quantity: number; rollLengthM?: number; settledArea: number}[]}}>(`/purchase/processing/item/${itemId}`)
-export const previewProcessingReceipt = (itemId: number, groups: ProcessingReceiptGroup[]) => request.post<{data: {receivedQuantity: number; items: {materialCode: string; materialName: string; specification: string; quantity: number; unit: string; amount: number; remark: string}[]}}>('/purchase/processing/receipt-preview', {itemId,groups})
+export const previewProcessingReceipt = (itemId: number, groups: ProcessingReceiptGroup[]) => request.post<{data: {receivedQuantity: number; items: {materialCode: string; materialName: string; specification: string; quantity: number; unit: string; amount: number; remark: string}[]; disposals?: {outputId:string;quantity:number;scrapArea:number;lossReason:string;netCost:number}[]}}>('/purchase/processing/receipt-preview', {itemId,groups})
 export function readProcessingPlan(value?: string | null): ProcessingPlan | undefined {
   if (!value) return undefined
   try { const plan = JSON.parse(value); if (Array.isArray(plan?.groups) || (plan?.tree && typeof plan.tree === 'object')) return plan } catch { /* 显示无效提示，不能把损坏快照当空方案。 */ }
