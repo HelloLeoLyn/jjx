@@ -175,6 +175,7 @@
             >
             <el-button link size="small" @click="printReport(row)">打印</el-button>
             <el-button link size="small" @click="openHistory(row)">历史</el-button>
+            <el-button v-if="lotType === InspectionType.IQC && canViewLineage" link size="small" @click="openLineage(row)">溯源</el-button>
             <!-- dev-20260922-012（G7）：把"无操作权限"说清是缺哪个权限，别让人干瞪眼 -->
             <span v-if="!canJudge && !canInspect" class="no-action">
               无操作权限：需要「检验录入」（录入）或「检验判定」（判定/复检）
@@ -382,6 +383,12 @@
       </template>
     </el-dialog>
 
+    <BatchLineageDrawer
+      v-model:visible="lineageVisible" :batch-no="''" :batches="lineageRows"
+      :source-no="lineageLot?.sourceNo || (lineageLot?.sourceId ? `入库单ID ${lineageLot.sourceId}` : '')"
+      :lot-no="lineageLot?.lotNo" :loading="lineageLoading" :error="lineageError"
+    />
+
     <!-- 当前值与历史事件分开：当前表格只展示现状，历史弹窗只读展示事件快照。 -->
     <el-dialog v-model="historyVisible" title="检验批历史（只读）" width="880px" append-to-body>
       <div v-if="historyLot" class="history-current">
@@ -454,7 +461,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed, onMounted, watch } from 'vue'
+import { reactive, ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter, useRoute } from 'vue-router'
 import {
@@ -468,9 +475,59 @@ import {
 import { InspectionType, InspectionResult, NcrActionStatusEnum, NcrActionTypeEnum } from '@/enums/quality'
 import { hasPermi } from '@/directives'
 import InspectionStageBar from '@/components/InspectionStageBar.vue'
+import BatchLineageDrawer from '@/views/inventory/iqc/components/BatchLineageDrawer.vue'
+import { iqcApi } from '@/api/inventory/iqc'
 
 const router = useRouter()
 const route = useRoute()
+const canViewLineage = computed(() => hasPermi('quality:lot:view'))
+const lineageVisible = ref(false)
+const lineageLoading = ref(false)
+const lineageError = ref('')
+const lineageRows = ref<any[]>([])
+const lineageLot = ref<QualityLot | null>(null)
+let lineageRequest = 0
+async function openLineage(row: QualityLot) {
+  if (lotType !== InspectionType.IQC || !canViewLineage.value) return
+  const request = ++lineageRequest
+  lineageRows.value = []
+  lineageLot.value = null
+  lineageError.value = ''
+  lineageVisible.value = true
+  lineageLoading.value = true
+  try {
+    // 先由检验批详情确认当前来源；不把列表旧sourceId或来源行ID当作入库单ID。
+    const detail = (await qualityLotApi.detail(row.lotId)).data
+    if (request !== lineageRequest || !lineageVisible.value) return
+    if (!detail || detail.lotId !== row.lotId || detail.lotType !== InspectionType.IQC ||
+        detail.sourceType !== 'INBOUND' || !detail.sourceId || detail.sourceId <= 0) {
+      throw new Error('该检验批未关联有效来源入库单，无法读取批次溯源')
+    }
+    lineageLot.value = detail
+    // 与工作台getIqcWorkbench相同的listIqcBatches读口，保留整单父批/子批，不在前端重建链路。
+    const response = await iqcApi.listBatches(String(detail.sourceId))
+    if (request !== lineageRequest || !lineageVisible.value) return
+    if (!Array.isArray(response.data)) throw new Error('批次溯源响应无效，请重试')
+    lineageRows.value = response.data
+  } catch (cause) {
+    if (request === lineageRequest && lineageVisible.value) {
+      lineageRows.value = []
+      lineageError.value = cause instanceof Error ? cause.message : '批次溯源读取失败，请核对权限后重试'
+    }
+  } finally {
+    if (request === lineageRequest) lineageLoading.value = false
+  }
+}
+watch(lineageVisible, (visible) => {
+  if (!visible) {
+    lineageRequest++
+    lineageRows.value = []
+    lineageLot.value = null
+    lineageLoading.value = false
+    lineageError.value = ''
+  }
+}, { flush: 'sync' })
+onBeforeUnmount(() => { lineageRequest++ })
 
 // 2026-09-21（dev-20260921-030）：操作栏改为「按权限 + 按状态」渲染，并加行级忙碌锁防连点。
 // 原实现 5 个按钮无条件可点（判定后仍能改录入、待检批也能复检）。

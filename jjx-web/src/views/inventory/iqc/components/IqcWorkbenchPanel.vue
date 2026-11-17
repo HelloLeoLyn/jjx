@@ -125,7 +125,7 @@
       :rows="historyRows"
       :loading="historyLoading"
     />
-    <BatchLineageDrawer v-model:visible="lineageVisible" :batch-no="''" :batches="batchRows" />
+    <BatchLineageDrawer v-model:visible="lineageVisible" :batch-no="''" :batches="batchRows" :source-no="selectedInbound?.inboundNo" />
     <IqcQuarantineDialog
       v-model:visible="dispositionVisible"
       :inbound-id="activeInboundId"

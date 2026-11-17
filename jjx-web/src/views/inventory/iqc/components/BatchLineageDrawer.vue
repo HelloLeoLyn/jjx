@@ -10,7 +10,12 @@
       当前批次：{{ batchNo || '-' }}
       <span class="lineage-count">共 {{ rows.length }} 个批次</span>
     </div>
-    <el-table :data="rows" border size="small" max-height="460">
+    <p v-if="sourceNo || lotNo" class="lineage-tip">
+      <span v-if="sourceNo">来源入库单：{{ sourceNo }}</span>
+      <span v-if="lotNo">当前检验批：{{ lotNo }}</span>
+    </p>
+    <el-alert v-if="error" :title="error" type="error" :closable="false" />
+    <el-table v-loading="loading" :data="rows" border size="small" max-height="460">
       <el-table-column prop="batchNo" label="批次" width="190" />
       <el-table-column prop="parentBatchNo" label="父批次" width="190" />
       <el-table-column label="类型" width="120">
@@ -27,7 +32,7 @@
         </template>
       </el-table-column>
     </el-table>
-    <el-empty v-if="!rows.length" description="暂无批次链路数据" />
+    <el-empty v-if="!loading && !error && !rows.length" description="暂无批次链路数据" />
   </el-drawer>
 </template>
 
@@ -46,6 +51,11 @@ const props = defineProps<{
   visible: boolean
   /** 当前查看的批次号 */
   batchNo?: string
+  /** 两个入口共用来源与检验批上下文；工作台可省略检验批号。 */
+  sourceNo?: string
+  lotNo?: string
+  loading?: boolean
+  error?: string
   /** 该来料批次的全部批次行（含子批） */
   batches: any[]
 }>()
