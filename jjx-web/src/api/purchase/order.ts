@@ -314,18 +314,6 @@ export function uploadTempReceiptFile(orderId: number, file: File) {
 }
 
 /**
- * 查询订单的磁盘票据文件列表（扫描订单号目录）
- * @param orderId 订单ID
- * @returns 文件列表
- */
-export function getDiskReceiptFiles(orderId: number) {
-  return request({
-    url: `/purchase/invoice/disk-files/${orderId}`,
-    method: 'get',
-  })
-}
-
-/**
  * 批量确认票据（将临时文件插入数据库）
  * @param orderId 订单ID
  * @param supplierId 供应商ID

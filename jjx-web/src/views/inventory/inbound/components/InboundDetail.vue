@@ -187,22 +187,13 @@
         <el-table-column label="备注" prop="remark" min-width="120" show-overflow-tooltip />
       </el-table>
 
-      <!-- 采购票据（采购来源：收货时上传的票据，按采购订单号目录展示） -->
-      <template v-if="isPurchaseSource">
-        <div class="detail-section-title">采购票据</div>
-        <div v-if="images.length" class="img-grid">
-          <el-image
-            v-for="(img, idx) in images"
-            :key="idx"
-            :src="img.fileUrl"
-            :preview-src-list="previewList"
-            :initial-index="idx"
-            fit="cover"
-            class="img-item"
-          />
-        </div>
-        <el-empty v-else description="暂无采购票据图片" :image-size="60" />
-      </template>
+      <!-- 收货票据：附件中心 refs（收货弹窗上传 → 本入库单只读查看；来源 purchase_receipt 的 ID 即入库单ID） -->
+      <AttachmentDocList
+        v-if="isPurchaseSource && inbound.inboundId"
+        source-type="purchase_receipt"
+        :source-id="Number(inbound.inboundId)"
+        title="收货票据"
+      />
 
       <!-- 库存流水（同一单据号；无流水时不占位） -->
       <template v-if="txLoading || transactions.length">
@@ -248,8 +239,8 @@
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { inboundApi } from '@/api/inventory/inbound'
-import { getDiskReceiptFiles } from '@/api/purchase/order'
 import { getTransactionsByDocNo, type TransactionVO } from '@/api/inventory/transaction'
+import AttachmentDocList from '@/components/attachment/AttachmentDocList.vue'
 import { formatCurrency, formatNumber } from '@/utils/format'
 import type { InboundItemVO, InboundVO } from '@/types/inventory/inbound'
 import {
@@ -278,7 +269,6 @@ const emit = defineEmits<{
 const userStore = useUserStore()
 const loading = ref(false)
 const inbound = ref<InboundVO | null>(null)
-const images = ref<Array<{ fileName: string; storageName: string; fileUrl: string; fileSize: number }>>([])
 const transactions = ref<TransactionVO[]>([])
 
 const isPurchaseSource = computed(
@@ -287,7 +277,6 @@ const isPurchaseSource = computed(
     (['PURCHASE', 'PURCHASE_ORDER'].includes(inbound.value.sourceType?.toUpperCase() || '') ||
       inbound.value.inboundType?.toUpperCase() === 'PURCHASE')
 )
-const previewList = computed(() => images.value.map((i) => i.fileUrl))
 const items = computed<InboundItemVO[]>(() => inbound.value?.items || [])
 
 const isReverse = computed(() => isReverseInbound(inbound.value?.inboundNo, inbound.value?.totalQuantity))
@@ -424,24 +413,12 @@ const loadDetail = async () => {
   try {
     const res = await inboundApi.getById(String(props.inboundId))
     inbound.value = res.data || null
-    await Promise.all([loadImages(), loadTransactions()])
+    await loadTransactions()
   } catch (error) {
     console.error('加载入库单详情失败:', error)
     ElMessage.error('加载入库单详情失败')
   } finally {
     loading.value = false
-  }
-}
-
-// 采购来源：按采购订单ID查磁盘票据图片
-const loadImages = async () => {
-  images.value = []
-  if (!isPurchaseSource.value || !inbound.value?.sourceId) return
-  try {
-    const res = await getDiskReceiptFiles(Number(inbound.value.sourceId))
-    images.value = res.data || []
-  } catch (error) {
-    console.error('加载采购票据失败:', error)
   }
 }
 
@@ -574,18 +551,5 @@ defineExpose({ refresh: loadDetail })
 }
 .tx-minus {
   color: var(--el-color-danger);
-}
-/* 采购票据 */
-.img-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.img-item {
-  width: 120px;
-  height: 120px;
-  border-radius: 6px;
-  border: 1px solid var(--el-border-color-lighter);
-  cursor: pointer;
 }
 </style>
