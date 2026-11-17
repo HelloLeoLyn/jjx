@@ -182,13 +182,14 @@
       </template>
     </el-dialog>
 
-    <!-- 凭证详情弹窗（复用入库单公共详情组件） -->
+    <!-- 凭证详情弹窗（复用入库单公共详情组件，宽度与入库列表详情一致） -->
     <el-dialog
       :title="`入库凭证 - ${voucherNo || ''}`"
       v-model="voucherDialogVisible"
-      width="1000px"
+      width="1200px"
       append-to-body
       destroy-on-close
+      class="inbound-voucher-dialog"
     >
       <InboundDetail v-if="voucherDialogVisible && voucherId" :inbound-id="voucherId" />
       <template #footer>
@@ -355,5 +356,10 @@ const handleClose = () => {
 .voucher-tip {
   color: #e6a23c;
   font-size: 12px;
+}
+/* 入库凭证弹窗：内容区限高滚动（与入库列表详情同一口径） */
+.inbound-voucher-dialog :deep(.el-dialog__body) {
+  max-height: 70vh;
+  overflow-y: auto;
 }
 </style>
