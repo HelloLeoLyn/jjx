@@ -68,5 +68,17 @@ public class PurchaseOrderReceiveDTO {
         @Valid
         private List<PurchaseProcessingPlan.ReceiptGroup> processingGroups;
 
+        /** 按卷采购行的卷明细；rollNo 为空时后端按采购单号自动生成。 */
+        @Valid
+        private List<RollReceiveDTO> rolls;
+
+    }
+
+    /** 收货卷明细（按卷采购行） */
+    @Data
+    public static class RollReceiveDTO {
+        private String rollNo;
+        private BigDecimal rollWidthMm;
+        private BigDecimal rollLengthM;
     }
 }

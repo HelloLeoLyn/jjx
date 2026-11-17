@@ -1437,11 +1437,42 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                     throw new BusinessException("普通采购行不能提交加工交付");
                 if(itemDTO.getReceivedQuantity()==null || itemDTO.getReceivedQuantity().signum()<=0)
                     throw new BusinessException("收货数量必须大于0");
-                if (hasProcessing) {
-                    // 普通订单保留原收货路径；混合加工订单才预建实际交付明细。
+                boolean rollPlanned = item.getRollCount()!=null && item.getRollCount()>0
+                        && item.getRollWidthMm()!=null && item.getRollLengthM()!=null;
+                if (rollPlanned) {
+                    // dev-20261117-026：按卷采购行必须按卷收；卷号为空时按采购单号自动生成。
+                    if (itemDTO.getRolls()==null || itemDTO.getRolls().isEmpty())
+                        throw new BusinessException("该采购行按卷采购，请录入卷明细");
+                    BigDecimal rollAreaSum = BigDecimal.ZERO;
+                    for (PurchaseOrderReceiveDTO.RollReceiveDTO roll : itemDTO.getRolls()) {
+                        if (roll==null || roll.getRollWidthMm()==null || roll.getRollLengthM()==null
+                                || roll.getRollWidthMm().signum()<=0 || roll.getRollLengthM().signum()<=0)
+                            throw new BusinessException("卷宽、卷长必须大于0");
+                        // 卷号留空交给入库单落库时按采购行续号，避免多次收货重复 R1/R2
+                        String rollNo = roll.getRollNo()==null || roll.getRollNo().isBlank() ? null : roll.getRollNo().trim();
+                        if (rollNo != null && rollNo.length()>64) throw new BusinessException("卷号不能超过64字");
+                        BigDecimal area = roll.getRollWidthMm().multiply(roll.getRollLengthM())
+                                .divide(BigDecimal.valueOf(1000),4,RoundingMode.HALF_UP);
+                        rollAreaSum = rollAreaSum.add(area);
+                        var receipt=new com.jjx.inventory.domain.InventoryInboundItem();
+                        receipt.setSourcePurchaseItemId(item.getItemId());receipt.setMaterialId(item.getMaterialId());
+                        receipt.setMaterialCode(item.getMaterialCode());receipt.setMaterialName(item.getMaterialName());
+                        receipt.setSpecification(item.getMaterialSpec());
+                        receipt.setUnit(item.getUnit());receipt.setQuantity(area);receipt.setUnitPrice(baseUnitCost(item));
+                        receipt.setAmount(area.multiply(baseUnitCost(item)).setScale(2,RoundingMode.HALF_UP));
+                        receipt.setRollNo(rollNo);receipt.setRollWidthMm(roll.getRollWidthMm());receipt.setRollLengthM(roll.getRollLengthM());
+                        receiptLines.add(receipt);
+                    }
+                    if (rollAreaSum.setScale(2, RoundingMode.HALF_UP).compareTo(itemDTO.getReceivedQuantity().setScale(2, RoundingMode.HALF_UP)) != 0)
+                        throw new BusinessException("卷面积合计与本次收货数量不一致");
+                    itemDTO.setReceivedQuantity(rollAreaSum);
+                } else {
+                    if (itemDTO.getRolls()!=null && !itemDTO.getRolls().isEmpty())
+                        throw new BusinessException("该采购行未按卷采购，不能提交卷明细");
                     var receipt=new com.jjx.inventory.domain.InventoryInboundItem();
                     receipt.setSourcePurchaseItemId(item.getItemId());receipt.setMaterialId(item.getMaterialId());
-                    receipt.setMaterialCode(item.getMaterialCode());receipt.setMaterialName(item.getMaterialName());receipt.setSpecification(item.getMaterialSpec());
+                    receipt.setMaterialCode(item.getMaterialCode());receipt.setMaterialName(item.getMaterialName());
+                    receipt.setSpecification(item.getMaterialSpec());
                     receipt.setUnit(item.getUnit());receipt.setQuantity(itemDTO.getReceivedQuantity());receipt.setUnitPrice(baseUnitCost(item));
                     receipt.setAmount(item.getAmount().multiply(itemDTO.getReceivedQuantity()).divide(item.getQuantity(),2,RoundingMode.HALF_UP));
                     receiptLines.add(receipt);
@@ -1478,8 +1509,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
         // 采购收货→自动生成入库单（DEV-624）：生成待仓库确认的入库单，仓库确认后才加库存（业务定稿 2026-08-11：收货≠入库）
         // 失败不吞异常：与收货同一事务，保证“收了货必有入库单”的一致性
+        boolean hasRolls = receiptLines.stream().anyMatch(i -> i.getRollWidthMm()!=null && i.getRollLengthM()!=null);
         dto.setDisposalOnly(hasProcessing&&receiptLines.isEmpty()&&!disposalFacts.isEmpty());
-        Long receiptInboundId = dto.isDisposalOnly()?null:hasProcessing
+        Long receiptInboundId = dto.isDisposalOnly()?null:(hasProcessing||hasRolls)
             ? inboundService.createInboundRecordFromPurchase(dto.getOrderId(),receiptLines)
             : inboundService.createInboundRecordFromPurchase(dto.getOrderId());
         receiptAttachments.recordDisposals(dto,receiptInboundId,disposalFacts);

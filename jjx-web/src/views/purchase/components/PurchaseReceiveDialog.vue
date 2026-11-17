@@ -26,8 +26,31 @@
 
       <el-table ref="receiptTable" :data="form.items" row-key="itemId" border style="width: 100%; margin-bottom: 8px">
         <el-table-column type="expand" width="40">
-          <template #default="{row}">
-            <PurchaseProcessingReceive v-if="row.processingPlan" :key="`${receiptDraftId}-${row.itemId}`" :ref="el=>setProcessingRef(row.itemId,el)" v-model="row.processingGroups" :item-id="row.itemId" :disabled="busy" />
+          <template #default="{ row: parent }">
+            <PurchaseProcessingReceive v-if="parent.processingPlan" :key="`${receiptDraftId}-${parent.itemId}`" :ref="el=>setProcessingRef(parent.itemId,el)" v-model="parent.processingGroups" :item-id="parent.itemId" :disabled="busy" />
+            <div v-else-if="isRollPlanned(parent)">
+              <el-table :data="parent.rolls || []" size="small" border>
+                <el-table-column label="卷号" width="220">
+                  <template #default="{ row: roll, $index }">{{ roll.rollNo || `自动生成 R${$index + 1}` }}</template>
+                </el-table-column>
+                <el-table-column label="卷宽(mm)" width="150">
+                  <template #default="{ row: roll }">
+                    <el-input-number v-model="roll.rollWidthMm" :min="0.0001" :precision="4" :controls="false" @change="syncRollQuantity(parent)" />
+                  </template>
+                </el-table-column>
+                <el-table-column label="卷长(m)" width="150">
+                  <template #default="{ row: roll }">
+                    <el-input-number v-model="roll.rollLengthM" :min="0.0001" :precision="4" :controls="false" @change="syncRollQuantity(parent)" />
+                  </template>
+                </el-table-column>
+                <el-table-column label="面积(㎡)">
+                  <template #default="{ row: roll }">{{ rollArea(roll.rollWidthMm, roll.rollLengthM) }}</template>
+                </el-table-column>
+              </el-table>
+              <div class="doc-tip">
+                按采购行 {{ parent.rollCount }} 卷 / {{ parent.rollWidthMm }}mm × {{ parent.rollLengthM }}m 生成；卷号提交后自动生成，卷宽/卷长可按实际修改。
+              </div>
+            </div>
             <span v-else>普通采购行，按本次实际收货数量登记。</span>
           </template>
         </el-table-column>
@@ -53,6 +76,7 @@
               <el-input-number
                 :ref="(el: any) => setQtyRef(el, $index)"
                 v-model="row.receiveQuantity"
+                :disabled="isRollPlanned(row)"
                 :min="0"
                 :precision="2"
                 :step="1"
@@ -191,6 +215,18 @@ interface ReceiveItem {
   processingPlan?: string
   processingGroups?: ProcessingReceiptGroup[]
   receiveQuantity: number | undefined
+  /** 按卷采购：采购行卷数、卷宽、卷长 */
+  rollCount?: number
+  rollWidthMm?: number
+  rollLengthM?: number
+  /** 本次收货卷明细（卷号留空由后端自动生成） */
+  rolls?: RollRow[]
+}
+
+interface RollRow {
+  rollNo?: string
+  rollWidthMm: number
+  rollLengthM: number
 }
 
 const props = defineProps<{
@@ -275,10 +311,50 @@ function round2(v: number): number {
   return Math.round(v * 100) / 100
 }
 
+/** 按卷采购行：采购行带卷数、卷宽、卷长 */
+function isRollPlanned(row: ReceiveItem): boolean {
+  return Number(row.rollCount || 0) > 0 && !!row.rollWidthMm && !!row.rollLengthM
+}
+
+/** 面积口径与后端一致：卷宽(mm) × 卷长(m) ÷ 1000 */
+function rollArea(width?: number, length?: number): number {
+  if (!width || !length) return 0
+  return Math.round((Number(width) * Number(length) / 1000) * 10000) / 10000
+}
+
+/** 按未收数量生成卷明细；最后一卷按差额收口 */
+function rebuildRolls(row: ReceiveItem, fill = true) {
+  if (!isRollPlanned(row)) { row.rolls = []; return }
+  const width = Number(row.rollWidthMm)
+  const per = rollArea(width, Number(row.rollLengthM))
+  const target = fill ? Math.max(0, remainOf(row)) : 0
+  if (!(per > 0) || target <= 0) { row.rolls = []; row.receiveQuantity = 0; return }
+  const count = Math.max(1, Math.ceil(target / per - 1e-9))
+  let left = target
+  const rolls: RollRow[] = []
+  for (let i = 0; i < count && left > 0; i++) {
+    const area = round2(Math.min(per, left))
+    const length = Math.round((area * 1000 / width) * 10000) / 10000
+    rolls.push({ rollWidthMm: width, rollLengthM: length })
+    left = Math.round((left - area) * 10000) / 10000
+  }
+  row.rolls = rolls
+  syncRollQuantity(row)
+}
+
+/** 卷明细面积合计回写本次收货数量 */
+function syncRollQuantity(row: ReceiveItem) {
+  if (!row.rolls?.length) return
+  row.receiveQuantity = round2(row.rolls.reduce((sum, roll) => sum + rollArea(roll.rollWidthMm, roll.rollLengthM), 0))
+}
+
 function fillRow(row: ReceiveItem) {
-  if(!row.processingPlan) row.receiveQuantity = Math.max(0, remainOf(row))
+  if (row.processingPlan) return
+  if (isRollPlanned(row)) { rebuildRolls(row, true); return }
+  row.receiveQuantity = Math.max(0, remainOf(row))
 }
 function clearRow(row: ReceiveItem) {
+  if (isRollPlanned(row)) row.rolls = []
   row.receiveQuantity = 0
 }
 function fillAll() {
@@ -320,10 +396,15 @@ const loadItems = async () => {
         unit: item.unit,
         quantity,
         receivedQuantity,
+        rollCount: Number(item.rollCount || 0),
+        rollWidthMm: item.rollWidthMm == null ? undefined : Number(item.rollWidthMm),
+        rollLengthM: item.rollLengthM == null ? undefined : Number(item.rollLengthM),
+        rolls: [],
         // ① 默认填满未收（未收<=0 的行保持 0，不需要收）
         receiveQuantity: item.processingPlan ? 0 : remain > 0 ? remain : 0,
       }
     })
+    form.items.forEach((row) => { if (isRollPlanned(row)) rebuildRolls(row, true) })
   } catch (error) {
     console.error('加载收货明细失败:', error)
     ElMessage.error('加载收货明细失败')
@@ -364,7 +445,7 @@ const handleSubmit = async () => {
   if (!props.orderId || !canSubmit.value) return
   preparing.value=true
   try {
-    const receiveItems: {itemId:number;receivedQuantity?:number;processingGroups?:ProcessingReceiptGroup[]}[]=[]
+    const receiveItems: {itemId:number;receivedQuantity?:number;processingGroups?:ProcessingReceiptGroup[];rolls?:{rollWidthMm:number;rollLengthM:number}[]}[]=[]
     let hasInbound = false
     for(const item of form.items){
       if(item.processingPlan){
@@ -375,6 +456,14 @@ const handleSubmit = async () => {
         if(!validated)return
         receiveItems.push({itemId:item.itemId,receivedQuantity:validated.receivedQuantity,processingGroups:validated.groups})
         if(validated.inboundItemCount !== 0) hasInbound = true
+      }else if(isRollPlanned(item)){
+        const rolls=(item.rolls||[]).filter(r=>Number(r.rollWidthMm)>0 && Number(r.rollLengthM)>0)
+        if(!rolls.length){ElMessage.warning(`请为按卷采购行 ${item.materialCode} 生成卷明细`);return}
+        syncRollQuantity(item)
+        if(!(Number(item.receiveQuantity)>0)){ElMessage.warning(`按卷采购行 ${item.materialCode} 的卷面积合计必须大于0`);return}
+        hasInbound = true
+        receiveItems.push({itemId:Number(item.itemId),receivedQuantity:Math.round(Number(item.receiveQuantity)*100)/100,
+          rolls:rolls.map(r=>({rollWidthMm:Number(r.rollWidthMm),rollLengthM:Number(r.rollLengthM)}))})
       }else if(Number(item.receiveQuantity)>0){
         hasInbound = true
         receiveItems.push({itemId:Number(item.itemId),receivedQuantity:Math.round(Number(item.receiveQuantity)*100)/100})

@@ -215,7 +215,7 @@ export function importTemplate() {
  */
 export function confirmBatchReceive(
   orderId: number,
-  items: { itemId: number; receivedQuantity?: number; processingGroups?: import('./orderEntry').ProcessingReceiptGroup[] }[],
+  items: { itemId: number; receivedQuantity?: number; processingGroups?: import('./orderEntry').ProcessingReceiptGroup[]; rolls?: { rollNo?: string; rollWidthMm: number; rollLengthM: number }[] }[],
   attachments?: { receiptRequestKey: string; attachmentIds: number[] },
 ) {
   return request({

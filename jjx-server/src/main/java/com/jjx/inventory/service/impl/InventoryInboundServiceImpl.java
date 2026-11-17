@@ -2181,6 +2181,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         BigDecimal measuredAreaTotal = BigDecimal.ZERO;
         BigDecimal allowedAreaTotal = BigDecimal.ZERO;
         for (InventoryInboundItem item : items) {
+            if (item.getSourcePurchaseItemId() != null) {
+                PurchaseOrderItem poItem = purchaseOrderItemMapper.selectById(item.getSourcePurchaseItemId());
+                if (poItem != null && poItem.getRollCount()!=null && poItem.getRollCount()>0
+                        && poItem.getRollWidthMm()!=null && poItem.getRollLengthM()!=null
+                        && (item.getRollNo()==null || item.getRollNo().isBlank())
+                        && item.getRollPlanJson()==null)
+                    throw new BusinessException("采购行按卷采购，入库明细缺少卷信息，请重新收货");
+            }
             if (item.getInventoryItemId() == null) {
                 InventoryMaterial material = inventoryMaterialMapper.selectById(item.getMaterialId());
                 if (material == null) {
@@ -2557,13 +2565,19 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setWarehouseId(resolvePurchaseWarehouseId(warehouseItems,quantities));order.setInboundDate(LocalDate.now());
         order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());order.setInspectionResult(InspectionResultEnum.PENDING.name());
         order.setSupplierId(po.getSupplierId());order.setSupplierName(po.getSupplierName());order.setCreateBy(SecurityUtils.getUsername());
-        order.setRemark("采购加工实际交付，母卷不重复入库");inboundOrderMapper.insert(order);
+        boolean processingOrder = purchaseOrderItemMapper.selectItemsByOrderId(purchaseOrderId).stream()
+                .anyMatch(i -> i.getProcessingPlan()!=null && !i.getProcessingPlan().isBlank());
+        order.setRemark(processingOrder ? "采购加工实际交付，母卷不重复入库" : "采购收货入库");inboundOrderMapper.insert(order);
         BigDecimal totalQty=BigDecimal.ZERO,totalAmount=BigDecimal.ZERO;int sort=0;
         for(var actual:actualItems){
             actual.setItemId(null);actual.setInboundId(order.getInboundId());actual.setBatchNo(order.getInboundNo()+"-"+(++sort));
             actual.setSortOrder(sort);actual.setInspectionResult(InspectionResultEnum.PENDING.name());
-            if(actual.getPurchaseProcessingJson()!=null && actual.getRollWidthMm()!=null && actual.getRollLengthM()!=null)
-                actual.setRollNo(order.getInboundNo()+"-R"+sort);
+            if((actual.getRollNo()==null || actual.getRollNo().isBlank()) && actual.getRollWidthMm()!=null && actual.getRollLengthM()!=null) {
+                long existingRolls = inboundItemMapper.selectCount(new LambdaQueryWrapper<InventoryInboundItem>()
+                        .eq(InventoryInboundItem::getSourcePurchaseItemId, actual.getSourcePurchaseItemId())
+                        .isNotNull(InventoryInboundItem::getRollNo));
+                actual.setRollNo(po.getOrderNo()+"-"+actual.getSourcePurchaseItemId()+"-R"+(existingRolls+1));
+            }
             inboundItemMapper.insert(actual);totalQty=totalQty.add(actual.getQuantity());totalAmount=totalAmount.add(actual.getAmount());
         }
         order.setTotalQuantity(totalQty);order.setTotalAmount(totalAmount);inboundOrderMapper.updateById(order);
@@ -2661,6 +2675,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             inboundItem.setMaterialId(item.getMaterialId());
             inboundItem.setMaterialCode(item.getMaterialCode());
             inboundItem.setMaterialName(item.getMaterialName());
+            inboundItem.setSourcePurchaseItemId(item.getItemId());
             inboundItem.setQuantity(toIn);
             inboundItem.setInspectionResult(InspectionResultEnum.PENDING.name());
             inboundItem.setUnit(item.getUnit());
