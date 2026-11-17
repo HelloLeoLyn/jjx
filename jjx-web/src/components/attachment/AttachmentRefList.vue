@@ -30,8 +30,7 @@
           </el-tag>
         </template>
         <template #fileName="{ row }">
-          <span v-if="row.kind === 'pending'">{{ textOf('fileName', row) }}</span>
-          <el-button v-else link type="primary" @click="previewRow(row)">{{ textOf('fileName', row) }}</el-button>
+          <el-button link type="primary" @click="previewRow(row)">{{ textOf('fileName', row) }}</el-button>
         </template>
         <template #category="{ row }">
           <AttachmentTypeSelect v-if="canEdit && !readonlyType" category-only :category="categoryOfRow(row)"
@@ -160,8 +159,10 @@ function shows(action: AttachmentAction, kind: 'pending' | 'ref'): boolean {
 }
 /** 是否展示「保存」按钮（由调用方在 actions 里声明 `save`；与逐行无关，故不走 shows） */
 const hasSaveAction = computed(() => !!props.actions?.includes('save'))
+/** 预览：已绑定行按 refId 走引用链；待绑定行还没有引用，交给调用方按 attachmentId 预览（dev-20261117-013） */
 function previewRow(row: TableRow) {
-  if (row.kind === 'ref') emit('preview', refOf(row))
+  if (row.kind === 'pending') emit('previewPending', pendingOf(row))
+  else emit('preview', refOf(row))
 }
 
 /** 行内「一级」选择（待绑定与引用行共用）：键=rowKey；一级与二级拆到两列（dev-20261015-033） */
@@ -191,6 +192,8 @@ function setPendingType(entry: PendingEntry, value: string | null) {
 
 const emit = defineEmits<{
   preview: [row: AttachmentRefItem]
+  /** 待绑定行预览（尚无 refId，按 attachmentId 取文件；dev-20261117-013） */
+  previewPending: [entry: PendingEntry]
   download: [row: AttachmentRefItem]
   edit: [row: AttachmentRefItem]
   unbind: [row: AttachmentRefItem]

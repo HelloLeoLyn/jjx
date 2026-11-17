@@ -90,8 +90,7 @@
         </el-tag>
       </template>
       <template #fileName="{ row }">
-        <span v-if="row.kind === 'pending'">{{ textOf('fileName', row) }}</span>
-        <el-button v-else link type="primary" @click="previewRow(row)">{{
+        <el-button link type="primary" @click="previewRow(row)">{{
           textOf('fileName', row)
         }}</el-button>
       </template>
@@ -567,17 +566,18 @@ const {
   close: closeViewer,
 } = useAttachmentPreview()
 function previewRow(row: TableRow) {
-  if (row.kind === 'pending') return
+  // 待绑定行还没有 refId，按 attachmentId 预览；与已绑定/只读行分开成组，翻页不跨组（dev-20261117-013）
+  const group = tableRows.value.filter((item) =>
+    row.kind === 'pending' ? item.kind === 'pending' : item.kind !== 'pending'
+  )
   // 预览工具以数字id定位图片：使用当前展示行序号，避免文件ID和引用ID碰撞或多引用串页。
-  const previews = tableRows.value
-    .filter((item) => item.kind !== 'pending')
-    .map((item, id) => ({
-      id,
-      fileName: item.fileName,
-      fileType: item.fileType,
-      url: previewUrl(item),
-      rowKey: item.rowKey,
-    }))
+  const previews = group.map((item, id) => ({
+    id,
+    fileName: item.fileName,
+    fileType: item.fileType,
+    url: previewUrl(item),
+    rowKey: item.rowKey,
+  }))
   const selected = previews.find((item) => item.rowKey === row.rowKey)
   if (selected) previewViewer(previews, selected, (item) => previews[item.id].url)
 }

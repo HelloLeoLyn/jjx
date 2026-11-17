@@ -73,6 +73,7 @@
       @remove-pending="removePending"
       @pending-changed="persist"
       @preview="previewRef"
+      @preview-pending="previewPending"
       @download="onRowDownload"
       @edit="openMeta"
       @unbind="onUnbind"
@@ -593,6 +594,17 @@ const {
 } = useAttachmentPreview()
 function previewRef(row: AttachmentRefItem) {
   previewViewer(refRows.value, row, (r) => attachmentRefApi.previewUrlByRef(r.id))
+}
+/**
+ * 待绑定附件预览（dev-20261117-013）：尚未建立引用，没有 refId，按 attachmentId 取文件；
+ * 后端 /system/attachment/download/{id} 固定 preview=true（图片 inline），读取权限沿用 TEMP 口径：
+ * 仅上传人本人、7 天有效期内可看。翻页只在同一待绑定组内进行，避免与 refId 的定位混用。
+ */
+function previewPending(entry: PendingEntry) {
+  const rows = pending.value.map((item) => ({ id: item.attachmentId, fileName: item.fileName, fileType: null }))
+  const target = rows.find((item) => item.id === entry.attachmentId)
+  if (!target) return
+  previewViewer(rows, target, (r) => attachmentApi.downloadUrl(r.id))
 }
 function downloadUrlByRef(refId: number) {
   return attachmentRefApi.downloadUrlByRef(refId)

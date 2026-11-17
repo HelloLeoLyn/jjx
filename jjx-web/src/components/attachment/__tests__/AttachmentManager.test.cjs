@@ -562,7 +562,20 @@ test('005：跨来源图片翻页按行定位，文件ID与引用ID碰撞不会�
   assert.deepEqual(Array.from(bindings.viewerList.value), ['/refs/5/preview'])
 })
 
-test('005：下载及非图片预览按引用/文件身份调用，待保存行不提供读取入口', async () => {
+test('013：待保存图片点击文件名即可预览，翻页只在待保存组内（dev-20261117-013）', async () => {
+  const { bindings } = await mixedManager()
+  const pendingRow = bindings.tableRows.value.find(row => row.rowKey === 'pending:903')
+  bindings.previewRow(pendingRow)
+  assert.deepEqual(Array.from(bindings.viewerList.value), ['/files/903/download'], '待保存行按文件ID取图，不混入引用行')
+  assert.equal(bindings.viewerVisible.value, true)
+  assert.equal(bindings.viewerIndex.value, 0)
+  // 已绑定行仍只在自己的组内翻页，不会被待保存行挤位
+  bindings.previewRow(bindings.tableRows.value.find(row => row.rowKey === 'ref:5'))
+  assert.deepEqual(Array.from(bindings.viewerList.value), ['/refs/5/preview', '/refs/6/preview', '/files/5/download', '/refs/55/preview'])
+  assert.equal(bindings.viewerIndex.value, 0)
+})
+
+test('005：下载及非图片预览按引用/文件身份调用，待保存行可用文件ID预览', async () => {
   const { bindings, opened, emitted } = await mixedManager()
   const rows = bindings.tableRows.value
   for (const row of rows) bindings.downloadRow(row)
@@ -571,7 +584,7 @@ test('005：下载及非图片预览按引用/文件身份调用，待保存行�
   for (const row of rows) row.fileName = 'document.pdf'
   opened.length = 0
   for (const row of rows) bindings.previewRow(row)
-  assert.deepEqual(opened.map(args => args[0]), ['/refs/5/preview', '/refs/6/preview', '/files/5/download', '/refs/55/preview'])
+  assert.deepEqual(opened.map(args => args[0]), ['/files/903/download', '/refs/5/preview', '/refs/6/preview', '/files/5/download', '/refs/55/preview'])
 })
 
 test('005：本单详情切换到只读详情，不残留备注编辑或提交能力', async () => {
