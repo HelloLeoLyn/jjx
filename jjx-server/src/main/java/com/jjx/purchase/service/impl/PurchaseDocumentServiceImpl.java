@@ -67,6 +67,13 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
             if (StringUtils.isNotEmpty(dto.getDocumentNo())) {
                 wrapper.like(PurchaseDocument::getDocumentNo, dto.getDocumentNo());
             }
+            if (StringUtils.isNotBlank(dto.getInvoiceNo())) {
+                wrapper.like(PurchaseDocument::getInvoiceNo, dto.getInvoiceNo().trim());
+            }
+            if ("invoice".equalsIgnoreCase(dto.getDocumentType())
+                    && (dto.getDocumentDateStart() != null || dto.getDocumentDateEnd() != null)) {
+                wrapper.isNotNull(PurchaseDocument::getInvoiceNo);
+            }
             if (StringUtils.isNotEmpty(dto.getDocumentType())) {
                 wrapper.eq(PurchaseDocument::getDocumentType, dto.getDocumentType());
             }
@@ -96,7 +103,81 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
         if (document == null) {
             throw new BusinessException("票据不存在");
         }
+        if ("invoice".equalsIgnoreCase(document.getDocumentType())) {
+            PurchaseOrder order = purchaseOrderMapper.selectById(document.getOrderId());
+            if (order != null) {
+                document.setOrderNo(order.getOrderNo());
+                document.setSupplierName(order.getSupplierName());
+                document.setOrderTotalAmount(order.getOrderTotalAmount());
+                document.setReceiptStatus(order.getReceiptStatus());
+            }
+        }
         return document;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long registerInvoice(Long documentId, com.jjx.purchase.domain.dto.PurchaseInvoiceRegistrationDTO dto) {
+        cn.dev33.satoken.stp.StpUtil.checkLogin();
+        PurchaseOrder order = purchaseOrderMapper.lockById(dto.getOrderId());
+        if (order == null) throw new BusinessException("采购订单不存在");
+        var partial = com.jjx.purchase.domain.enums.ReceiptStatusEnum.PARTIALLY_RECEIVED.getValue();
+        var received = com.jjx.purchase.domain.enums.ReceiptStatusEnum.COMPLETED.getValue();
+        if (!Objects.equals(order.getReceiptStatus(), partial) && !Objects.equals(order.getReceiptStatus(), received))
+            throw new BusinessException("仅部分收货或已收货订单可以登记发票");
+        PurchaseDocument document = documentId == null ? new PurchaseDocument() : documentMapper.lockById(documentId);
+        if (document == null || (documentId != null && !"invoice".equalsIgnoreCase(document.getDocumentType())))
+            throw new BusinessException("采购发票不存在");
+        if (documentId != null && (!Objects.equals(document.getDocumentStatus(), DocumentStatus.PENDING.getValue())
+                || !Objects.equals(document.getOrderId(), dto.getOrderId())))
+            throw new BusinessException("只能补录待核验发票，且不能更换采购订单");
+        org.springframework.beans.BeanUtils.copyProperties(dto, document, "attachments");
+        document.setInvoiceNo(StringUtils.trim(dto.getInvoiceNo()));
+        document.setCurrency(StringUtils.trim(dto.getCurrency()));
+        validateInvoiceFields(document);
+        var duplicate = Wrappers.<PurchaseDocument>lambdaQuery().eq(PurchaseDocument::getInvoiceNo, document.getInvoiceNo());
+        if (documentId != null) duplicate.ne(PurchaseDocument::getDocumentId, documentId);
+        if (documentMapper.selectCount(duplicate) > 0) throw new BusinessException("真实发票号码已登记，请勿重复登记");
+        if (!StringUtils.equalsIgnoreCase(order.getCurrency(), document.getCurrency()))
+            throw new BusinessException("发票与采购订单币种不同，请核实后登记");
+        validateInvoiceAmount(order, document.getDocumentAmount(), documentId);
+        document.setSupplierId(order.getSupplierId());
+        document.setDocumentType("invoice");
+        if (documentId == null) {
+            if (dto.getAttachments().isEmpty()) throw new BusinessException("请上传发票原件");
+            document.setDocumentNo(generateDocumentNo("invoice"));
+            document.setDocumentStatus(DocumentStatus.PENDING.getValue());
+            documentMapper.insert(document);
+        } else {
+            documentMapper.updateById(document);
+        }
+        invoiceAttachments.bind(document.getDocumentId(), dto.getAttachments());
+        // 旧版登记保存在 file_url 的临时件，补录时一并转为正式引用。
+        Long carried = invoiceAttachments.carriedAttachmentId(document.getFileUrl());
+        if (carried != null && !invoiceAttachments.hasReference(document.getDocumentId(), carried)) {
+            invoiceAttachments.prepare(document.getDocumentId(), List.of(carried));
+            invoiceAttachments.complete(document.getDocumentId(), List.of(carried));
+        }
+        if (documentId == null) publishDocumentEvent("purchase.document.created", document.getDocumentId(), document.getDocumentNo());
+        return document.getDocumentId();
+    }
+
+    private void validateInvoiceFields(PurchaseDocument document) {
+        if (StringUtils.isAnyBlank(document.getInvoiceNo(), document.getSellerName(), document.getSellerTaxNo(),
+                document.getBuyerName(), document.getBuyerTaxNo(), document.getCurrency())
+                || document.getDocumentDate() == null || document.getUntaxedAmount() == null
+                || document.getTaxAmount() == null || document.getDocumentAmount() == null)
+            throw new BusinessException("请先补录真实发票号码、开票日期、购销双方、税号、金额和币种");
+        if (document.getUntaxedAmount().add(document.getTaxAmount()).compareTo(document.getDocumentAmount()) != 0)
+            throw new BusinessException("不含税金额加税额必须等于价税合计");
+    }
+
+    /** 金额规则唯一实现：保留累计不超订单口径；订单锁串行化登记与补录。 */
+    private void validateInvoiceAmount(PurchaseOrder order, java.math.BigDecimal amount, Long excludeId) {
+        if (order == null) throw new BusinessException("采购订单不存在，无法登记发票");
+        java.math.BigDecimal sum = documentMapper.sumInvoiceAmount(order.getOrderId(), excludeId);
+        if (order.getOrderTotalAmount() != null && sum.add(amount).compareTo(order.getOrderTotalAmount()) > 0)
+            throw new BusinessException("累计发票金额超过订单金额，请核实");
     }
 
     @Override
@@ -107,38 +188,8 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
             throw new BusinessException("票据编号已存在");
         }
 
-        // 090定稿：发票轻量拦截——发票金额≤订单金额（防虚开），累计不超订单金额
-        // 注：PurchaseInvoiceController 强制 documentType="invoice"（小写），判断需忽略大小写
-        if (dto.getDocumentType() != null && dto.getDocumentType().equalsIgnoreCase("INVOICE")
-                && dto.getOrderId() != null && dto.getDocumentAmount() != null) {
-            try {
-                com.jjx.purchase.domain.entity.PurchaseOrder po = purchaseOrderMapper.selectById(dto.getOrderId());
-                if (po == null) {
-                    throw new BusinessException("采购订单不存在，无法登记发票");
-                }
-                if (po.getOrderTotalAmount() != null
-                        && dto.getDocumentAmount().compareTo(po.getOrderTotalAmount()) > 0) {
-                    throw new BusinessException("发票金额" + dto.getDocumentAmount().stripTrailingZeros().toPlainString()
-                            + "超过订单金额" + po.getOrderTotalAmount().stripTrailingZeros().toPlainString() + "，请核实");
-                }
-                // 累计发票金额校验（同订单已登记发票合计 + 本次 ≤ 订单金额）
-                java.math.BigDecimal sumInvoiced = documentMapper.selectList(
-                        new LambdaQueryWrapper<PurchaseDocument>()
-                                .eq(PurchaseDocument::getOrderId, dto.getOrderId())
-                                .eq(PurchaseDocument::getDocumentType, "invoice"))
-                        .stream()
-                        .map(d -> d.getDocumentAmount() != null ? d.getDocumentAmount() : java.math.BigDecimal.ZERO)
-                        .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
-                if (po.getOrderTotalAmount() != null
-                        && sumInvoiced.add(dto.getDocumentAmount()).compareTo(po.getOrderTotalAmount()) > 0) {
-                    throw new BusinessException("累计发票金额" + sumInvoiced.add(dto.getDocumentAmount()).stripTrailingZeros().toPlainString()
-                            + "超过订单金额" + po.getOrderTotalAmount().stripTrailingZeros().toPlainString() + "，请核实");
-                }
-            } catch (BusinessException e) {
-                throw e;
-            } catch (Exception e) {
-                log.warn("发票金额校验失败(跳过): {}", e.getMessage());
-            }
+        if ("invoice".equalsIgnoreCase(dto.getDocumentType()) && dto.getOrderId() != null && dto.getDocumentAmount() != null) {
+            validateInvoiceAmount(purchaseOrderMapper.lockById(dto.getOrderId()), dto.getDocumentAmount(), null);
         }
 
         PurchaseDocument document = new PurchaseDocument();
@@ -209,7 +260,7 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int verifyDocument(Long documentId, String verifierName, String verificationDate, String verificationRemark, java.util.List<Long> attachmentIds) {
-        PurchaseDocument document = documentMapper.selectById(documentId);
+        PurchaseDocument document = documentMapper.lockById(documentId);
         if (document == null) {
             throw new BusinessException("票据不存在");
         }
@@ -222,15 +273,23 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
         boolean isInvoice = document.getDocumentType() != null && document.getDocumentType().equalsIgnoreCase("invoice");
         java.util.List<Long> docAttachmentIds = new java.util.ArrayList<>();
         if (isInvoice) {
+            validateInvoiceFields(document);
             if (attachmentIds != null) docAttachmentIds.addAll(attachmentIds);
             Long carried = invoiceAttachments.carriedAttachmentId(document.getFileUrl());
-            if (carried != null) docAttachmentIds.add(carried);
+            if (carried != null && !invoiceAttachments.hasReference(documentId, carried)) docAttachmentIds.add(carried);
             invoiceAttachments.prepare(documentId, docAttachmentIds);
+            if (docAttachmentIds.isEmpty() && !invoiceAttachments.hasReference(documentId, null)
+                    && StringUtils.isBlank(document.getFileUrl()))
+                throw new BusinessException("请先上传发票原件再核验");
+            document.setVerifiedBy(cn.dev33.satoken.stp.StpUtil.getLoginIdAsString());
+            document.setVerifierName(StringUtils.defaultIfBlank(com.jjx.system.utils.SecurityUtils.getDisplayName(), document.getVerifiedBy()));
+            document.setVerifiedTime(LocalDateTime.now());
+            document.setVerificationRemark(StringUtils.defaultString(verificationRemark));
         }
 
         document.setDocumentStatus(DocumentStatus.VERIFIED.getValue());
         document.setVerificationDate(verificationDate != null ? LocalDate.parse(verificationDate) : LocalDate.now());
-        if (StringUtils.isNotEmpty(verificationRemark)) {
+        if (!isInvoice && StringUtils.isNotEmpty(verificationRemark)) {
             document.setRemark(verificationRemark);
         }
         document.setUpdateTime(LocalDateTime.now());
@@ -477,6 +536,8 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int batchConfirmDocuments(Long orderId, Long supplierId, List<Map<String, Object>> files, String documentType) {
+        if ("invoice".equalsIgnoreCase(documentType))
+            throw new BusinessException("请使用发票登记填写真实票面信息，一张发票可关联多个文件");
         if (files == null || files.isEmpty()) {
             return 0;
         }

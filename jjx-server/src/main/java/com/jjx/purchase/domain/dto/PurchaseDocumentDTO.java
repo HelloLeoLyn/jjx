@@ -28,6 +28,9 @@ public class PurchaseDocumentDTO {
     @Size(max = 50, message = "票据编号长度不能超过50个字符")
     private String documentNo;
 
+    /** 发票列表按真实票面号码查询；与系统登记编号区分。 */
+    private String invoiceNo;
+
     /**
      * 票据类型（invoice发票/receipt收据/contract合同/quotation报价单/delivery_note送货单/other其他）
      */

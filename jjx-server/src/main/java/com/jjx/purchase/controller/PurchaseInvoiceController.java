@@ -40,6 +40,21 @@ public class PurchaseInvoiceController extends BaseController {
     /** 发票文件接入公共附件（独立权限域 purchase:invoice:doc:*，dev-20261014-022）。 */
     private final com.jjx.purchase.service.PurchaseInvoiceAttachmentService invoiceAttachments;
 
+    @PostMapping("/registration")
+    @SaCheckPermission("purchase:invoice:add")
+    @Log(module = "采购发票管理", businessType = BusinessType.INSERT, action = LogActions.PUR_INVOICE_CREATE)
+    public Result<Long> register(@Valid @RequestBody com.jjx.purchase.domain.dto.PurchaseInvoiceRegistrationDTO dto) {
+        return Result.success(documentService.registerInvoice(null, dto));
+    }
+
+    @PutMapping("/registration/{invoiceId}")
+    @SaCheckPermission("purchase:invoice:edit")
+    @Log(module = "采购发票管理", businessType = BusinessType.UPDATE, bizType = "'purchase_invoice'", bizId = "#invoiceId", action = LogActions.PUR_INVOICE_EDIT)
+    public Result<Long> supplement(@PathVariable Long invoiceId,
+            @Valid @RequestBody com.jjx.purchase.domain.dto.PurchaseInvoiceRegistrationDTO dto) {
+        return Result.success(documentService.registerInvoice(invoiceId, dto));
+    }
+
     /**
      * 查询采购发票列表
      */
@@ -75,12 +90,7 @@ public class PurchaseInvoiceController extends BaseController {
     @Log(module = "采购发票管理", businessType = BusinessType.INSERT, bizType = "'purchase_invoice'", bizId = "#dto.documentId", action = LogActions.PUR_INVOICE_CREATE)
     @SaCheckPermission("purchase:invoice:add")
     public Result<Void> add(@Valid PurchaseDocumentDTO dto) {
-        dto.setDocumentType("invoice");
-        if (dto.getDocumentStatus() == null) {
-            dto.setDocumentStatus(DocumentStatus.PENDING.getValue());
-        }
-        documentService.insertDocument(dto);
-        return Result.success();
+        throw new BusinessException("请使用发票登记入口填写真实票面信息并关联原件");
     }
 
     /**
@@ -90,9 +100,7 @@ public class PurchaseInvoiceController extends BaseController {
     @Log(module = "采购发票管理", businessType = BusinessType.UPDATE, bizType = "'purchase_invoice'", bizId = "#dto.documentId", action = LogActions.PUR_INVOICE_EDIT)
     @SaCheckPermission("purchase:invoice:edit")
     public Result<Void> edit(@Valid PurchaseDocumentDTO dto) {
-        dto.setDocumentType("invoice");
-        documentService.updateDocument(dto);
-        return Result.success();
+        throw new BusinessException("请使用发票补录入口，已核验或已归档发票不可编辑票面信息");
     }
 
     /**
@@ -127,7 +135,7 @@ public class PurchaseInvoiceController extends BaseController {
     @SaCheckPermission("purchase:invoice:edit")
     public Result<Void> verify(@PathVariable Long invoiceId,
                                @RequestParam String verificationDate,
-                               @RequestParam String verifierName,
+                               @RequestParam(required = false) String verifierName,
                                @RequestParam(required = false) String verificationRemark,
                                @RequestParam(required = false) List<Long> attachmentIds) {
         documentService.verifyDocument(invoiceId, verifierName, verificationDate, verificationRemark, attachmentIds);

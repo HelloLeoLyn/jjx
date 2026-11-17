@@ -18,6 +18,9 @@ import java.util.List;
 @Mapper
 public interface PurchaseOrderMapper extends BaseMapper<PurchaseOrder> {
 
+    @Select("SELECT * FROM purchase_order WHERE order_id=#{id} FOR UPDATE")
+    PurchaseOrder lockById(@Param("id") Long id);
+
     /**
      * 检查订单号是否存在
      *

@@ -1,5 +1,33 @@
 import request from '@/utils/request'
 
+export interface InvoiceRegistration {
+  orderId: number
+  invoiceNo: string
+  documentDate: string
+  sellerName: string
+  sellerTaxNo: string
+  buyerName: string
+  buyerTaxNo: string
+  untaxedAmount: number | null
+  taxAmount: number | null
+  documentAmount: number | null
+  currency: string
+  remark?: string
+  attachments: { attachmentId: number; documentType: string }[]
+}
+
+/** 一张真实发票对应一条登记，多份文件在保存事务中关联。 */
+export function registerInvoice(data: InvoiceRegistration, invoiceId?: number) {
+  return request({
+    url: invoiceId
+      ? `/purchase/invoice/registration/${invoiceId}`
+      : '/purchase/invoice/registration',
+    method: invoiceId ? 'put' : 'post',
+    data,
+  })
+}
+
+
 // 查询采购发票列表
 export function listInvoice(params?: Record<string, unknown>) {
   return request({

@@ -18,9 +18,9 @@ export const InvoiceTypeEnum = createEnum({
  */
 export const InvoiceStatusEnum = createNamedEnum(
   {
-    PENDING: { value: 0, label: '待处理', tagProps: { type: 'warning' } },
+    PENDING: { value: 0, label: '待核验', tagProps: { type: 'warning' } },
     VERIFIED: { value: 1, label: '已核验', tagProps: { type: 'success' } },
     ARCHIVED: { value: 2, label: '已归档', tagProps: { type: 'info' } },
   },
-  { type: 'info' },
+  { type: 'info' }
 )

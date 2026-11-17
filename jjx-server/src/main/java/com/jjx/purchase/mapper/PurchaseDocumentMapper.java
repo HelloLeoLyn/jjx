@@ -15,6 +15,13 @@ import java.util.List;
 @Mapper
 public interface PurchaseDocumentMapper extends BaseMapper<PurchaseDocument> {
 
+    @Select("SELECT * FROM purchase_document WHERE document_id=#{id} FOR UPDATE")
+    PurchaseDocument lockById(@Param("id") Long id);
+
+    @Select("SELECT COALESCE(SUM(document_amount),0) FROM purchase_document WHERE order_id=#{orderId} " +
+            "AND document_type='invoice' AND (#{excludeId} IS NULL OR document_id<>#{excludeId})")
+    java.math.BigDecimal sumInvoiceAmount(@Param("orderId") Long orderId, @Param("excludeId") Long excludeId);
+
     /**
      * 检查票据编号是否唯一
      */

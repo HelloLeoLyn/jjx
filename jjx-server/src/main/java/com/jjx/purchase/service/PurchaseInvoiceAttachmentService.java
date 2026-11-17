@@ -75,16 +75,52 @@ public class PurchaseInvoiceAttachmentService {
             ref.setAttachmentId(id);
             ref.setSourceType("purchase_invoice");
             ref.setSourceId(documentId);
+            // 兼容旧登记暂存的附件，沿用草稿已经选择的资料类型。
+            List<String> types = jdbc.queryForList("SELECT document_type FROM sys_attachment_ref " +
+                "WHERE attachment_id=? AND ref_state='draft' AND create_by=? AND deleted=0", String.class,
+                id, StpUtil.getLoginIdAsString());
+            if (types.isEmpty() || types.get(0) == null || types.get(0).isBlank())
+                throw new BusinessException("发票附件缺少资料类型，请补充后保存");
+            ref.setDocumentType(types.get(0));
             ref.setRemark("采购发票文件；发票ID=" + documentId);
             refs.create(ref);
         }
+    }
+
+    /** 登记事务内绑定多个文件，并保留用户选择的资料类型。 */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void bind(Long documentId, List<com.jjx.sales.domain.dto.AttachmentBindDTO> entries) {
+        if (entries == null || entries.isEmpty()) return;
+        List<Long> attachmentIds = entries.stream().map(e -> {
+            if (e == null || e.getAttachmentId() == null || e.getDocumentType() == null || e.getDocumentType().isBlank())
+                throw new BusinessException("发票附件及资料类型不能为空");
+            return e.getAttachmentId();
+        }).toList();
+        if (attachmentIds.stream().distinct().count() != attachmentIds.size())
+            throw new BusinessException("同一文件不能重复提交");
+        prepare(documentId, attachmentIds);
+        for (var entry : entries) {
+            AttachmentRefDTO ref = new AttachmentRefDTO();
+            ref.setAttachmentId(entry.getAttachmentId());
+            ref.setDocumentType(entry.getDocumentType());
+            ref.setSourceType("purchase_invoice");
+            ref.setSourceId(documentId);
+            refs.create(ref);
+        }
+    }
+
+    public boolean hasReference(Long documentId, Long attachmentId) {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM sys_attachment_ref r JOIN sys_attachment a " +
+            "ON a.id=r.attachment_id AND a.deleted=0 WHERE r.source_type='purchase_invoice' " +
+            "AND r.source_id=? AND r.deleted=0 AND r.ref_state='active' " +
+            "AND (? IS NULL OR r.attachment_id=?)", Integer.class, documentId, attachmentId, attachmentId) > 0;
     }
 
     /** 按发票归集已建立的引用（发票详情/列表展示）。 */
     public List<Map<String, Object>> list(Long documentId) {
         StpUtil.checkPermission("purchase:invoice:doc:view");
         return jdbc.queryForList("""
-            SELECT r.id AS refId, a.id AS attachmentId, a.file_name AS fileName,
+            SELECT r.id AS refId, a.id AS attachmentId, a.file_name AS fileName, a.file_type AS fileType,
                    a.file_size AS fileSize, d.document_no AS invoiceNo
             FROM sys_attachment_ref r
             JOIN sys_attachment a ON a.id=r.attachment_id AND a.deleted=0

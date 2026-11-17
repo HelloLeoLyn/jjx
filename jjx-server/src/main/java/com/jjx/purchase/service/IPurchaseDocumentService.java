@@ -11,6 +11,8 @@ import java.util.Map;
  */
 public interface IPurchaseDocumentService {
 
+    Long registerInvoice(Long documentId, com.jjx.purchase.domain.dto.PurchaseInvoiceRegistrationDTO dto);
+
     /**
      * 查询票据列表
      */

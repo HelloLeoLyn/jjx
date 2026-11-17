@@ -88,6 +88,29 @@ public class PurchaseDocument {
      */
     private String remark;
 
+    /** 真实票面信息；历史未补录记录保持空值，不把系统编号当发票号码。 */
+    private String invoiceNo;
+    private String sellerName;
+    private String sellerTaxNo;
+    private String buyerName;
+    private String buyerTaxNo;
+    private BigDecimal untaxedAmount;
+    private BigDecimal taxAmount;
+    /** 核验人员身份由服务端登录态取得，与登记备注分开。 */
+    private String verifiedBy;
+    private String verifierName;
+    private LocalDateTime verifiedTime;
+    private String verificationRemark;
+
+    @TableField(exist = false)
+    private String orderNo;
+    @TableField(exist = false)
+    private String supplierName;
+    @TableField(exist = false)
+    private BigDecimal orderTotalAmount;
+    @TableField(exist = false)
+    private Integer receiptStatus;
+
     /**
      * 创建者
      */
