@@ -493,6 +493,7 @@ const materialOptions = computed(() =>
 )
 /** 仅控制表单显示与草稿同步，最终落值由后端按模板确定。 */
 const categoryMaterialMeta = computed(() => {
+  if (props.materialId || form.materialId) return null
   const schema = configuration.value?.schema
   return schema?.meta_required === true &&
     schema.meta_options.length === 1 &&

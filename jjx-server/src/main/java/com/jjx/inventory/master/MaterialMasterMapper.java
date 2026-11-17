@@ -19,4 +19,7 @@ public interface MaterialMasterMapper {
 
     @Select("SELECT material_id FROM inventory_material WHERE category_id=#{id} ORDER BY material_id LIMIT 1 FOR UPDATE")
     Long firstMaterialInCategory(@Param("id") Long id);
+    /** 分类锁内按主键分页当前读，避免引用检查使用旧快照。 */
+    @Select("SELECT material_id,material_code,material_meta,attribute_json,thickness_mm FROM inventory_material WHERE category_id=#{id} AND material_id>#{after} ORDER BY material_id LIMIT 200 FOR UPDATE")
+    java.util.List<InventoryMaterial> templateReferences(@Param("id") Long id, @Param("after") Long after);
 }

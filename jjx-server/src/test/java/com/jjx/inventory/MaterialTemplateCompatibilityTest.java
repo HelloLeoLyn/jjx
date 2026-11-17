@@ -23,13 +23,49 @@ class MaterialTemplateCompatibilityTest {
         assertFalse(next.validateAttributes(Map.of("force_g", 280), mapper).containsKey("has_dimple"));
     }
 
-    @Test void deletingChangingUnitsTypesOptionsOrAddingRequiredDefaultsIsRejected() {
+    @Test void destructiveChangesRequireReferenceChecks() {
         var old = schema(oldField);
         for (String candidate : new String[]{"", oldField.replace("gf", "g"), oldField.replace("decimal", "string"),
-                oldField + ",{\"key\":\"new_field\",\"label\":\"新项\",\"type\":\"string\",\"required\":true}",
-                oldField + ",{\"key\":\"new_field\",\"label\":\"新项\",\"type\":\"string\",\"default\":\"自动猜值\"}"}) {
+                oldField + ",{\"key\":\"new_field\",\"label\":\"新项\",\"type\":\"string\",\"required\":true}"}) {
             assertThrows(RuntimeException.class, () -> MaterialMasterConfigurationService.requireCompatibleUpdate(old, schema(candidate), mapper));
         }
+    }
+
+    @Test void defaultsAndAdditionalOptionsAreAllowedWithoutInventingOldValues() {
+        var old = schema("{\"key\":\"glue\",\"label\":\"胶系\",\"type\":\"enum\",\"options\":[{\"code\":\"A\",\"label\":\"甲\"}]}");
+        var next = MaterialAttributeSchema.parse(mapper.valueToTree(old).toString()
+                .replace("\"default_unit\":\"PCS\"", "\"default_unit\":\"M\"")
+                .replace("\"label\":\"甲\"", "\"label\":\"甲改名\"},{\"code\":\"B\",\"label\":\"乙\"")
+                .replace("\"default\":null", "\"default\":\"B\""), mapper);
+        assertDoesNotThrow(() -> MaterialMasterConfigurationService.requireCompatibleUpdate(old, next, mapper));
+        assertEquals(Map.of("glue", "B"), next.validateAttributes(Map.of(), mapper));
+        assertEquals(Map.of(), next.validateAttributes(Map.of(), mapper, false));
+        assertEquals(Map.of("glue", "A"), next.validateAttributes(Map.of("glue", "A"), mapper, false));
+    }
+
+    @Test void referencedOptionRemovalReportsMaterialButUnusedRemovalAndLabelChangesPass() {
+        var old = schema("{\"key\":\"glue\",\"label\":\"胶系\",\"type\":\"multienum\",\"options\":[{\"code\":\"A\",\"label\":\"甲\"},{\"code\":\"B\",\"label\":\"乙\"}]}");
+        var next = schema("{\"key\":\"glue\",\"label\":\"胶系\",\"type\":\"multienum\",\"options\":[{\"code\":\"B\",\"label\":\"乙改名\"}]}");
+        var material = new com.jjx.inventory.domain.InventoryMaterial();
+        material.setMaterialCode("RM000352"); material.setAttributeJson("{\"glue\":[\"A\"]}");
+        var ex = assertThrows(RuntimeException.class, () -> MaterialMasterConfigurationService.requireMaterialCompatibility(old, next, material, mapper));
+        assertTrue(ex.getMessage().contains("RM000352")); assertTrue(ex.getMessage().contains("胶系"));
+        material.setAttributeJson("{\"glue\":[\"B\"]}");
+        assertDoesNotThrow(() -> MaterialMasterConfigurationService.requireMaterialCompatibility(old, next, material, mapper));
+        assertEquals("{\"glue\":[\"B\"]}", material.getAttributeJson());
+    }
+
+    @Test void usedUnitsAndRemovedMaterialsAreProtectedButUnusedFieldsCanChange() {
+        var old = schema(oldField); var next = schema(oldField.replace("gf", "g"));
+        var material = new com.jjx.inventory.domain.InventoryMaterial(); material.setMaterialCode("RM1");
+        material.setAttributeJson("{\"force_g\":0}");
+        assertThrows(RuntimeException.class, () -> MaterialMasterConfigurationService.requireMaterialCompatibility(old, next, material, mapper));
+        material.setAttributeJson("{}");
+        assertDoesNotThrow(() -> MaterialMasterConfigurationService.requireMaterialCompatibility(old, next, material, mapper));
+        var metaOld = MaterialAttributeSchema.parse("{\"version\":1,\"meta_options\":[\"PC\",\"PET\"],\"fields\":[]}", mapper);
+        var metaNew = MaterialAttributeSchema.parse("{\"version\":1,\"meta_options\":[\"PC\"],\"fields\":[]}", mapper);
+        material.setMaterialMeta("PET");
+        assertThrows(RuntimeException.class, () -> MaterialMasterConfigurationService.requireMaterialCompatibility(metaOld, metaNew, material, mapper));
     }
 
     @Test void namingRuleCanChangeOnTemplateAlreadyInUse() {
@@ -56,6 +92,10 @@ class MaterialTemplateCompatibilityTest {
         var service = new MaterialMasterConfigurationService(catalog, locks, categories, templates, materials, mapper);
         org.mockito.Mockito.when(locks.lockCategory(2L)).thenReturn(2L);
         org.mockito.Mockito.when(locks.firstMaterialInCategory(2L)).thenReturn(99L);
+        var referenced = new com.jjx.inventory.domain.InventoryMaterial();
+        referenced.setMaterialId(99L); referenced.setMaterialCode("RM000099");
+        referenced.setAttributeJson("{\"force_g\":280}");
+        org.mockito.Mockito.when(locks.templateReferences(2L, 0L)).thenReturn(java.util.List.of(referenced));
         org.mockito.Mockito.when(catalog.categories()).thenReturn(java.util.List.of(
                 new com.jjx.inventory.master.MaterialMasterCatalog.Category(2L, "RAW_AUX_ELECTRONIC", "电子元件", 1L, 3, "R", "原材料/辅材/电子元件", true, 1, 1)));
         var existing = new com.jjx.inventory.master.InventoryAttributeTemplate();

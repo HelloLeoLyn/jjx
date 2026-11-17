@@ -502,12 +502,12 @@ public class MaterialMasterService {
         MaterialAttributeSchema schema = config == null
                 ? new MaterialAttributeSchema(1, List.of(), false, null, null, "PCS", List.of(), null) : config.schema();
         String name = text(dto.getMaterialName(), "物料名称", 200, true);
-        String meta = resolveMaterialMeta(dto.getMaterialMeta(), schema);
-        if (meta == null && schema.metaOptions().size() == 1) meta = schema.metaOptions().get(0);
+        String meta = old == null ? resolveMaterialMeta(dto.getMaterialMeta(), schema) : dto.getMaterialMeta();
+        if (old == null && meta == null && schema.metaOptions().size() == 1) meta = schema.metaOptions().get(0);
         if (config != null && meta != null && !schema.metaOptions().contains(meta)) throw new BusinessException("材质不在该品类允许范围");
         if (meta == null && schema.metaRequired()) throw new BusinessException("请选择材质");
-        String form = fallback(dto.getMaterialForm(), schema.defaultForm());
-        String unit = fallback(dto.getUnit(), schema.defaultUnit());
+        String form = old == null ? fallback(dto.getMaterialForm(), schema.defaultForm()) : dto.getMaterialForm();
+        String unit = old == null ? fallback(dto.getUnit(), schema.defaultUnit()) : fallback(dto.getUnit(), old.getUnit());
         var dictionaries = catalog.dictionaries();
         String metaLabel = dictionaryLabel(dictionaries, "material_meta", meta, false);
         String formLabel = dictionaryLabel(dictionaries, "form", form, false);
@@ -526,7 +526,7 @@ public class MaterialMasterService {
         // 厚度口径不要求宽度（只填厚度合法，dev-20261030-016）；克重口径仍需宽度。
         // 厚度属性是历史模板定义，不能再成为尺寸写入入口。
         inputAttributes.remove("thickness_mm");
-        Map<String, Object> attributes = schema.validateAttributes(inputAttributes, objectMapper);
+        Map<String, Object> attributes = schema.validateAttributes(inputAttributes, objectMapper, old == null);
         InventoryMaterial material = new InventoryMaterial();
         BeanUtils.copyProperties(dto, material, "sizeUnit");
         material.setMaterialName(name);

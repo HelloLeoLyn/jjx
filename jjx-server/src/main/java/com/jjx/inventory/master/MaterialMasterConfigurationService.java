@@ -158,7 +158,7 @@ public class MaterialMasterConfigurationService {
         if (existing != null && materialCount(dto.categoryId()) > 0) {
             try {
                 if (StatusEnum.DISABLE.getCode().equals(dto.status())) fail("已有物料引用模板，不能直接停用");
-                requireCompatibleUpdate(MaterialAttributeSchema.parse(existing.getAttributeSchema(), objectMapper), dto.attributeSchema(), objectMapper);
+                checkTemplateReferences(dto.categoryId(), MaterialAttributeSchema.parse(existing.getAttributeSchema(), objectMapper), dto.attributeSchema());
             } catch (BusinessException e) { throw e; }
             catch (Exception e) { throw new BusinessException("现有模板格式错误"); }
         }
@@ -172,29 +172,86 @@ public class MaterialMasterConfigurationService {
         return entity;
     }
 
-    /** 已使用模板允许增加无默认值的可选字段，以及调整纯显示元数据（含命名规则）。 */
+    /** 纯显示、新建默认值与追加选项不改变旧物料事实。 */
     public static void requireCompatibleUpdate(MaterialAttributeSchema old, MaterialAttributeSchema next, ObjectMapper mapper) {
-        var previous = mapper.<com.fasterxml.jackson.databind.node.ObjectNode>valueToTree(old);
-        var updated = mapper.<com.fasterxml.jackson.databind.node.ObjectNode>valueToTree(next);
-        // 属性显示、命名与规格模板（含字段显示单位）可调整，不改物料事实或已保存规格。
-        previous.remove(List.of("fields", "name_pattern", "spec_pattern", "model_pattern"));
-        updated.remove(List.of("fields", "name_pattern", "spec_pattern", "model_pattern"));
-        if (!previous.equals(updated)) fail("已有物料引用模板，不能改变材质、单位或默认值等模板契约");
-        Map<String, MaterialAttributeSchema.Field> fields = new LinkedHashMap<>();
-        next.fields().forEach(field -> fields.put(field.key(), field));
-        for (var field : old.fields()) {
-            var replacement = fields.remove(field.key());
-            if (replacement == null) fail("已有物料引用模板，不能删除属性：" + field.label());
-            var before = mapper.<com.fasterxml.jackson.databind.node.ObjectNode>valueToTree(field);
-            var after = mapper.<com.fasterxml.jackson.databind.node.ObjectNode>valueToTree(replacement);
-            var displayOnly = List.of("label", "common", "in_spec", "spec_order", "true_label", "false_label");
-            before.remove(displayOnly); after.remove(displayOnly);
-            if (!before.equals(after)) fail("已有物料引用模板，不能改变属性类型、单位、选项、条件或默认值：" + field.label());
+        if (requiresReferenceCheck(old, next, mapper)) fail("该调整可能影响已有物料，需检查具体属性引用");
+    }
+
+    private static Map<String, MaterialAttributeSchema.Field> fieldMap(MaterialAttributeSchema schema) {
+        Map<String, MaterialAttributeSchema.Field> result = new LinkedHashMap<>();
+        schema.fields().forEach(f -> result.put(f.key(), f));
+        return result;
+    }
+
+    private static JsonNode fieldRules(MaterialAttributeSchema.Field field, ObjectMapper mapper) {
+        ObjectNode rules = mapper.valueToTree(field);
+        rules.remove(List.of("label", "common", "in_spec", "spec_order", "true_label", "false_label", "default", "options"));
+        return rules;
+    }
+
+    private static Set<String> codes(MaterialAttributeSchema.Field field) {
+        Set<String> result = new HashSet<>();
+        if (field.options() != null) field.options().forEach(o -> result.add(o.code()));
+        return result;
+    }
+
+    private static boolean fieldNeedsCheck(MaterialAttributeSchema.Field old, MaterialAttributeSchema.Field next, ObjectMapper mapper) {
+        if (old == null) {
+            if (next.key().equals("thickness_mm")) fail("厚度请在统一尺寸组件中编辑");
+            return next.required();
         }
-        for (var field : fields.values()) {
-            if (field.required() || field.defaultValue() != null && !field.defaultValue().isNull()) fail("已使用模板只能新增无默认值的可选属性：" + field.label());
-            if (field.key().equals("thickness_mm")) fail("厚度请在统一尺寸组件中编辑");
+        return next == null || !fieldRules(old, mapper).equals(fieldRules(next, mapper)) || !codes(next).containsAll(codes(old));
+    }
+
+    private static boolean requiresReferenceCheck(MaterialAttributeSchema old, MaterialAttributeSchema next, ObjectMapper mapper) {
+        if (!next.metaOptions().containsAll(old.metaOptions()) || !old.metaRequired() && next.metaRequired()) return true;
+        var before = fieldMap(old);
+        var after = fieldMap(next);
+        Set<String> keys = new HashSet<>(before.keySet()); keys.addAll(after.keySet());
+        return keys.stream().anyMatch(key -> fieldNeedsCheck(before.get(key), after.get(key), mapper));
+    }
+
+    private void checkTemplateReferences(Long categoryId, MaterialAttributeSchema old, MaterialAttributeSchema next) {
+        if (!requiresReferenceCheck(old, next, objectMapper)) return;
+        long after = 0;
+        while (true) {
+            var page = locks.templateReferences(categoryId, after);
+            for (var material : page) requireMaterialCompatibility(old, next, material, objectMapper);
+            if (page.size() < 200) return;
+            after = page.get(page.size() - 1).getMaterialId();
         }
+    }
+
+    /** 只校验本次改变的约束，报出具体引用；不写入或自动转换旧值。 */
+    public static void requireMaterialCompatibility(MaterialAttributeSchema old, MaterialAttributeSchema next,
+                                                     InventoryMaterial material, ObjectMapper mapper) {
+        String code = material.getMaterialCode() == null ? String.valueOf(material.getMaterialId()) : material.getMaterialCode();
+        try {
+            String meta = material.getMaterialMeta();
+            if ((!next.metaOptions().containsAll(old.metaOptions()) || !old.metaRequired() && next.metaRequired())
+                    && (meta == null || meta.isBlank() ? next.metaRequired() : !next.metaOptions().contains(meta)))
+                fail("材质“" + (meta == null ? "未填写" : meta) + "”不符合新的材质范围或必填要求");
+            Map<String, Object> values = new LinkedHashMap<>();
+            if (material.getAttributeJson() != null && !material.getAttributeJson().isBlank())
+                values.putAll(mapper.readValue(material.getAttributeJson(), new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {}));
+            if (material.getThicknessMm() != null) values.put("thickness_mm", material.getThicknessMm());
+            var before = fieldMap(old); var after = fieldMap(next);
+            Set<String> keys = new LinkedHashSet<>(before.keySet()); keys.addAll(after.keySet());
+            for (String key : keys) {
+                var previous = before.get(key); var updated = after.get(key);
+                if (!fieldNeedsCheck(previous, updated, mapper)) continue;
+                boolean used = !MaterialAttributeSchema.missing(mapper.valueToTree(values.get(key)));
+                if (updated == null) {
+                    if (used) fail("属性“" + previous.label() + "”已有值，不能删除或修改属性编码");
+                    continue;
+                }
+                if (used && previous != null && (!Objects.equals(previous.type(), updated.type()) || !Objects.equals(previous.unit(), updated.unit())))
+                    fail("属性“" + previous.label() + "”已有值，不能直接改变类型或单位");
+                try { MaterialAttributeSchema.validateExistingField(updated, values, mapper); }
+                catch (BusinessException ex) { fail(ex.getMessage() + "（现值：" + mapper.valueToTree(values.get(key)) + "）"); }
+            }
+        } catch (BusinessException ex) { fail("模板修改影响物料 " + code + "：" + ex.getMessage()); }
+        catch (Exception ex) { fail("物料 " + code + " 的属性数据格式错误，请先核对档案"); }
     }
 
     private boolean hasChildren(Long id) { return categories.selectCount(new LambdaQueryWrapper<InventoryMaterialCategory>().eq(InventoryMaterialCategory::getParentId, id)) > 0; }

@@ -144,27 +144,41 @@ public record MaterialAttributeSchema(
 
     /** 返回归一后的新对象；不保留未知字段、不把未知事实补成false。 */
     public Map<String, Object> validateAttributes(Map<String, Object> input, ObjectMapper mapper) {
+        return validateAttributes(input, mapper, true);
+    }
+
+    /** 编辑旧档案不补模板的新默认值。 */
+    public Map<String, Object> validateAttributes(Map<String, Object> input, ObjectMapper mapper, boolean applyDefaults) {
         Map<String, Object> supplied = input == null ? Map.of() : input;
         Set<String> allowed = new HashSet<>();
         fields.forEach(f -> allowed.add(f.key));
         for (String key : supplied.keySet()) if (!allowed.contains(key)) fail("该品类不支持属性：" + key);
         Map<String, Object> candidate = new LinkedHashMap<>(supplied);
         for (Field f : fields) {
-            if (!candidate.containsKey(f.key) && f.defaultValue != null && !f.defaultValue.isNull()) candidate.put(f.key, mapper.convertValue(f.defaultValue, Object.class));
+            if (applyDefaults && !candidate.containsKey(f.key) && f.defaultValue != null && !f.defaultValue.isNull()) candidate.put(f.key, mapper.convertValue(f.defaultValue, Object.class));
         }
         Map<String, Object> result = new LinkedHashMap<>();
         for (Field f : fields) {
             JsonNode value = mapper.valueToTree(candidate.get(f.key));
-            boolean missing = value == null || value.isNull() || value.isTextual() && value.asText().isBlank() || value.isArray() && value.isEmpty();
-            boolean visible = visible(f, candidate);
-            if (!visible && !missing) fail("属性不适用于当前选项：" + f.label);
-            if (visible && f.required && missing && !f.key.equals("thickness_mm")) fail(f.label + "不能为空");
-            if (!missing) {
-                validateValue(f, value);
+            validateExistingField(f, candidate, mapper);
+            if (!missing(value)) {
                 result.put(f.key, mapper.convertValue(value, Object.class));
             }
         }
         return result;
+    }
+
+    static boolean missing(JsonNode value) {
+        return value == null || value.isNull() || value.isTextual() && value.asText().isBlank() || value.isArray() && value.isEmpty();
+    }
+
+    static void validateExistingField(Field f, Map<String, Object> values, ObjectMapper mapper) {
+        JsonNode value = mapper.valueToTree(values.get(f.key));
+        boolean missing = missing(value);
+        boolean visible = visible(f, values);
+        if (!visible && !missing) fail("属性不适用于当前选项：" + f.label);
+        if (visible && f.required && missing && !f.key.equals("thickness_mm")) fail(f.label + "不能为空");
+        if (!missing) validateValue(f, value);
     }
 
     public static boolean visible(Field f, Map<String, Object> values) {

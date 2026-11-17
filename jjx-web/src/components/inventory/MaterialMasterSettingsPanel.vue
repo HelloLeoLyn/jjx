@@ -287,7 +287,7 @@
             <el-button style="margin-top: 12px" @click="addField">增加属性</el-button>
             <el-button style="margin-top: 12px" @click="addCommonFields">补充本品类常用属性</el-button>
             <el-alert
-              title="已有物料的模板可新增无默认值的可选属性、调整显示设置；删除、改类型或单位等需另行处理。常用属性补入草稿后，检查并保存才生效。"
+              title="可增加选项、修改显示名称及新建默认值，已有物料不会自动改值；删除选项或修改类型、属性单位等会检查实际引用，并提示受影响的物料。常用属性补入草稿后，检查并保存才生效。"
               type="info"
               :closable="false"
               style="margin-top: 12px"
