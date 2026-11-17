@@ -4,7 +4,7 @@
       <tr>
         <th>序号</th>
         <th v-if="materialName">品名</th>
-        <th>加工关系 / 规格</th>
+        <th>{{ deliveryOnly ? '来源 / 规格' : '加工关系 / 规格' }}</th>
         <th>数量</th>
         <th>交货物料</th>
         <th v-if="$slots.actions">操作</th>
@@ -19,8 +19,9 @@
       >
         <td>{{ row.number }}</td>
         <td v-if="materialName">{{ materialName }}</td>
-        <td :style="{ paddingLeft: `${8 + row.depth * 22}px` }">
-          <span class="branch">{{ row.depth ? '└ ' : '' }}</span
+        <td :style="{ paddingLeft: `${8 + (deliveryOnly ? 0 : row.depth * 22)}px` }">
+          <small v-if="deliveryOnly">{{ row.path }}</small>
+          <span v-else class="branch">{{ row.depth ? '└ ' : '' }}</span
           ><strong>{{ row.role }}</strong
           ><span v-if="row.node.operation && !row.sourceOnly">
             · {{ PurchaseProcessingOperationEnum.getLabel(row.node.operation.type) }}</span
@@ -75,8 +76,22 @@ import {
   processingTreeSpec,
   processingCutLayout,
 } from './processingTreeDisplay'
-const props = defineProps<{ tree: ProcessingTreeNode; materialName?: string }>()
-const rows = computed(() => processingTreeDisplayRows(props.tree))
+const props = defineProps<{
+  tree: ProcessingTreeNode
+  materialName?: string
+  deliveryOnly?: boolean
+}>()
+const rows = computed(() => {
+  const all = processingTreeDisplayRows(props.tree)
+  return props.deliveryOnly
+    ? all.filter(
+        (row) =>
+          !row.children.length &&
+          !row.node.operation &&
+          row.node.delivery !== PurchaseProcessingDeliveryEnum.SCRAP.value
+      )
+    : all
+})
 </script>
 <style scoped>
 .processing-tree-table {

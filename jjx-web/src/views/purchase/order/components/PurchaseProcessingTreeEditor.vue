@@ -9,7 +9,11 @@
         >移除加工要求</el-button
       >
     </div>
-    <PurchaseProcessingTreeRows v-if="savedTree" :tree="savedTree" />
+    <el-radio-group v-if="savedTree" v-model="deliveryOnly" aria-label="加工树显示模式">
+      <el-radio-button :value="false">完整加工树</el-radio-button>
+      <el-radio-button :value="true">仅交付物</el-radio-button>
+    </el-radio-group>
+    <PurchaseProcessingTreeRows v-if="savedTree" :tree="savedTree" :delivery-only="deliveryOnly" />
     <el-dialog
       v-model="visible"
       title="加工树"
@@ -26,14 +30,20 @@
           item.purchaseQuantity
         }}卷。选择要加工的卷数，其余原卷自动保留；分切生成宽度余料，切片生成边料和尾料。
       </p>
+      <el-radio-group v-model="deliveryOnly" aria-label="加工树显示模式">
+        <el-radio-button :value="false">完整加工树</el-radio-button>
+        <el-radio-button :value="true">仅交付物</el-radio-button>
+      </el-radio-group>
       <div class="tree-scroll" v-loading="busy">
         <PurchaseProcessingTreeRows
           v-if="tree"
           :tree="tree"
+          :delivery-only="deliveryOnly"
           :material-name="item.supplierMaterialName || item.materialName"
         >
           <template #actions="{ node, sourceLabel, slitSources }">
             <el-button
+              v-if="!deliveryOnly"
               link
               type="primary"
               :disabled="
@@ -51,6 +61,7 @@
               }}</el-button
             >
             <el-button
+              v-if="!deliveryOnly"
               link
               type="primary"
               :disabled="
@@ -206,6 +217,27 @@
           <p class="hint">
             片数留空时由后台按尺寸算可切满数量；填写时按每个来源卷/块解释，剩余部分自动生成余料。
           </p>
+          <div class="hint" aria-live="polite">
+            <p v-if="cutPreviewBusy">正在计算片数和余料…</p>
+            <el-alert
+              v-else-if="cutPreviewError"
+              :title="cutPreviewError"
+              type="error"
+              :closable="false"
+            />
+            <template v-else-if="cutPreviewPiece">
+              <p>
+                每卷 / 块切 {{ cutPreviewPiece.quantity / operation.useQuantity }} 片，本次合计
+                {{ cutPreviewPiece.quantity }} 片。
+              </p>
+              <p v-for="rest in cutPreviewRemainders" :key="rest.nodeId">
+                {{ rest.role }}：{{ processingTreeSpec(rest) }} × {{ rest.quantity
+                }}{{ rest.unit === 'ROLL' ? '卷' : '片' }}
+              </p>
+              <p v-if="!cutPreviewRemainders.length">无剩余料</p>
+            </template>
+            <p v-else>填写完整尺寸后自动计算片数和余料。</p>
+          </div>
         </template>
       </el-form>
       <el-alert v-if="error" :title="error" type="error" :closable="false" />
@@ -342,6 +374,7 @@ const emit = defineEmits<{
   (e: 'change'): void
   (e: 'cancel'): void
 }>()
+const deliveryOnly = ref(false)
 const normalizedPlan = ref('')
 const activeLabel = ref('')
 const slitSteps = ref<ProcessingTreeNode[]>([])
@@ -379,6 +412,84 @@ const operation = ref<ProcessingTreeOperation>({
   useQuantity: 1,
   slits: [],
 })
+const cutPreview = ref<ProcessingTreeNode>()
+const cutPreviewBusy = ref(false),
+  cutPreviewError = ref('')
+let cutPreviewVersion = 0
+let cutPreviewTimer: ReturnType<typeof setTimeout> | undefined
+const cutPreviewPiece = computed(() =>
+  cutPreview.value?.children?.find((n) => n.nodeId === `${cutPreview.value?.nodeId}-pieces`)
+)
+const cutPreviewRemainders = computed(() =>
+  (cutPreview.value?.children || []).filter((n) => n !== cutPreviewPiece.value)
+)
+function resetCutPreview() {
+  ++cutPreviewVersion
+  clearTimeout(cutPreviewTimer)
+  cutPreview.value = undefined
+  cutPreviewBusy.value = false
+  cutPreviewError.value = ''
+}
+async function previewCut(v = cutPreviewVersion) {
+  if (
+    !tree.value ||
+    !active.value ||
+    !operationVisible.value ||
+    disposed ||
+    v !== cutPreviewVersion
+  )
+    return
+  const candidate = clone(tree.value)
+  const node = find(candidate, active.value.nodeId)
+  if (!node) return
+  node.operation = clone(operation.value)
+  cutPreviewBusy.value = true
+  try {
+    const r = await previewProcessingPlan({
+      ...props.item,
+      processingPlan: JSON.stringify({ tree: candidate }),
+    })
+    if (disposed || v !== cutPreviewVersion || !operationVisible.value) return
+    const result = readProcessingPlan(r.data.processingPlan)?.tree
+    const output = result && find(result, node.nodeId)
+    if (!output?.children?.some((n) => n.nodeId === `${node.nodeId}-pieces`))
+      throw new Error('切片预览响应无效')
+    cutPreview.value = output
+  } catch (ex: any) {
+    if (v === cutPreviewVersion)
+      cutPreviewError.value = ex?.message || '片数计算失败，请调整尺寸后重试'
+  } finally {
+    if (v === cutPreviewVersion) cutPreviewBusy.value = false
+  }
+}
+watch(
+  () => [
+    operationVisible.value,
+    active.value?.nodeId,
+    JSON.stringify(operation.value),
+    props.item.materialId,
+    props.item.purchaseQuantity,
+    props.item.rollWidthMm,
+    props.item.rollLengthM,
+  ],
+  () => {
+    resetCutPreview()
+    if (
+      !operationVisible.value ||
+      operation.value.type !== PurchaseProcessingOperationEnum.CUT.value ||
+      !(Number(operation.value.pieceWidthMm) > 0) ||
+      !(Number(operation.value.pieceLengthMm) > 0) ||
+      !(operation.value.useQuantity > 0)
+    )
+      return
+    cutPreviewBusy.value = true
+    const v = cutPreviewVersion
+    cutPreviewTimer = setTimeout(() => {
+      void previewCut(v)
+    }, 300)
+  },
+  { flush: 'sync' }
+)
 let version = 0,
   disposed = false,
   searchVersion = 0,
@@ -664,6 +775,7 @@ watch(
   }
 )
 onBeforeUnmount(() => {
+  resetCutPreview()
   disposed = true
   ++version
   ++searchVersion

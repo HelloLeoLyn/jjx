@@ -324,6 +324,49 @@ describe('加工树及自动余料交互', () => {
     s.changeCutAxis(true)
     expect(s.operation).toMatchObject({ pieceWidthMm: 285, pieceLengthMm: 315, rotated: true })
   })
+  it('仅交付物保留未绑定末端与来源，隐藏过程和报废', () => {
+    const tree = fullTree()
+    tree.children[0].children[1].delivery = Delivery.SCRAP.value
+    const w = mount(Rows, { props: { tree, deliveryOnly: true } })
+    wrappers.push(w)
+    expect(w.find('tr[data-node-id="root"]').exists()).toBe(false)
+    expect(w.find('tr[data-node-id="root-s0"]').exists()).toBe(false)
+    expect(w.find('tr[data-node-id="root-s0-pieces"]').exists()).toBe(true)
+    expect(w.find('tr[data-node-id="root-s0-tail"]').exists()).toBe(false)
+    expect(w.text()).toContain('待指定交货物料')
+    expect(w.text()).toContain('原卷')
+  })
+  it('填写尺寸自动预览片数和余料，不修改草稿且丢弃旧响应', async () => {
+    vi.useFakeTimers()
+    try {
+      const { s } = wrap(TreeEditor, { item, modelValue: snapshot(fullTree()) })
+      api.plan.mockResolvedValue({ data: { ...item, processingPlan: snapshot(fullTree()) } })
+      await s.open()
+      const original = JSON.stringify(s.tree)
+      s.edit(s.tree.children[0], Action.CUT.value)
+      let resolveOld: any
+      api.plan.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOld = resolve
+          })
+      )
+      await vi.advanceTimersByTimeAsync(300)
+      s.operation.pieceLengthMm = 400
+      resolveOld({ data: { ...item, processingPlan: snapshot(fullTree()) } })
+      await Promise.resolve()
+      expect(s.cutPreview).toBeUndefined()
+      s.operation.pieceLengthMm = 315
+      await vi.advanceTimersByTimeAsync(300)
+      expect(s.cutPreviewPiece.quantity).toBe(634)
+      expect(s.cutPreviewRemainders.length).toBeGreaterThan(0)
+      expect(JSON.stringify(s.tree)).toBe(original)
+      s.operationVisible = false
+      expect(s.cutPreview).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   it('树表与打印显示缩进所属关系、原卷2卷和含税主行金额', () => {
     const w = mount(Rows, { props: { tree: split, materialName: 'EBA180' } })
     wrappers.push(w)
