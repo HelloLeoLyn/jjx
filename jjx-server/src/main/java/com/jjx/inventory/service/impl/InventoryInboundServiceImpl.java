@@ -1059,22 +1059,20 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         return newLotId;
     }
 
+    /**
+     * 返工/复检子批统一入口（dev-20261117-029）：
+     * 建批规则（parentLotId + 版本 + 子批号）收敛到 QualityLotService.createReinspectionLot，
+     * 本方法只做参数适配，两条业务入口共用。
+     */
     private Long createIqcReinspectionLot(InventoryInboundItem item,
             com.jjx.quality.domain.entity.QualityLot old, BigDecimal quantity, String childBatchNo) {
         com.jjx.quality.service.QualityLotService lotService = qualityLotServiceProvider.getIfAvailable();
         if (lotService == null) throw new BusinessException("统一质量检验服务不可用");
-        com.jjx.quality.dto.QualityLotCreateDTO dto = new com.jjx.quality.dto.QualityLotCreateDTO();
-        dto.setLotType("IQC"); dto.setSourceType("INBOUND"); dto.setSourceId(item.getInboundId());
-        dto.setSourceItemId(item.getItemId()); dto.setMaterialId(item.getMaterialId());
-        dto.setMaterialCode(item.getMaterialCode()); dto.setMaterialName(item.getMaterialName());
-        dto.setBatchNo(childBatchNo); dto.setLotQuantity(quantity); dto.setParentLotId(old.getLotId());
-        dto.setVersion((old.getVersion() == null ? 1 : old.getVersion()) + 1);
-        dto.setRelationshipMode("INCREMENT");
-        dto.setScopeQuantity(quantity);
-        dto.setRemark("IQC 返工复检，源检验批 " + old.getLotNo());
-        com.jjx.quality.domain.entity.QualityLot fresh = lotService.createLot(dto);
-        fresh.setReviewStatus("DRAFT");
-        qualityLotMapper.updateById(fresh);
+        com.jjx.quality.domain.entity.QualityLot fresh = lotService.createReinspectionLot(
+                item.getInboundId(), item.getItemId(), item.getMaterialId(),
+                item.getMaterialCode(), item.getMaterialName(), quantity,
+                old.getLotId(), old.getVersion(), childBatchNo,
+                "IQC 返工复检，源检验批 " + old.getLotNo());
         return fresh.getLotId();
     }
 

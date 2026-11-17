@@ -166,6 +166,58 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public QualityLot createReinspectionLot(Long sourceId, Long sourceItemId, Long materialId,
+            String materialCode, String materialName, BigDecimal quantity,
+            Long parentLotId, Integer parentVersion, String childBatchNo, String remark) {
+        if (parentLotId == null) {
+            throw new BusinessException("父检验批不能为空");
+        }
+        if (StringUtils.isBlank(childBatchNo)) {
+            throw new BusinessException("子批号不能为空");
+        }
+        // 幂等：同一父批 + 同一子批号只建一次（重复点击/超时重试直接返回原批）
+        QualityLot existing = lotMapper.selectOne(new LambdaQueryWrapper<QualityLot>()
+                .eq(QualityLot::getParentLotId, parentLotId)
+                .eq(QualityLot::getBatchNo, childBatchNo)
+                .last("LIMIT 1"));
+        if (existing != null) {
+            return existing;
+        }
+        QualityLotCreateDTO dto = new QualityLotCreateDTO();
+        dto.setLotType("IQC");
+        dto.setSourceType("INBOUND");
+        dto.setSourceId(sourceId);
+        dto.setSourceItemId(sourceItemId);
+        dto.setMaterialId(materialId);
+        dto.setMaterialCode(materialCode);
+        dto.setMaterialName(materialName);
+        dto.setBatchNo(childBatchNo);
+        dto.setLotQuantity(quantity);
+        dto.setParentLotId(parentLotId);
+        dto.setVersion(nextReinspectionVersion(parentLotId, parentVersion));
+        dto.setRelationshipMode("INCREMENT");
+        dto.setScopeQuantity(quantity);
+        dto.setRemark(remark);
+        QualityLot fresh = createLot(dto);
+        fresh.setReviewStatus("DRAFT");
+        lotMapper.updateById(fresh);
+        return fresh;
+    }
+
+    /** 子批版本：取同父批已有子批的最大版本 +1；无子批时取父批版本 +1（不跳号）。 */
+    int nextReinspectionVersion(Long parentLotId, Integer parentVersion) {
+        QualityLot last = lotMapper.selectOne(new LambdaQueryWrapper<QualityLot>()
+                .eq(QualityLot::getParentLotId, parentLotId)
+                .orderByDesc(QualityLot::getVersion)
+                .last("LIMIT 1"));
+        int base = last != null && last.getVersion() != null
+                ? last.getVersion()
+                : (parentVersion == null ? 1 : parentVersion);
+        return base + 1;
+    }
+
+    @Override
     public QualityLot getLot(Long lotId) {
         QualityLot lot = lotMapper.selectById(lotId);
         if (lot == null) {

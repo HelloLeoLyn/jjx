@@ -21,6 +21,15 @@ public interface QualityLotService {
     /** 建批（支持同一来源多次建批 = 分批；复检传 parentLotId + version） */
     QualityLot createLot(QualityLotCreateDTO dto);
 
+    /**
+     * 创建返工/复检子批（dev-20261117-029）：
+     * 两条入口（工作台确认返工完成 / 台账复检）共用本方法；
+     * parentLotId + 版本 + 子批号统一在这里落定，重复提交按「父批+子批号」幂等返回。
+     */
+    QualityLot createReinspectionLot(Long sourceId, Long sourceItemId, Long materialId,
+            String materialCode, String materialName, java.math.BigDecimal quantity,
+            Long parentLotId, Integer parentVersion, String childBatchNo, String remark);
+
     QualityLot getLot(Long lotId);
 
     /**
