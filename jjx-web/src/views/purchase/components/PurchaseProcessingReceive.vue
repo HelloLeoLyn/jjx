@@ -2,17 +2,17 @@
   <div class="processing-receive" v-loading="loading">
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <template v-if="plan">
-      <p>母卷采购行 {{ itemId }}；本次只填写实际收到的切片与余卷。未收到的交货要求保持为空，母卷不重复入库。</p>
+      <p>按最终交付节点登记本次实际收到的原卷、切片和余料。未收到的保持为空，中间加工料不重复入库。</p>
       <el-card v-for="group in plan.groups" :key="group.groupId" shadow="never" class="receipt-group">
         <strong>{{ group.name }} · 母卷 {{ group.motherRolls }}卷</strong>
-        <div class="slits">分切：{{ group.slits.map(s => `${s.widthMm}mm × ${s.rolls}卷`).join(' / ') }}</div>
+        <div v-if="!plan.tree" class="slits">分切：{{ group.slits.map(s => `${s.widthMm}mm × ${s.rolls}卷`).join(' / ') }}</div>
         <el-table :data="group.outputs" border size="small">
-          <el-table-column label="交付规格" min-width="220"><template #default="{row}">{{ row.materialCode }} · {{ row.materialName }}<div>{{ row.widthMm }}mm × {{ row.unit === 'ROLL' ? `${row.rollLengthM}m/卷` : `${row.lengthMm}mm` }}</div></template></el-table-column>
+          <el-table-column label="交付规格" min-width="220"><template #default="{row}">{{ row.materialCode || '未指定物料' }} · {{ row.materialName }}<small v-if="row.nodePath" class="node-path">{{row.nodePath}}</small><div>{{ row.widthMm }}mm × {{ row.unit === 'ROLL' ? `${row.rollLengthM}m/卷` : `${row.lengthMm}mm` }}</div></template></el-table-column>
           <el-table-column label="计划 / 已收" width="120"><template #default="{row}">{{ row.quantity }} / {{ received(row.outputId) }} {{ row.unit === 'ROLL' ? '卷' : '片' }}</template></el-table-column>
-          <el-table-column label="本次实际交付" width="150"><template #default="{row}"><el-input-number v-model="entry(group.groupId,row.outputId).quantity" :disabled="disabled" :min="0" :precision="0" :controls="false" aria-label="实际交付片数卷数" /></template></el-table-column>
-          <el-table-column label="实际每卷长度(m)" width="170"><template #default="{row}"><el-input-number v-if="row.unit==='ROLL'" v-model="entry(group.groupId,row.outputId).rollLengthM" :disabled="disabled" :min="0" :precision="4" :controls="false" aria-label="余卷实际长度" /><span v-else>—</span></template></el-table-column>
+          <el-table-column label="本次实际交付" width="150"><template #default="{row}"><el-input-number v-sync-disabled-aria v-model="entry(group.groupId,row.outputId).quantity" :disabled="disabled" :min="0" :precision="0" :controls="false" aria-label="实际交付片数卷数" /></template></el-table-column>
+          <el-table-column label="实际每卷长度(m)" width="170"><template #default="{row}"><el-input-number v-if="row.unit==='ROLL'" v-sync-disabled-aria v-model="entry(group.groupId,row.outputId).rollLengthM" :disabled="disabled" :min="0" :precision="4" :controls="false" aria-label="余卷实际长度" /><span v-else>—</span></template></el-table-column>
         </el-table>
-        <div class="loss-input"><span>本次加工损耗(㎡)</span><el-input-number v-model="groupEntry(group.groupId).lossArea" :disabled="disabled" :min="0" :precision="4" :controls="false" aria-label="加工损耗面积" /><el-input v-model="groupEntry(group.groupId).lossReason" :disabled="disabled" maxlength="200" placeholder="有损耗时填写原因" /></div>
+        <div class="loss-input"><span>本次加工损耗(㎡)</span><el-input-number v-sync-disabled-aria v-model="groupEntry(group.groupId).lossArea" :disabled="disabled" :min="0" :precision="4" :controls="false" aria-label="加工损耗面积" /><el-input v-model="groupEntry(group.groupId).lossReason" :disabled="disabled" maxlength="200" placeholder="有损耗时填写原因" /></div>
       </el-card>
       <el-button :disabled="disabled || !hasInput" :loading="previewing" @click="check">核对实际交付</el-button>
       <template v-if="preview">
@@ -26,6 +26,9 @@
 import { computed,ref,watch,onBeforeUnmount } from 'vue'
 import { getProcessingHistory,readProcessingPlan,previewProcessingReceipt } from '@/api/purchase/orderEntry'
 import type { ProcessingPlan,ProcessingReceiptGroup } from '@/api/purchase/orderEntry'
+// Element Plus数字输入的aria-disabled只在挂载时设置；连续收货解锁后同步真实disabled。
+function syncDisabledAria(el:HTMLElement){const input=el.querySelector('input');if(input)input.setAttribute('aria-disabled',String(input.disabled))}
+const vSyncDisabledAria={mounted:syncDisabledAria,updated:syncDisabledAria}
 const props=defineProps<{itemId:number;disabled?:boolean;modelValue?:ProcessingReceiptGroup[]}>()
 const emit=defineEmits<{(e:'update:modelValue',value:ProcessingReceiptGroup[]):void}>()
 const plan=ref<ProcessingPlan>(),loading=ref(false),previewing=ref(false),error=ref(''),inputs=ref<ProcessingReceiptGroup[]>([]),facts=ref<{outputId:string;quantity:number}[]>([])
@@ -45,5 +48,5 @@ onBeforeUnmount(()=>{disposed=true;++epoch;++version})
 defineExpose({validate,hasInput})
 </script>
 <style scoped>
-.processing-receive{padding:10px 20px}.receipt-group{margin:12px 0}.slits{margin:8px 0;color:#606266}.loss-input{display:flex;align-items:center;gap:10px;margin-top:12px}.loss-input>.el-input{flex:1}.processing-receive :deep(.el-input-number){width:140px}
+.processing-receive{padding:10px 20px}.node-path{display:block;color:#909399;line-height:1.5}.receipt-group{margin:12px 0}.slits{margin:8px 0;color:#606266}.loss-input{display:flex;align-items:center;gap:10px;margin-top:12px}.loss-input>.el-input{flex:1}.processing-receive :deep(.el-input-number){width:140px}
 </style>

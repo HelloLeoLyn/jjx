@@ -1,7 +1,10 @@
 <template>
   <div class="processing-editor">
+    <PurchaseProcessingTreeEditor v-if="treeMode" :model-value="treeValue" :item="item" :disabled="disabled" @update:model-value="value=>emit('update:modelValue',value)" @change="emit('change')" @cancel="forceTree=false" />
+    <template v-else>
     <div class="processing-toolbar">
-      <strong>加工要求</strong>
+      <strong>加工要求（旧版分组）</strong>
+      <el-button link type="primary" :disabled="disabled" @click="switchToTree">重新按加工树编排</el-button>
       <el-button link type="primary" :disabled="disabled" @click="open">{{ modelValue ? '维护加工要求' : '添加分切 / 切片要求' }}</el-button>
       <el-button v-if="modelValue" link type="danger" :disabled="disabled" @click="remove">移除加工要求</el-button>
     </div>
@@ -44,10 +47,12 @@
       <p class="hint">交付规格绑定物料档案；系统校核宽度、面积和数量，不自动推算切片产能。要求随采购订单保存及审核，收货时录入实际片数、卷数和余卷长度。</p>
       <template #footer><el-button :disabled="saving" @click="visible=false">取消</el-button><el-button type="primary" :loading="saving" :disabled="item.purchaseUnit!=='ROLL'" @click="apply">采用加工要求</el-button></template>
     </el-dialog>
+    </template>
   </div>
 </template>
 <script setup lang="ts">
-import { ref,onBeforeUnmount } from 'vue'
+import { ref,computed,onBeforeUnmount } from 'vue'
+import PurchaseProcessingTreeEditor from './PurchaseProcessingTreeEditor.vue'
 import { ElMessageBox } from 'element-plus'
 import { materialApi } from '@/api/inventory/material'
 import { previewProcessingPlan,readProcessingPlan } from '@/api/purchase/orderEntry'
@@ -56,6 +61,10 @@ import type { InventoryMaterial } from '@/types/inventory/material'
 import PurchaseProcessingSummary from './PurchaseProcessingSummary.vue'
 const props=defineProps<{modelValue?:string|null;item:PurchaseEntryItem;disabled?:boolean}>()
 const emit=defineEmits<{(e:'update:modelValue',value:string|null):void;(e:'change'):void}>()
+const forceTree=ref(false)
+const treeValue=computed(()=>forceTree.value&&!readProcessingPlan(props.modelValue)?.tree?null:props.modelValue)
+const treeMode=computed(()=>forceTree.value||!props.modelValue||!!readProcessingPlan(props.modelValue)?.tree)
+async function switchToTree(){try{await ElMessageBox.confirm('重新编排将在采用加工树后替换旧加工要求；取消时原要求保留。','改用加工树');forceTree.value=true}catch{/* 取消保留旧方案。 */}}
 const visible=ref(false),saving=ref(false),error=ref(''),groups=ref<ProcessingGroup[]>([]),options=ref<InventoryMaterial[]>([]),searching=ref(false)
 let sequence=0,disposed=false
 const key=()=>globalThis.crypto?.randomUUID?.()||`processing-${Date.now()}-${++sequence}`

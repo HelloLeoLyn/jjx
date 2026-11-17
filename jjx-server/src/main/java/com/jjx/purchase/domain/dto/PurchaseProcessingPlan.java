@@ -7,7 +7,34 @@ import java.util.List;
 /** 分切/切片/余卷的采购行快照，以及与计划分离的本次实收。 */
 @Data
 public class PurchaseProcessingPlan {
+    /** 新方案按树保存；groups是后台生成的终端交货投影，旧方案仍直接使用groups。 */
+    private Node tree;
     private List<Group> groups;
+    @Data public static class Node {
+        private String nodeId;
+        private String role;
+        private String unit;
+        private BigDecimal widthMm;
+        private BigDecimal lengthMm;
+        private BigDecimal quantity;
+        private Long materialId;
+        private String materialCode;
+        private String materialName;
+        private String bindingMessage;
+        private String remark;
+        private Operation operation;
+        private List<Node> children;
+    }
+    @Data public static class Operation {
+        private com.jjx.purchase.domain.enums.PurchaseProcessingOperation type;
+        private Integer useQuantity;
+        private List<Slit> slits;
+        private BigDecimal pieceWidthMm;
+        private BigDecimal pieceLengthMm;
+        private Boolean rotated;
+        /** NULL按每个来源单位切满；填写时按每卷/每块的片数解释。 */
+        private Integer piecesPerUnit;
+    }
     @Data public static class Group {
         private String groupId;
         private String name;
@@ -21,6 +48,7 @@ public class PurchaseProcessingPlan {
     }
     @Data public static class Output {
         private String outputId;
+        private String nodePath;
         private Long materialId;
         private String materialCode;
         private String materialName;

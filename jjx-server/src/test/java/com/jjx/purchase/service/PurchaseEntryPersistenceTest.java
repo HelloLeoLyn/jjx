@@ -120,11 +120,25 @@ class PurchaseEntryPersistenceTest {
         var controller=new com.jjx.purchase.controller.PurchaseOrderController(service,service,items,materials);var ref=controller.referencePrices(List.of(354L)).getData().get(354L);
         eq("100",(BigDecimal)ref.get("lastPrice"));assertEquals("ROLL",ref.get("lastPriceUnit"));assertEquals(true,ref.get("lastPriceTaxInclusive"));eq("13",(BigDecimal)ref.get("lastTaxRate"));
     }
+    @Test void processingTreeDraftReopensCopiesAndRequiresBindingsBeforeAnyApprovalEntry(){
+        var fixture=new PurchaseProcessingTreeTest();fixture.setup();
+        ReflectionTestUtils.setField(service,"materialMapper",fixture.f.materials);ReflectionTestUtils.setField(service,"processingService",fixture.f.processing);
+        var d=order("PO-TREE");d.setItems(List.of(fixture.full(false)));transaction.execute(s->{service.insertOrder(d);return null;});var stored=orders.selectList(null).get(0);
+        var line=service.selectOrderById(stored.getOrderId()).getItems().get(0);assertNotNull(fixture.f.processing.parse(line.getProcessingPlan()).getTree());eq("31110",service.selectOrderById(stored.getOrderId()).getOrderTotalAmount());
+        assertThrows(com.jjx.common.exception.BusinessException.class,()->service.submitOrder(stored.getOrderId()));
+        assertThrows(com.jjx.common.exception.BusinessException.class,()->service.updateOrderStatus(stored.getOrderId(),com.jjx.common.enums.ApproveStatusEnum.APPROVED.getValue()));
+        var transition=com.jjx.purchase.domain.dto.POrderStatusDTO.builder().orderId(stored.getOrderId()).currentStatus(com.jjx.common.enums.ApproveStatusEnum.DRAFT.getValue()).targetStatus(com.jjx.common.enums.ApproveStatusEnum.PENDING.getValue()).build();
+        assertThrows(com.jjx.common.exception.BusinessException.class,()->service.updateOrderStatus(transition));
+        var edit=order("PO-TREE");edit.setOrderId(stored.getOrderId());edit.setItems(List.of(fixture.full(true)));transaction.execute(s->{service.updateOrder(edit);return null;});
+        doReturn("PO-TREE-COPY").when(service).generateOrderNo();Long copyId=transaction.execute(s->service.copyOrder(stored.getOrderId()));var copy=service.selectOrderById(copyId).getItems().get(0);assertEquals(items.selectItemsByOrderId(stored.getOrderId()).get(0).getProcessingPlan(),copy.getProcessingPlan());eq("31110",copy.getQuotedAmount());
+        assertEquals(Integer.valueOf(1),transaction.<Integer>execute(s->service.submitOrder(stored.getOrderId())));assertEquals(com.jjx.common.enums.ApproveStatusEnum.PENDING.getValue(),orders.selectById(stored.getOrderId()).getApprovalStatus());
+    }
     private void create(Class<?> entity) {
         var info=TableInfoHelper.getTableInfo(entity);var fields=new ArrayList<String>();
         fields.add(info.getKeyColumn()+" BIGINT AUTO_INCREMENT PRIMARY KEY");
         for(var f:info.getFieldList()) {
             Class<?> t=f.getPropertyType();String sql=t==BigDecimal.class?"DECIMAL(18,4)":t==Long.class?"BIGINT":t==Integer.class?"INT":t==Boolean.class?"BOOLEAN":t==LocalDate.class?"DATE":t==LocalDateTime.class?"TIMESTAMP":"VARCHAR(4000)";
+            if ("processing_plan".equals(f.getColumn())) sql="CLOB";
             if ("unit_price".equals(f.getColumn())) sql="DECIMAL(14,4)";
             fields.add(f.getColumn()+" "+sql);
         }

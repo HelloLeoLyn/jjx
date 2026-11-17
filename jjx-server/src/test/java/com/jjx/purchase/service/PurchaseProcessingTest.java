@@ -21,7 +21,7 @@ class PurchaseProcessingTest {
     InventoryMaterialMapper materials=mock(InventoryMaterialMapper.class);
     PurchaseProcessingReceiptMapper receipts=mock(PurchaseProcessingReceiptMapper.class);
     ObjectMapper json=new ObjectMapper();
-    PurchaseProcessingService processing=new PurchaseProcessingService(materials,receipts,json);
+    PurchaseProcessingService processing=new PurchaseProcessingService(materials,receipts,json,new PurchaseProcessingTreeService(materials));
     PurchaseOrderServiceImpl orders=mock(PurchaseOrderServiceImpl.class,CALLS_REAL_METHODS);
     static BigDecimal bd(String s){return new BigDecimal(s);}
     static void eq(String s,BigDecimal n){assertNotNull(n);assertEquals(0,bd(s).compareTo(n));}

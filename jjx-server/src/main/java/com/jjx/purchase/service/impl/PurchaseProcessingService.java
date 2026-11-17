@@ -23,10 +23,12 @@ public class PurchaseProcessingService {
     private final InventoryMaterialMapper materials;
     private final PurchaseProcessingReceiptMapper receipts;
     private final ObjectMapper json;
+    private final PurchaseProcessingTreeService trees;
     private static final BigDecimal ZERO=BigDecimal.ZERO;
     @Data public static class ReceiptFact {
         private String groupId;
         private String outputId;
+        private String nodePath;
         private BigDecimal quantity;
         private BigDecimal rollLengthM;
         private BigDecimal settledArea;
@@ -57,9 +59,7 @@ public class PurchaseProcessingService {
         require(m!=null&&StatusEnum.NORMAL.getCode().equals(m.getStatus()),"请选择正常启用的交付物料");return m;
     }
     private static BigDecimal area(PurchaseProcessingPlan.Output output,BigDecimal qty,BigDecimal length){
-        return UnitCodes.ROLL.equals(output.getUnit())
-            ? output.getWidthMm().multiply(length).multiply(qty).movePointLeft(3)
-            : output.getWidthMm().multiply(output.getLengthMm()).multiply(qty).movePointLeft(6);
+        return PurchaseProcessingTreeService.area(output.getWidthMm(),UnitCodes.ROLL.equals(output.getUnit())?length.movePointRight(3):output.getLengthMm(),qty);
     }
     private static BigDecimal motherArea(PurchaseOrderItemDTO item,PurchaseProcessingPlan.Group group){
         return item.getRollWidthMm().multiply(item.getRollLengthM()).multiply(BigDecimal.valueOf(group.getMotherRolls())).movePointLeft(3);
@@ -68,6 +68,7 @@ public class PurchaseProcessingService {
     @Transactional(readOnly=true)
     public String normalize(PurchaseOrderItemDTO item){
         var plan=parse(item.getProcessingPlan());if(plan==null)return null;
+        if(plan.getTree()!=null){trees.normalize(item,plan,false);return write(plan);}
         material(item.getMaterialId());
         require(UnitCodes.SQM.equals(UnitCodes.normalize(item.getUnit()))&&UnitCodes.ROLL.equals(item.getPurchaseUnit()),"加工方案须按母卷采购，母卷基本单位为㎡");
         positive(item.getRollWidthMm(),"母卷宽度");positive(item.getRollLengthM(),"母卷长度");
@@ -110,6 +111,11 @@ public class PurchaseProcessingService {
         require(BigDecimal.valueOf(totalRolls).compareTo(item.getPurchaseQuantity())==0,"分组母卷数合计须等于采购卷数");
         return write(plan);
     }
+    /** 草稿可先安排几何，提交审核时终端交货物料必须明确；中间加工料不建库存身份。 */
+    public void requireTreeBindings(PurchaseOrderItem item){
+        var plan=parse(item.getProcessingPlan());if(plan==null||plan.getTree()==null)return;
+        var dto=new PurchaseOrderItemDTO();org.springframework.beans.BeanUtils.copyProperties(item,dto);trees.normalize(dto,plan,true);
+    }
     public List<ReceiptFact> facts(Long itemId){
         var facts=new ArrayList<ReceiptFact>();
         for(String raw:receipts.history(itemId))try{facts.add(json.readValue(raw,ReceiptFact.class));}
@@ -122,6 +128,7 @@ public class PurchaseProcessingService {
     public ReceiptPreview preview(PurchaseOrderItem source,List<PurchaseProcessingPlan.ReceiptGroup> input){
         var plan=parse(source.getProcessingPlan());require(plan!=null,"该采购行没有加工方案");
         var mother=new PurchaseOrderItemDTO();org.springframework.beans.BeanUtils.copyProperties(source,mother);
+        if(plan.getTree()!=null)trees.normalize(mother,plan,true);
         var past=facts(source.getItemId());
         require(input!=null&&!input.isEmpty()&&input.size()<=100,"请填写本次加工交货明细");
         var groupKeys=new HashSet<String>();var outputKeys=new HashSet<String>();var items=new ArrayList<InventoryInboundItem>();BigDecimal totalSettled=ZERO;
@@ -151,8 +158,10 @@ public class PurchaseProcessingService {
                 require(UnitCodes.SQM.equals(base)||UnitCodes.PCS.equals(base)&&UnitCodes.PCS.equals(output.getUnit()),"交付物料单位已变化，请核对方案");
                 BigDecimal basic=UnitCodes.SQM.equals(base)?a.setScale(4,RoundingMode.HALF_UP):receive.getQuantity();positive(basic,"实收基本数量");row.setQuantity(basic);
                 if(UnitCodes.ROLL.equals(output.getUnit())){row.setRollWidthMm(output.getWidthMm());row.setRollLengthM(length);}
-                row.setRemark(group.getName()+" · "+receive.getQuantity().stripTrailingZeros().toPlainString()+" "+output.getUnit()+"；来源采购行 "+source.getItemId());
-                var f=new ReceiptFact();f.setGroupId(group.getGroupId());f.setOutputId(output.getOutputId());f.setQuantity(receive.getQuantity());f.setRollLengthM(length);groupItems.add(row);groupFacts.add(f);
+                String origin=output.getNodePath()==null?group.getName():output.getNodePath();
+                if(origin.length()>330)origin=origin.substring(origin.length()-330);
+                row.setRemark(origin+" · "+receive.getQuantity().stripTrailingZeros().toPlainString()+" "+output.getUnit()+"；来源采购行 "+source.getItemId());
+                var f=new ReceiptFact();f.setGroupId(group.getGroupId());f.setOutputId(output.getOutputId());f.setNodePath(output.getNodePath());f.setQuantity(receive.getQuantity());f.setRollLengthM(length);groupItems.add(row);groupFacts.add(f);
             }
             BigDecimal settled=totalArea.add(loss).setScale(4,RoundingMode.HALF_UP);
             BigDecimal previous=past.stream().filter(f->group.getGroupId().equals(f.getGroupId())).map(ReceiptFact::getSettledArea).reduce(ZERO,BigDecimal::add);

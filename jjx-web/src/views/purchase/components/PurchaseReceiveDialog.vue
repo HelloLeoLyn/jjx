@@ -48,7 +48,7 @@
         <!-- ①②：默认填满「未收」；超出不夹断而是标红并拦截提交 -->
         <el-table-column label="本次收货" width="180">
           <template #default="{ row, $index }">
-            <el-button v-if="row.processingPlan" link type="primary" @click="expandProcessing(row)">展开登记切片 / 余卷</el-button>
+            <el-button v-if="row.processingPlan" link type="primary" @click="expandProcessing(row)">展开登记实际交货</el-button>
             <div v-else class="qty-cell" :class="{ 'is-over': overOf(row) > 0 }">
               <el-input-number
                 :ref="(el: any) => setQtyRef(el, $index)"
@@ -397,7 +397,7 @@ const handleSubmit = async () => {
     if (missingTypeCount > 0) {ElMessage.warning(`有 ${missingTypeCount} 个票据未选择资料类型，请先选择后再提交`);return}
     try {
       await ElMessageBox.confirm(
-        `确认收货？涉及 ${receiveItems.length} 行采购明细（订单 ${props.orderNo}），加工行按已核对的实际切片与余卷登记。收货后自动生成待确认入库单，库存尚未增加。`,
+        `确认收货？涉及 ${receiveItems.length} 行采购明细（订单 ${props.orderNo}），加工行按已核对的原卷、切片与余料登记。收货后自动生成待确认入库单，库存尚未增加。`,
         '收货确认', { type: 'warning', confirmButtonText: '确认收货', cancelButtonText: '再改改' }
       )
     } catch {return}

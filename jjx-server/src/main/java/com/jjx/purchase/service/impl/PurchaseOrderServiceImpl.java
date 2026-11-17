@@ -396,7 +396,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     public int updateOrderStatus(Long orderId, Integer approvalStatus) {
         if (Objects.equals(ApproveStatusEnum.PENDING.getValue(), approvalStatus)
                 || Objects.equals(ApproveStatusEnum.APPROVED.getValue(), approvalStatus)) {
-            validateOrderItemPrices(selectOrderItemEntities(orderId));
+            validateReadyOrderItems(selectOrderItemEntities(orderId));
         }
         return orderMapper.updateApprovalStatus(orderId, approvalStatus);
     }
@@ -421,7 +421,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         if (items.isEmpty()) {
             throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEMS_EMPTY);
         }
-        validateOrderItemPrices(items);
+        validateReadyOrderItems(items);
 
         // 更新订单状态为待审批
         Integer fromStatus = order.getApprovalStatus();
@@ -487,7 +487,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         Integer targetStatus = Objects.equals(ApproveStatusEnum.APPROVED.getValue(), dto.getApprovalStatus()) ?ApproveStatusEnum.APPROVED.getValue():
                 ApproveStatusEnum.REJECTED.getValue();
         if (Objects.equals(ApproveStatusEnum.APPROVED.getValue(), targetStatus)) {
-            validateOrderItemPrices(selectOrderItemEntities(dto.getOrderId()));
+            validateReadyOrderItems(selectOrderItemEntities(dto.getOrderId()));
         }
         // 更新审批信息
         LambdaUpdateWrapper<PurchaseOrder> updateWrapper = new LambdaUpdateWrapper<>();
@@ -1051,7 +1051,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     public void updateOrderStatus(POrderStatusDTO dto) {
         if (Objects.equals(ApproveStatusEnum.PENDING.getValue(), dto.getTargetStatus())
                 || Objects.equals(ApproveStatusEnum.APPROVED.getValue(), dto.getTargetStatus())) {
-            validateOrderItemPrices(selectOrderItemEntities(dto.getOrderId()));
+            validateReadyOrderItems(selectOrderItemEntities(dto.getOrderId()));
         }
         LambdaUpdateWrapper<PurchaseOrder> updateWrapper = new LambdaUpdateWrapper<>();
         updateWrapper.set(PurchaseOrder::getApprovalStatus,dto.getTargetStatus())
@@ -1156,6 +1156,11 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
      * 草稿允许零价暂存（采购计划转单等）；提交审批及审批通过前统一校验，
      * 零价明细不可进入审批流。
      */
+    private void validateReadyOrderItems(List<PurchaseOrderItem> items){
+        validateOrderItemPrices(items);
+        for(var item:items)if(item.getProcessingPlan()!=null&&!item.getProcessingPlan().isBlank())processingService.requireTreeBindings(item);
+    }
+
     private static void validateOrderItemPrices(List<PurchaseOrderItem> items) {
         for (PurchaseOrderItem item : items) {
             if (item.getUnitPrice() == null || item.getUnitPrice().compareTo(BigDecimal.ZERO) <= 0) {
