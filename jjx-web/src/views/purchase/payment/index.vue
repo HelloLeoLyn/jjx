@@ -10,7 +10,13 @@
             style="width: 180px"
         /></el-form-item>
         <el-form-item label="采购订单号">
-          <el-input v-model="query.orderNo" clearable placeholder="采购订单号" style="width: 180px" @keyup.enter="search" />
+          <el-input
+            v-model="query.orderNo"
+            clearable
+            placeholder="采购订单号"
+            style="width: 180px"
+            @keyup.enter="search"
+          />
         </el-form-item>
         <el-form-item label="状态">
           <el-select
@@ -96,7 +102,12 @@
         <el-table-column prop="paymentNo" label="付款单号" min-width="150" />
         <el-table-column prop="orderNo" label="采购订单号" min-width="160">
           <template #default="{ row }">
-            <el-link v-if="row.orderNo && row.orderId && userStore.hasPermission('purchase:order:view')" type="primary" @click="openSourceOrder(row)">{{ row.orderNo }}</el-link>
+            <el-link
+              v-if="row.orderNo && row.orderId && userStore.hasPermission('purchase:order:view')"
+              type="primary"
+              @click="openSourceOrder(row)"
+              >{{ row.orderNo }}</el-link
+            >
             <span v-else>{{ row.orderNo || '-' }}</span>
           </template>
         </el-table-column>
@@ -221,7 +232,11 @@
       </el-form>
       <template #footer
         ><el-button @click="formVisible = false">取消</el-button
-        ><el-button type="primary" :loading="submitting" :disabled="!paymentSummary || Number(paymentSummary.availableAmount) <= 0" @click="submitForm"
+        ><el-button
+          type="primary"
+          :loading="submitting"
+          :disabled="!paymentSummary || Number(paymentSummary.availableAmount) <= 0"
+          @click="submitForm"
           >保存</el-button
         ></template
       >
@@ -256,7 +271,7 @@
     <el-dialog
       v-model="confirmVisible"
       title="确认付款"
-      width="800px"
+      width="1200px"
       :close-on-click-modal="false"
     >
       <el-alert
@@ -267,11 +282,21 @@
         class="confirm-tip"
       />
       <el-descriptions :column="2" border class="confirm-summary">
-        <el-descriptions-item label="付款单号">{{ confirmTarget?.paymentNo || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="采购订单号">{{ confirmTarget?.orderNo || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="供应商">{{ confirmTarget?.supplierName || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="申请金额">{{ money(confirmTarget?.paymentAmount) }}</el-descriptions-item>
-        <el-descriptions-item label="计划付款日">{{ confirmTarget?.paymentDate || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="付款单号">{{
+          confirmTarget?.paymentNo || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="采购订单号">{{
+          confirmTarget?.orderNo || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="供应商">{{
+          confirmTarget?.supplierName || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="申请金额">{{
+          money(confirmTarget?.paymentAmount)
+        }}</el-descriptions-item>
+        <el-descriptions-item label="计划付款日">{{
+          confirmTarget?.paymentDate || '-'
+        }}</el-descriptions-item>
         <el-descriptions-item label="付款方式">{{
           PaymentMethodEnum.getLabel(confirmTarget?.paymentMethod)
         }}</el-descriptions-item>
@@ -290,17 +315,16 @@
             maxlength="100"
             placeholder="银行转账流水号/回单号（必填）"
         /></el-form-item>
-        <el-form-item label="转账回单">
-          <AttachmentCenter
-            ref="confirmAttachRef"
-            source-type="purchase_payment"
-            :source-id="confirmTarget?.paymentId ?? null"
-            :actions="['download', 'detail', 'remove', 'save']"
-            :auto-bind="false"
-            @save="onAttachSave"
-            title="转账回单"
-          />
-        </el-form-item>
+        <AttachmentCenter
+          ref="confirmAttachRef"
+          source-type="purchase_payment"
+          :source-id="confirmTarget?.paymentId ?? null"
+          :actions="['download', 'detail', 'remove', 'save']"
+          :auto-bind="false"
+          default-document-type="PAYMENT_RECEIPT"
+          @save="onAttachSave"
+          title="转账回单"
+        />
       </el-form>
       <template #footer
         ><el-button @click="confirmVisible = false">取消</el-button
@@ -313,10 +337,14 @@
     <el-drawer v-model="detailVisible" title="付款详情" size="560px">
       <el-descriptions v-if="current" :column="2" border>
         <el-descriptions-item label="付款单号">{{ current.paymentNo }}</el-descriptions-item>
-        <el-descriptions-item label="供应商">{{ current.supplierName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="供应商">{{
+          current.supplierName || '-'
+        }}</el-descriptions-item>
         <el-descriptions-item label="采购订单号">
           <el-link
-            v-if="current.orderNo && current.orderId && userStore.hasPermission('purchase:order:view')"
+            v-if="
+              current.orderNo && current.orderId && userStore.hasPermission('purchase:order:view')
+            "
             type="primary"
             @click="openSourceOrder(current)"
             >{{ current.orderNo }}</el-link
@@ -342,7 +370,9 @@
         <el-descriptions-item label="实际付款日">{{
           current.actualPaymentDate || '-'
         }}</el-descriptions-item>
-        <el-descriptions-item label="转账流水号">{{ current.voucherNo || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="转账流水号">{{
+          current.voucherNo || '-'
+        }}</el-descriptions-item>
         <el-descriptions-item label="转账回单" :span="2">
           <AttachmentCenter
             v-if="current?.paymentId"
@@ -462,8 +492,15 @@ function handleStatusFilterChange() {
 function handleSummaryLoaded(summary: PurchasePaymentSummary | null) {
   paymentSummary.value = summary
   if (summary && !isEdit.value) form.paymentAmount = Number(summary.availableAmount)
-  if (summary && !pendingOrders.value.some((order) => String(order.orderId) === String(summary.orderId))) {
-    pendingOrders.value.push({ orderId: summary.orderId, orderNo: summary.orderNo, supplierName: summary.supplierName })
+  if (
+    summary &&
+    !pendingOrders.value.some((order) => String(order.orderId) === String(summary.orderId))
+  ) {
+    pendingOrders.value.push({
+      orderId: summary.orderId,
+      orderNo: summary.orderNo,
+      supplierName: summary.supplierName,
+    })
   }
 }
 const rules = {
@@ -474,7 +511,9 @@ const rules = {
   paymentMethod: [{ required: true, message: '请选择付款方式', trigger: 'change' }],
 }
 const userStore = useUserStore()
-const approverName = computed(() => userStore.userInfo?.realName?.trim() || userStore.userName || '-')
+const approverName = computed(
+  () => userStore.userInfo?.realName?.trim() || userStore.userName || '-'
+)
 const approveForm = reactive({ approvalComment: '' })
 const confirmForm = reactive({ actualPaymentDate: '', voucherNo: '' })
 const confirmFormRef = ref<FormInstance>()
@@ -640,8 +679,16 @@ async function openEdit(row: any) {
 }
 
 async function submitForm() {
-  if (!formRef.value || !paymentSummary.value || !(await formRef.value.validate().catch(() => false))) return
-  if (Number(form.paymentAmount) <= 0 || Number(form.paymentAmount) > Number(paymentSummary.value.availableAmount)) {
+  if (
+    !formRef.value ||
+    !paymentSummary.value ||
+    !(await formRef.value.validate().catch(() => false))
+  )
+    return
+  if (
+    Number(form.paymentAmount) <= 0 ||
+    Number(form.paymentAmount) > Number(paymentSummary.value.availableAmount)
+  ) {
     ElMessage.warning('申请金额必须大于0且不超过可申请金额')
     return
   }
@@ -671,11 +718,7 @@ async function submitApprove(decision: string) {
   if (!approveTarget.value) return
   submitting.value = true
   try {
-    await approvePayment(
-      approveTarget.value.paymentId,
-      decision,
-      approveForm.approvalComment
-    )
+    await approvePayment(approveTarget.value.paymentId, decision, approveForm.approvalComment)
     ElMessage.success(decision === PaymentApprovalStatus.APPROVED ? '审批通过' : '已驳回')
     approveVisible.value = false
     load()
