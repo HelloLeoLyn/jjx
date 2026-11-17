@@ -150,6 +150,7 @@
           :lock-reason="submitting ? '提交中，请稍候' : ''"
           :max-size-m-b="20"
           :accept="INVOICE_ACCEPT"
+          default-document-type="VAT_SPECIAL_INVOICE"
           view-perm="purchase:invoice:doc:view"
           edit-perm="purchase:invoice:doc:add"
         />
