@@ -1,5 +1,5 @@
 <template>
-  <div class="work-spec-panel">
+  <div ref="panelRoot" class="work-spec-panel">
     <div class="work-actions">
       <strong>作业规范</strong>
       <div class="owner-status">
@@ -58,17 +58,14 @@
     >
       <el-button link type="primary" @click="loadData">重新加载</el-button>
     </el-alert>
-    <el-alert
-      v-if="data?.warnings.length"
-      :title="data.warnings.join('；')"
-      type="warning"
-      :closable="false"
-      class="data-message"
+    <WorkSpecIssuesPanel
+      :issues="sourceIssues" :context="issueContext" :can-view="user.hasPermission('product:view')"
+      :blocked="loading || editing" locatable @locate="locateIssue"
     />
     <div v-loading="loading" class="data-sections">
       <template v-if="data">
         <section class="spec-top">
-          <div class="spec-top-col">
+          <div class="spec-top-col" data-issue-target="structure">
             <div class="section-heading">
               <h3>结构图</h3>
               <el-button
@@ -177,7 +174,7 @@
             <p v-else class="multiline">{{ data.workSpec.engineeringRequirements || '未填写' }}</p>
           </div>
         </section>
-        <section class="data-section">
+        <section class="data-section" data-issue-target="materials">
           <div class="section-heading">
             <h3>项目材料</h3>
             <el-select v-model="materialMode" aria-label="项目材料模式" style="width: 145px" :disabled="projectMaterialDraft !== null">
@@ -210,21 +207,10 @@
               </template>
             </div>
           </div>
-          <el-alert v-for="message in materialWarnings" :key="message" :title="message" type="warning" :closable="false" />
           <el-alert
             v-if="!data.workSpec.projectMaterials"
             title="未建立项目材料，打印暂沿用 BOM；从 BOM 引入后不再自动同步，也不回写 BOM。"
             type="info"
-            :closable="false"
-          />
-          <el-alert
-            v-for="message in [
-              ...(data.workSpec.projectMaterialsCheck?.errors || []),
-              ...(data.workSpec.projectMaterialsCheck?.warnings || []),
-            ]"
-            :key="message"
-            :title="message"
-            type="warning"
             :closable="false"
           />
           <el-table
@@ -343,13 +329,15 @@
             >
           </el-table>
         </section>
-        <WorkSpecWorkflow
-          :items="data.routing.items || []"
-          :routing-id="Number(data.routing.routingId) || undefined"
-          :editable="canEditRoute"
-          :busy="loading"
-          @edit="routeVisible = true"
-        />
+        <div data-issue-target="routing">
+          <WorkSpecWorkflow
+            :items="data.routing.items || []"
+            :routing-id="Number(data.routing.routingId) || undefined"
+            :editable="canEditRoute"
+            :busy="loading"
+            @edit="routeVisible = true"
+          />
+        </div>
         <ProductPrintSpecPanel
           :product-id="productId"
           :work-spec="data.workSpec"
@@ -524,6 +512,8 @@ import ProductPrintSpecPanel from './ProductPrintSpecPanel.vue'
 import WorkSpecWorkflow from './WorkSpecWorkflow.vue'
 import BomFormDialog from '@/views/product/bom/components/BomFormDialog.vue'
 import RouteFormDialog from '@/views/product/route/components/RouteFormDialog.vue'
+import WorkSpecIssuesPanel from './WorkSpecIssuesPanel.vue'
+import { buildWorkSpecIssues, type WorkSpecIssueTarget } from './workSpecIssues'
 import {
   documentFileCaption,
   loadDocset,
@@ -548,7 +538,24 @@ const props = withDefaults(
   }>(),
   { viewOnly: false }
 )
-const emit = defineEmits<{ busy: [value: boolean]; updated: [] }>()
+const emit = defineEmits<{ busy: [value: boolean]; updated: []; locateIssue: [target: WorkSpecIssueTarget] }>()
+const panelRoot = ref<HTMLElement>()
+const issueContext = computed(() => ({
+  productId: props.productId, productCode: props.productCode, productName: props.productName,
+  bom: data.value?.bom, routing: data.value?.routing,
+  files: data.value?.files.map((file) => ({ ...file, fileName: file.originalName || file.name, displayName: file.name })),
+}))
+const sourceIssues = computed(() => buildWorkSpecIssues([
+  ...(data.value?.warnings || []),
+  ...materialWarnings.value,
+  ...(data.value?.workSpec.projectMaterialsCheck?.errors || []),
+  ...(data.value?.workSpec.projectMaterialsCheck?.warnings || []),
+], issueContext.value))
+function locateIssue(target: WorkSpecIssueTarget) {
+  if (loading.value || editing.value || !user.hasPermission('product:view')) return
+  if (target === 'attachments' || target === 'customer') emit('locateIssue', target)
+  else panelRoot.value?.querySelector<HTMLElement>(`[data-issue-target="${target}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
 const draftSession = useWorkSpecAttachmentSession(
   toRef(props, 'productId'),
   toRef(props, 'productCode')
@@ -1034,6 +1041,7 @@ defineExpose({
   guardState: () => guardDetails.value,
   saveIfDirty,
   discardIfDirty,
+  locateIssue,
 })
 async function loadData() {
   const generation = ++loadGeneration

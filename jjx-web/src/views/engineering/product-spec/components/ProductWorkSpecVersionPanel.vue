@@ -44,6 +44,10 @@
         >放弃并重读</el-button
       >
     </el-alert>
+    <WorkSpecIssuesPanel :issues="publishIssues" :context="issueContext" title="定版未完成"
+      :can-view="user.hasPermission('product:view')" :context-ready="contextReady"
+      :blocked="publishing || draft.busy.value" :locatable="canLocate"
+      @locate="emit('locateIssue', $event)" />
     <el-table :data="versions" size="small" border v-loading="loading">
       <el-table-column prop="versionNo" label="版本号" width="100" />
       <el-table-column label="状态" width="90" align="center">
@@ -260,7 +264,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, toRef, watch } from 'vue'
+import { computed, getCurrentInstance, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { productWorkSpecApi } from '@/api/product/workSpec'
 import { WorkSpecVersionStatus } from '@/enums/product/workSpec'
@@ -268,6 +272,8 @@ import { useWorkSpecAttachmentSession } from './useWorkSpecAttachmentSession'
 import { parseDocsetSnapshot, detectFileKind } from './versionDocset'
 import { useUserStore } from '@/store/modules/user'
 import { usePermission } from '@/composables/usePermission'
+import WorkSpecIssuesPanel from './WorkSpecIssuesPanel.vue'
+import { buildWorkSpecIssues, workSpecIssueMessage, type WorkSpecIssueContext, type WorkSpecIssueTarget } from './workSpecIssues'
 
 const props = withDefaults(
   defineProps<{ productId: number; showFullPage?: boolean; blocked?: boolean }>(),
@@ -280,10 +286,40 @@ const emit = defineEmits<{
   (e: 'openVersion', versionId: number): void
   (e: 'updated'): void
   (e: 'busy', value: boolean): void
+  (e: 'locateIssue', target: WorkSpecIssueTarget): void
 }>()
 const draft = useWorkSpecAttachmentSession(toRef(props, 'productId'), ref(''))
 const user = useUserStore()
 const { hasRole } = usePermission()
+const instance = getCurrentInstance()
+const canLocate = computed(() => !!instance?.vnode.props?.onLocateIssue)
+const failureMessages = ref<string[]>([])
+const issueContext = ref<WorkSpecIssueContext>({ productId: props.productId })
+const contextReady = ref(false)
+const publishIssues = computed(() => buildWorkSpecIssues(failureMessages.value, issueContext.value))
+let issueGeneration = 0
+async function showPublishFailure(cause: unknown) {
+  const generation = ++issueGeneration
+  const productId = props.productId
+  failureMessages.value = [workSpecIssueMessage(cause)]
+  contextReady.value = false
+  issueContext.value = { productId }
+  if (!user.hasPermission('product:view')) return
+  try {
+    const response = await productWorkSpecApi.get(productId)
+    if (generation !== issueGeneration || productId !== props.productId) return
+    if (!response.data) throw new Error('未取得作业规范资料')
+    const source = response.data.sourceData || {}
+    issueContext.value = {
+      productId, productCode: source.product?.productCode, productName: source.product?.productName,
+      bom: source.bom, routing: source.routing, files: response.data.draftFiles || [],
+    }
+    contextReady.value = true
+  } catch (error) {
+    if (generation === issueGeneration && productId === props.productId)
+      failureMessages.value.push('问题对象资料读取失败：' + workSpecIssueMessage(error))
+  }
+}
 // 制定任务锁（dev-20261020-013）：定版仅负责人；升级由负责人或工程主管发起。
 const canStartUpgrade = computed(
   () => draft.isOwner.value || (user.hasPermission('product:edit') && hasRole('engineering:all'))
@@ -358,6 +394,7 @@ async function publish() {
   if (props.blocked || publishing.value || draft.busy.value || !draft.ready.value) return
   if (!draft.canWrite.value) {
     ElMessage.warning(draft.readOnlyReason.value + '；只有当前制定负责人可以定版')
+    await showPublishFailure(draft.readOnlyReason.value + '；只有当前制定负责人可以定版')
     return
   }
   publishing.value = true
@@ -424,6 +461,8 @@ async function publish() {
       saved.data.revision
     )
     if (res?.code === 200) {
+      issueGeneration++
+      failureMessages.value = []
       ElMessage.success(`已定版 ${res.data?.versionNo || ''}`)
       await load()
       draft.confirming.value = false
@@ -435,7 +474,10 @@ async function publish() {
       draft.conflict.value = true
       draft.error.value = '草稿已被其他入口修改，请比较后重新应用或放弃重读。'
     }
-    if (e !== 'cancel' && e !== 'close') ElMessage.error(e?.message || '定版失败')
+    if (e !== 'cancel' && e !== 'close') {
+      ElMessage.error(e?.message || '定版失败')
+      await showPublishFailure(e)
+    }
   } finally {
     draft.confirming.value = false
     publishing.value = false
@@ -545,7 +587,14 @@ defineExpose({
 })
 
 onMounted(load)
-watch(() => props.productId, load)
+onBeforeUnmount(() => { issueGeneration++ })
+watch(() => props.productId, () => {
+  issueGeneration++
+  failureMessages.value = []
+  contextReady.value = false
+  issueContext.value = { productId: props.productId }
+  void load()
+})
 </script>
 
 <style scoped>

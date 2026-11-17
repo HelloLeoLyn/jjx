@@ -427,10 +427,15 @@ class WorkSpecDocsetSnapshotServiceTest {
         when(workSpecService.get(3L)).thenReturn(spec(40L, true));
         SysAttachment broken = file(40L, "结构图.jpg", "结构图");
         broken.setFilePath("files/does-not-exist.jpg");
+        broken.setDisplayName("面板结构图");
+        broken.setVersion("A2");
         when(attachmentMapper.selectById(40L)).thenReturn(broken);
         BusinessException ex = assertThrows(BusinessException.class, () -> service.build(
                 productBomless(), "V1.0", "管理员", LocalDateTime.now(), null));
         assertTrue(ex.getMessage().contains("缺失"));
+        assertTrue(ex.getMessage().contains("面板结构图"));
+        assertTrue(ex.getMessage().contains("A2"));
+        assertTrue(ex.getMessage().contains("id=40"));
     }
 
     @Test
@@ -447,8 +452,11 @@ class WorkSpecDocsetSnapshotServiceTest {
     @Test
     void missingBomFails() {
         when(bomService.getBomDetail(1L)).thenReturn(null);
-        assertThrows(BusinessException.class, () -> service.build(
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.build(
                 product(), "V1.0", "管理员", LocalDateTime.now(), null));
+        assertTrue(ex.getMessage().contains("YL1025PWOO"));
+        assertTrue(ex.getMessage().contains("V1.0"));
+        assertTrue(ex.getMessage().contains("id=1"));
     }
 
     // ---------- 5) 并发一致性 ----------

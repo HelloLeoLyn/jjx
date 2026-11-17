@@ -43,7 +43,7 @@ vi.mock('@/store/modules/user', () => ({
     permissions: ['*'],
     roles: [],
     userId: 7,
-    hasPermission: (p: string) => p === 'product:edit' && permission.edit,
+    hasPermission: (p: string) => p === 'product:view' || (p === 'product:edit' && permission.edit),
   }),
 }))
 vi.mock('@/api/product', () => ({
@@ -385,6 +385,27 @@ async function drawer() {
   return { w, state, panel: w.getComponent(Panel), header: w.getComponent(Header) }
 }
 describe('真实Header→Drawer→正文面板切版保护', () => {
+  it('问题定位有未保存草稿时不切页签、不保存、不询问自动保存', async () => {
+    const { state, panel } = await drawer()
+    const local = (panel.vm as any).$.setupState
+    local.startNoteEdit()
+    local.noteDraft = '保留输入'
+    const confirm = vi.spyOn(ElMessageBox, 'confirm')
+    try {
+      await state.locateWorkSpecIssue('attachments')
+      expect(state.activeTab).toBe('spec')
+      expect(local.noteDraft).toBe('保留输入')
+      expect(productWorkSpecApi.saveDraft).not.toHaveBeenCalled()
+      expect(confirm).not.toHaveBeenCalled()
+    } finally { confirm.mockRestore() }
+  })
+  it('当前产品无草稿改动时可定位工程图集，查看本身不保存', async () => {
+    const { state } = await drawer()
+    await state.locateWorkSpecIssue('attachments')
+    expect(state.activeTab).toBe('atlas')
+    expect(state.productId).toBe(2)
+    expect(productWorkSpecApi.saveDraft).not.toHaveBeenCalled()
+  })
   it.each(['note', 'issuance', 'die', 'editor', 'structure', 'emboss'])(
     '%s编辑中保持原面板和输入，明确取消后才可切版',
     async (mode) => {

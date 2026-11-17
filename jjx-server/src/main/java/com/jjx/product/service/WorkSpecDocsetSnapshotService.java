@@ -129,12 +129,14 @@ public class WorkSpecDocsetSnapshotService {
         EngineeringBomVO bomVo = null;
         if (product.getCurrentBomId() != null) {
             bomVo = bomService.getBomDetail(product.getCurrentBomId());
-            if (bomVo == null) throw new BusinessException("发布失败：BOM 不存在（id=" + product.getCurrentBomId() + "）");
+            if (bomVo == null) throw new BusinessException("发布失败：BOM 不存在（产品=" + product.getProductCode()
+                    + "，版本=" + product.getCurrentBomVersion() + "，id=" + product.getCurrentBomId() + "），请核对产品的BOM来源");
         }
         EngineeringRoutingVO routingVo = null;
         if (product.getCurrentRouteId() != null) {
             routingVo = routingService.getRoutingItems(product.getCurrentRouteId());
-            if (routingVo == null) throw new BusinessException("发布失败：工艺路线不存在（id=" + product.getCurrentRouteId() + "）");
+            if (routingVo == null) throw new BusinessException("发布失败：工艺路线不存在（产品=" + product.getProductCode()
+                    + "，版本=" + product.getCurrentRoutingVersion() + "，id=" + product.getCurrentRouteId() + "），请核对产品的工艺路线来源");
         }
 
         JsonNode bomNode = bomVo == null ? null : json.valueToTree(bomVo);
@@ -274,7 +276,8 @@ public class WorkSpecDocsetSnapshotService {
         if (structureFileId != null) {
             SysAttachment structure = attachmentMapper.selectById(structureFileId);
             if (structure == null) {
-                throw new BusinessException("发布失败：选定结构图不存在（id=" + structureFileId + "）");
+                throw new BusinessException("发布失败：选定结构图不存在（产品=" + product.getProductCode()
+                        + "，id=" + structureFileId + "），请在作业规范结构图区重新选择有效文件");
             }
             add(chosen, buildFile(structure, "product-library", false, documentTypes.get(structure.getId())));
         }
@@ -313,7 +316,8 @@ public class WorkSpecDocsetSnapshotService {
         for (Map<String, Object> row : customerDocuments.list(productId)) {
             Long attachmentId = ((Number) row.get("id")).longValue();
             SysAttachment att = attachmentMapper.selectById(attachmentId);
-            if (att == null) throw new BusinessException("发布失败：客供附件不存在（id=" + attachmentId + "）");
+            if (att == null) throw new BusinessException("发布失败：客供附件不存在（产品=" + product.getProductCode()
+                    + "，文件=" + row.get("display_name") + "，id=" + attachmentId + "），请核对客供资料原文件");
             String rowDocType = row.get("customer_doc_type") == null ? null : String.valueOf(row.get("customer_doc_type"));
             if (rowDocType != null && rowDocType.isBlank()) rowDocType = null;
             SnapshotFile file = buildFile(att, "customer-source", true,
@@ -366,18 +370,27 @@ public class WorkSpecDocsetSnapshotService {
     /** 校验附件可读性并返回实际字节 SHA-256；文件缺失或与库中记录不符即失败。 */
     private String validateAndHash(SysAttachment att) {
         if (att.getFilePath() == null || att.getFilePath().isBlank()) {
-            throw new BusinessException("发布失败：附件缺少存储路径（id=" + att.getId() + "）");
+            throw new BusinessException("发布失败：附件缺少存储路径" + attachmentLabel(att) + "，请联系资料负责人核对原文件");
         }
         Path root = Paths.get(uploadBasePath).toAbsolutePath().normalize();
         Path path = root.resolve(att.getFilePath()).normalize();
         String actual = Sha256Utils.ofFile(path);
         if (actual == null) {
-            throw new BusinessException("发布失败：附件文件缺失或不可读（id=" + att.getId() + "）");
+            throw new BusinessException("发布失败：附件文件缺失或不可读" + attachmentLabel(att) + "，请联系资料负责人恢复或重新选择有效文件");
         }
         if (att.getSha256() != null && !att.getSha256().isBlank() && !att.getSha256().equalsIgnoreCase(actual)) {
-            throw new BusinessException("发布失败：附件哈希不符（id=" + att.getId() + "）");
+            throw new BusinessException("发布失败：附件哈希不符" + attachmentLabel(att) + "，请核对文件内容并重新保存草稿");
         }
         return actual;
+    }
+
+    private String attachmentLabel(SysAttachment att) {
+        String name = att.getDisplayName();
+        if (name == null || name.isBlank()) name = att.getFileName();
+        if (name == null || name.isBlank()) name = "未取得文件名";
+        String version = att.getVersion();
+        return "（文件=" + name + (version == null || version.isBlank() ? "" : "，版本=" + version)
+                + "，id=" + att.getId() + "）";
     }
 
     // ==================== 图标冻结 ====================

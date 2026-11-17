@@ -151,6 +151,25 @@ beforeEach(() => {
 })
 afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()))
 describe('作业规范统一草稿会话', () => {
+  it('保存检查失败时不定版；问题清单留在页面，查看失败仍保留原原因', async () => {
+    const wrapper = mount(VersionPanel, { props: { productId: 42 }, global: {
+      directives: { hasPermi: () => {}, loading: () => {} },
+      stubs: { ElTable: { template: '<div />' } },
+    } })
+    wrappers.push(wrapper)
+    await flushPromises()
+    const state = (wrapper.vm as any).$.setupState
+    api.saveDraft.mockRejectedValueOnce(new Error('结构图 文件A.pdf 已失效'))
+    api.get.mockRejectedValueOnce({ response: { status: 403 } })
+    await state.publish()
+    expect(api.publishVersion).not.toHaveBeenCalled()
+    expect(state.publishIssues.map((issue: any) => issue.reason).join('；')).toContain('文件A.pdf 已失效')
+    expect(state.publishIssues.map((issue: any) => issue.reason).join('；')).toContain('HTTP 403')
+    expect(state.contextReady).toBe(false)
+    expect(state.draft.spec.value.revision).toBe('r1')
+    await wrapper.setProps({ productId: 43 })
+    expect(state.publishIssues).toHaveLength(0)
+  })
   it('仅有定版权限的人可以定版已保存草稿，无需取得编辑权限', async () => {
     auth.edit = false
     const wrapper = mount(VersionPanel, {

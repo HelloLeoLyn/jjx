@@ -27,6 +27,7 @@
         :blocked="workSpecBusy || colorCheckBusy || specViewOnly"
         @updated="versionSaved"
         @busy="versionBusy = $event"
+        @locate-issue="locateWorkSpecIssue"
       />
 
       <el-tabs v-model="activeTab" class="spec-tabs" :before-leave="beforeSpecTabLeave">
@@ -189,6 +190,7 @@
               :view-only="specViewOnly"
               @busy="workSpecBusy = $event"
               @updated="refreshSpecSources"
+              @locate-issue="locateWorkSpecIssue"
             />
             <div v-else-if="selectedVersionId" v-loading="versionLoading" class="version-snapshot">
               <el-alert
@@ -401,7 +403,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getFullProduct } from '@/api/product'
 import ProductDocPanel from '@/components/product/ProductDocPanel.vue'
@@ -412,6 +414,7 @@ import { ENGINEERING_DOCUMENT_TYPE_CODES } from '@/components/product/productFil
 import ProductSpecPreview from '@/views/engineering/product-spec/components/ProductSpecPreview.vue'
 import ProductWorkSpecPanel from '@/views/engineering/product-spec/components/ProductWorkSpecPanel.vue'
 import ProductWorkSpecVersionPanel from '@/views/engineering/product-spec/components/ProductWorkSpecVersionPanel.vue'
+import type { WorkSpecIssueTarget } from '@/views/engineering/product-spec/components/workSpecIssues'
 import { useWorkSpecAttachmentSession } from '@/views/engineering/product-spec/components/useWorkSpecAttachmentSession'
 import ProductPrintSpecPanel from '@/views/engineering/product-spec/components/ProductPrintSpecPanel.vue'
 import ProductColorCheckPanel from '@/views/engineering/product-spec/components/ProductColorCheckPanel.vue'
@@ -426,6 +429,8 @@ import type { SampleOrder } from '@/types/sales/sampleOrder'
 import type { ProductPickRow } from '@/types/inventory/outbound'
 import { productWorkSpecApi, normalizeWorkSpec, embossFields } from '@/api/product/workSpec'
 import { productRouteApi } from '@/api/product/routing'
+import { useUserStore } from '@/store/modules/user'
+const user = useUserStore()
 
 function dieText(spec: any): string {
   const values = Object.values(spec?.dieLocation || {}).filter(Boolean)
@@ -480,11 +485,15 @@ function collectSpecGuardStates(): SpecGuardState[] {
       reasons: ['图纸维护正在上传/保存'],
     })
   }
-  const panels: Array<[string, any]> = [
+  const panelRefs: Array<[string, any]> = [
     ['版本', versionPanelRef.value],
     ['作业规范', workSpecPanelRef.value],
     ['分色检查表', colorCheckPanelRef.value],
   ]
+  // 页签在v-for中渲染，模板ref可能是数组；逐个读取现有守卫，不能漏掉未保存正文。
+  const panels = panelRefs.flatMap(([area, value]) =>
+    (Array.isArray(value) ? value : [value]).map((panel) => [area, panel] as [string, any])
+  )
   for (const [area, panel] of panels) {
     const state = panel?.guardState?.()
     if (!state || (!state.dirty && !state.busy)) continue
@@ -543,6 +552,20 @@ async function beforeSpecTabLeave() {
 const detailLoading = ref(false)
 const detail = ref<ProductFullVO | null>(null)
 const activeTab = ref('customer')
+async function locateWorkSpecIssue(target: WorkSpecIssueTarget) {
+  // 定位只切换当前产品页签；不触发离场“保存”动作，也不接管草稿。
+  if (collectSpecGuardStates().some((state) => state.dirty || state.busy || state.hardBlock)) {
+    ElMessage.warning('请先在当前入口处理未保存修改，再定位问题资料')
+    return
+  }
+  if (selectedVersionId.value || !productId.value || !user.hasPermission('product:view')) return
+  activeTab.value = target === 'attachments' ? 'atlas' : target === 'customer' ? 'customer' : 'spec'
+  await nextTick()
+  if (activeTab.value === 'spec') {
+    const panels = Array.isArray(workSpecPanelRef.value) ? workSpecPanelRef.value : [workSpecPanelRef.value]
+    panels.forEach((panel) => panel?.locateIssue?.(target))
+  }
+}
 
 const productCode = computed(() => detail.value?.product?.productCode || '')
 
