@@ -865,7 +865,8 @@ const handleSaveDraft = async () => {
     const res = await inboundApi.create(formData)
     const inboundId = String(res.data)
     ElMessage.success('保存草稿成功')
-    router.push(`/inventory/inbound/detail/${inboundId}`)
+    // 详情没有独立路由：回列表并用 bizId 自动打开详情弹窗（index.vue onMounted 处理）
+    router.push({ path: '/inventory/inbound', query: { bizId: inboundId } })
   } catch (error) {
     console.error('保存草稿失败:', error)
     ElMessage.error('保存草稿失败')
@@ -886,7 +887,8 @@ const handleSubmit = async () => {
         const inboundId = String(res.data)
         await inboundApi.submitApprove(inboundId)
         ElMessage.success('提交审批成功')
-        router.push(`/inventory/inbound/detail/${inboundId}`)
+        // 详情没有独立路由：回列表并用 bizId 自动打开详情弹窗（index.vue onMounted 处理）
+        router.push({ path: '/inventory/inbound', query: { bizId: inboundId } })
       } catch (error) {
         console.error('提交审批失败:', error)
         ElMessage.error('提交审批失败')

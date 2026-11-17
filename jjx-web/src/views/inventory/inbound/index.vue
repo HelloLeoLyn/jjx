@@ -198,15 +198,24 @@
     <!-- 查看流水（DEV-569） -->
     <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
 
-    <!-- 入库单详情对话框（公共组件） -->
+    <!-- 入库单详情对话框（唯一实现：components/InboundDetail.vue） -->
     <el-dialog
       :title="dialogTitle"
       v-model="detailDialogVisible"
-      width="1000px"
+      width="1200px"
       append-to-body
       destroy-on-close
+      class="inbound-detail-dialog"
     >
-      <InboundDetail v-if="detailDialogVisible && detailInboundId" :inbound-id="detailInboundId" />
+      <InboundDetail
+        v-if="detailDialogVisible && detailInboundId"
+        ref="detailRef"
+        :inbound-id="detailInboundId"
+        show-actions
+        @confirm="onDetailConfirm"
+        @trace="onDetailTrace"
+        @print="onDetailPrint"
+      />
       <template #footer>
         <el-button @click="detailDialogVisible = false">关闭</el-button>
       </template>
@@ -216,7 +225,7 @@
       v-model:visible="postingDialogVisible"
       :inbound-id="postingInboundId"
       :inbound-no="postingInboundNo"
-      @success="getList"
+      @success="afterInboundAction"
     />
     <!-- 操作预览器 -->
     <OperationPreviewDialog
@@ -225,7 +234,7 @@
       :biz-id="previewBizId"
       :biz-no="previewBizNo"
       :status-text-map="inboundStatusTextMap"
-      @success="getList"
+      @success="afterInboundAction"
     />
   </div>
 </template>
@@ -279,6 +288,9 @@ const multiple = ref(true)
 const detailDialogVisible = ref(false)
 const detailInboundId = ref<number | null>(null)
 const dialogTitle = ref('')
+/** 当前详情对应的列表行（详情内动作沿用列表同一套 handler，避免第二套实现） */
+const detailRow = ref<InboundVO | null>(null)
+const detailRef = ref<InstanceType<typeof InboundDetail> | null>(null)
 
 const postingDialogVisible = ref(false)
 const postingInboundId = ref<number>()
@@ -408,12 +420,29 @@ const handleRefresh = () => {
 function handlePrint(row: InboundVO) {
   window.open(`/print/inbound/${row.inboundId}`, '_blank')
 }
-// 查看详情
-// 查看详情（公共组件弹窗）
+// 查看详情（唯一实现：components/InboundDetail.vue，列表与详情内动作共用 handler）
 const handleView = (row: InboundVO) => {
   dialogTitle.value = '入库单详情'
+  detailRow.value = row
   detailInboundId.value = Number(row.inboundId)
   detailDialogVisible.value = true
+}
+/** 详情内「确认入库」：采购来源走 IQC 过账弹窗，其余走通用操作预览器（与列表同一口径） */
+const onDetailConfirm = () => {
+  if (!detailRow.value) return
+  if (isPurchase(detailRow.value)) handleIqcPosting(detailRow.value)
+  else openPreview('inbound.confirm', detailRow.value)
+}
+const onDetailTrace = () => {
+  if (detailRow.value) showTrace(detailRow.value)
+}
+const onDetailPrint = () => {
+  if (detailRow.value) handlePrint(detailRow.value)
+}
+/** 入库动作成功后：刷新列表并重载详情（详情打开时） */
+const afterInboundAction = () => {
+  getList()
+  void detailRef.value?.refresh()
 }
 
 // 提交审批
@@ -512,5 +541,10 @@ onMounted(async () => {
 .operation-card,
 .table-card {
   margin-bottom: 16px;
+}
+/* 详情弹窗：内容区限高滚动，标题与关闭按钮常驻 */
+.inbound-detail-dialog :deep(.el-dialog__body) {
+  max-height: 70vh;
+  overflow-y: auto;
 }
 </style>
