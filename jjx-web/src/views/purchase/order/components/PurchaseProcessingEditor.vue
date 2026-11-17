@@ -64,7 +64,7 @@ const emit=defineEmits<{(e:'update:modelValue',value:string|null):void;(e:'chang
 const forceTree=ref(false)
 const treeValue=computed(()=>forceTree.value&&!readProcessingPlan(props.modelValue)?.tree?null:props.modelValue)
 const treeMode=computed(()=>forceTree.value||!props.modelValue||!!readProcessingPlan(props.modelValue)?.tree)
-async function switchToTree(){try{await ElMessageBox.confirm('重新编排将在采用加工树后替换旧加工要求；取消时原要求保留。','改用加工树');forceTree.value=true}catch{/* 取消保留旧方案。 */}}
+async function switchToTree(){try{await ElMessageBox.confirm('重新编排将在首次确定分切或切片后替换订单草稿中的旧加工要求；取消添加时原要求保留。','改用加工树');forceTree.value=true}catch{/* 取消保留旧方案。 */}}
 const visible=ref(false),saving=ref(false),error=ref(''),groups=ref<ProcessingGroup[]>([]),options=ref<InventoryMaterial[]>([]),searching=ref(false)
 let sequence=0,disposed=false
 const key=()=>globalThis.crypto?.randomUUID?.()||`processing-${Date.now()}-${++sequence}`

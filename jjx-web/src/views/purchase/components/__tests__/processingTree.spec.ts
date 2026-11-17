@@ -233,21 +233,22 @@ describe('加工树及自动余料交互', () => {
       [650, 1],
       [1220, 2],
     ])
-    expect(w.emitted('update:modelValue')).toBeUndefined()
+    expect(w.emitted('update:modelValue')?.[0]).toEqual([snapshot(split)])
   })
-  it('采用整个后台规范化快照，取消编辑不改原方案', async () => {
+  it('明细直接加载加工树，取消小弹窗不改订单草稿', async () => {
     const saved = snapshot(split)
     const { s, w } = wrap(TreeEditor, { item, modelValue: saved })
-    api.plan.mockResolvedValue({ data: { ...item, processingPlan: saved } })
-    await s.open()
-    s.tree.operation.useQuantity = 2
-    s.visible = false
-    s.invalidate()
-    expect(w.emitted('update:modelValue')).toBeUndefined()
-    await s.open()
     expect(s.tree.operation.useQuantity).toBe(1)
-    await s.adopt()
-    expect(w.emitted('update:modelValue')?.[0]).toEqual([saved])
+    expect(w.find('purchase-processing-tree-rows-stub').exists()).toBe(true)
+    expect(w.text()).not.toContain('维护加工树')
+    expect(w.text()).not.toContain('采用加工树')
+    s.edit(s.tree, Action.SLIT.value)
+    s.operation.useQuantity = 2
+    s.operationVisible = false
+    expect(s.tree.operation.useQuantity).toBe(1)
+    expect(w.emitted('update:modelValue')).toBeUndefined()
+    await w.setProps({ modelValue: snapshot(initial) })
+    expect(s.tree.children).toHaveLength(0)
   })
   it('超出宽度时保留操作输入和原树，不采用失败方案', async () => {
     const { s, w } = wrap(TreeEditor, { item })
@@ -366,6 +367,22 @@ describe('加工树及自动余料交互', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+  it('逐级折叠保持子级状态，交付物不受影响，编辑后展开所属分支', async () => {
+    const w = mount(Rows, { props: { tree: fullTree(), collapsible: true, expandRevision: 0 } })
+    wrappers.push(w)
+    const at = (id: string) => w.find(`tr[data-node-id="${id}"]`)
+    await at('root-s0').find('button').trigger('click')
+    expect(at('root-s0-pieces').exists()).toBe(false)
+    expect(at('root-width-s0-pieces').exists()).toBe(true)
+    await at('root').find('button').trigger('click')
+    expect(w.findAll('tbody tr')).toHaveLength(1)
+    await at('root').find('button').trigger('click')
+    expect(at('root-s0-pieces').exists()).toBe(false)
+    await w.setProps({ deliveryOnly: true })
+    expect(at('root-s0-pieces').exists()).toBe(true)
+    await w.setProps({ deliveryOnly: false, expandNodeId: 'root-s0', expandRevision: 1 })
+    expect(at('root-s0-pieces').exists()).toBe(true)
   })
   it('树表与打印显示缩进所属关系、原卷2卷和含税主行金额', () => {
     const w = mount(Rows, { props: { tree: split, materialName: 'EBA180' } })

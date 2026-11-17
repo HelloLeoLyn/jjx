@@ -2,340 +2,120 @@
   <div class="tree-editor">
     <div class="toolbar">
       <strong>加工树</strong
-      ><el-button link type="primary" :disabled="disabled" @click="open">{{
-        modelValue ? '维护加工树' : '添加加工要求'
-      }}</el-button
-      ><el-button v-if="modelValue" link type="danger" :disabled="disabled" @click="remove"
+      ><el-button v-if="!tree" link type="primary" :disabled="disabled || busy" @click="open"
+        >添加加工要求</el-button
+      ><el-button v-if="modelValue" link type="danger" :disabled="disabled || busy" @click="remove"
         >移除加工要求</el-button
       >
+      <el-button v-if="tree && !modelValue" link :disabled="busy" @click="cancelAdding"
+        >取消添加</el-button
+      >
     </div>
-    <el-radio-group v-if="savedTree" v-model="deliveryOnly" aria-label="加工树显示模式">
+    <el-radio-group v-if="tree" v-model="deliveryOnly" aria-label="加工树显示模式">
       <el-radio-button :value="false">完整加工树</el-radio-button>
       <el-radio-button :value="true">仅交付物</el-radio-button>
     </el-radio-group>
-    <PurchaseProcessingTreeRows v-if="savedTree" :tree="savedTree" :delivery-only="deliveryOnly" />
-    <el-dialog
-      v-model="visible"
-      title="加工树"
-      width="min(1280px, calc(100vw - 24px))"
-      append-to-body
-      :close-on-click-modal="false"
-      :close-on-press-escape="!busy"
-      :show-close="!busy"
-      @closed="invalidate"
-    >
-      <p>
-        {{ item.supplierMaterialName || item.materialName }} · {{ item.materialCode }}：采购
-        {{
-          item.purchaseQuantity
-        }}卷。选择要加工的卷数，其余原卷自动保留；分切生成宽度余料，切片生成边料和尾料。
-      </p>
-      <el-radio-group v-model="deliveryOnly" aria-label="加工树显示模式">
-        <el-radio-button :value="false">完整加工树</el-radio-button>
-        <el-radio-button :value="true">仅交付物</el-radio-button>
-      </el-radio-group>
-      <div class="tree-scroll" v-loading="busy">
-        <PurchaseProcessingTreeRows
-          v-if="tree"
-          :tree="tree"
-          :delivery-only="deliveryOnly"
-          :material-name="item.supplierMaterialName || item.materialName"
-        >
-          <template #actions="{ node, sourceLabel, slitSources }">
-            <el-button
-              v-if="!deliveryOnly"
-              link
-              type="primary"
-              :disabled="
-                busy || disabled || node.delivery === PurchaseProcessingDeliveryEnum.SCRAP.value
-              "
-              @click="
-                edit(node, PurchaseProcessingOperationEnum.SLIT.value, sourceLabel, slitSources)
-              "
-              >{{
-                node.operation?.type === PurchaseProcessingOperationEnum.SLIT.value
-                  ? '修改分切'
-                  : node.operation
-                    ? '改为分切'
-                    : '分切'
-              }}</el-button
-            >
-            <el-button
-              v-if="!deliveryOnly"
-              link
-              type="primary"
-              :disabled="
-                busy || disabled || node.delivery === PurchaseProcessingDeliveryEnum.SCRAP.value
-              "
-              @click="edit(node, PurchaseProcessingOperationEnum.CUT.value, sourceLabel)"
-              >{{
-                node.operation?.type === PurchaseProcessingOperationEnum.CUT.value
-                  ? '修改切片'
-                  : node.operation
-                    ? '改为切片'
-                    : '切片'
-              }}</el-button
-            >
-            <el-button
-              v-if="node.operation"
-              link
-              type="danger"
-              :disabled="busy || disabled"
-              @click="clear(node)"
-              >清除下级加工</el-button
-            >
-            <el-button v-else link :disabled="busy || disabled" @click="bind(node, sourceLabel)">{{
-              node.delivery === PurchaseProcessingDeliveryEnum.SCRAP.value
-                ? '修改报废处理'
-                : '指定交货物料'
-            }}</el-button>
-          </template>
-        </PurchaseProcessingTreeRows>
-      </div>
-      <el-alert v-if="error" :title="error" type="error" :closable="false" class="notice" />
-      <p class="hint">
-        只对最终节点交货，中间料不重复入库。原卷自动关联原物料；切片和余料可先保存草稿，提交审核前须指定对应规格物料。当前几何按不扣切缝、修边损耗计算；切片方向和每卷/块片数可明确填写。
-      </p>
-      <template #footer
-        ><el-button :disabled="busy" @click="visible = false">取消</el-button
-        ><el-button type="primary" :loading="busy" :disabled="!tree || disabled" @click="adopt"
-          >采用加工树</el-button
-        ></template
+    <div class="tree-scroll" v-loading="busy">
+      <PurchaseProcessingTreeRows
+        v-if="tree"
+        :tree="tree"
+        collapsible
+        :expand-node-id="expandNodeId"
+        :expand-revision="expandRevision"
+        :delivery-only="deliveryOnly"
+        :material-name="item.supplierMaterialName || item.materialName"
       >
-    </el-dialog>
-    <el-dialog
+        <template #actions="{ node, sourceLabel, slitSources }">
+          <el-button
+            v-if="!deliveryOnly"
+            link
+            type="primary"
+            :disabled="
+              busy || disabled || node.delivery === PurchaseProcessingDeliveryEnum.SCRAP.value
+            "
+            @click="
+              edit(node, PurchaseProcessingOperationEnum.SLIT.value, sourceLabel, slitSources)
+            "
+            >{{
+              node.operation?.type === PurchaseProcessingOperationEnum.SLIT.value
+                ? '修改分切'
+                : node.operation
+                  ? '改为分切'
+                  : '分切'
+            }}</el-button
+          >
+          <el-button
+            v-if="!deliveryOnly"
+            link
+            type="primary"
+            :disabled="
+              busy || disabled || node.delivery === PurchaseProcessingDeliveryEnum.SCRAP.value
+            "
+            @click="edit(node, PurchaseProcessingOperationEnum.CUT.value, sourceLabel)"
+            >{{
+              node.operation?.type === PurchaseProcessingOperationEnum.CUT.value
+                ? '修改切片'
+                : node.operation
+                  ? '改为切片'
+                  : '切片'
+            }}</el-button
+          >
+          <el-button
+            v-if="node.operation"
+            link
+            type="danger"
+            :disabled="busy || disabled"
+            @click="clear(node)"
+            >清除下级加工</el-button
+          >
+          <el-button v-else link :disabled="busy || disabled" @click="bind(node, sourceLabel)">{{
+            node.delivery === PurchaseProcessingDeliveryEnum.SCRAP.value
+              ? '修改报废处理'
+              : '指定交货物料'
+          }}</el-button>
+        </template>
+      </PurchaseProcessingTreeRows>
+    </div>
+    <el-alert v-if="error" :title="error" type="error" :closable="false" class="notice" />
+    <p class="hint">
+      只对最终节点交货，中间料不重复入库。原卷自动关联原物料；切片和余料可先保存草稿，提交审核前须指定对应规格物料。当前几何按不扣切缝、修边损耗计算；切片方向和每卷/块片数可明确填写。
+    </p>
+    <PurchaseProcessingOperationDialog
       v-model="operationVisible"
-      :title="operation.type === PurchaseProcessingOperationEnum.SLIT.value ? '分切' : '切片'"
-      width="650px"
-      append-to-body
-      :close-on-click-modal="false"
-      :show-close="!busy"
-      :close-on-press-escape="!busy"
-    >
-      <el-form label-width="145px" :disabled="busy">
-        <p v-if="activeLabel">所属：{{ activeLabel }}</p>
-        <p v-if="active">
-          来源：{{ active.role }} · {{ processingTreeSpec(active) }}，{{ active.quantity
-          }}{{ active.unit === 'ROLL' ? '卷' : '块' }}
-        </p>
-        <el-form-item v-if="slitSteps.length > 1" label="分切步骤">
-          <el-select
-            :model-value="active?.nodeId"
-            aria-label="选择分切步骤"
-            @change="selectSlitStep"
-          >
-            <el-option
-              v-for="(step, i) in slitSteps"
-              :key="step.nodeId"
-              :value="step.nodeId"
-              :label="`${i ? '剩余宽度' : '来源原料'} ${step.widthMm}mm → ${step.operation?.slits?.map((s) => `${s.widthMm}mm×${s.rolls}份`).join('、')}`"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="active?.unit === 'ROLL' ? '本次使用卷数' : '本次使用块数'"
-          ><el-input-number
-            v-model="operation.useQuantity"
-            :min="1"
-            :max="active?.quantity"
-            :precision="0"
-            :controls="false"
-            aria-label="本次使用数量"
-        /></el-form-item>
-        <template v-if="operation.type === PurchaseProcessingOperationEnum.SLIT.value">
-          <div v-for="(slit, i) in operation.slits" :key="i" class="slit-row">
-            <span>每卷 / 块分切</span
-            ><el-input-number
-              v-model="slit.widthMm"
-              :min="0"
-              :precision="2"
-              :controls="false"
-              aria-label="分切宽度"
-            />mm ×
-            <el-input-number
-              v-model="slit.rolls"
-              :min="1"
-              :precision="0"
-              :controls="false"
-              aria-label="每卷分切份数"
-            />份<el-button link type="danger" @click="operation.slits?.splice(i, 1)"
-              >移除</el-button
-            >
-          </div>
-          <el-button plain @click="operation.slits?.push({ widthMm: 0, rolls: 1 })"
-            >添加分切规格</el-button
-          >
-        </template>
-        <template v-else>
-          <el-form-item :label="active?.unit === 'ROLL' ? '卷宽作为' : '来源宽度作为'">
-            <el-select
-              :model-value="!!operation.rotated"
-              aria-label="卷宽作为"
-              @change="changeCutAxis"
-            >
-              <el-option :value="false" label="成品宽 W" />
-              <el-option :value="true" label="成品长 L" />
-            </el-select>
-          </el-form-item>
-          <el-form-item :label="operation.rotated ? '成品长 L(mm)' : '成品宽 W(mm)'">
-            <el-input-number
-              v-model="operation[operation.rotated ? 'pieceLengthMm' : 'pieceWidthMm']"
-              :min="0"
-              :precision="2"
-              :controls="false"
-              :aria-label="operation.rotated ? '成品长L' : '成品宽W'"
-            />
-            <span class="hint">从来源宽度带出，可修改</span>
-          </el-form-item>
-          <el-form-item :label="operation.rotated ? '成品宽 W(mm)' : '成品长 L(mm)'">
-            <el-input-number
-              v-model="operation[operation.rotated ? 'pieceWidthMm' : 'pieceLengthMm']"
-              :min="0"
-              :precision="2"
-              :controls="false"
-              :aria-label="operation.rotated ? '成品宽W' : '成品长L'"
-              placeholder="填写切片尺寸"
-            />
-          </el-form-item>
-          <p class="hint">
-            成品规格：{{ processingPieceSpec(operation) }}。
-            {{
-              operation.rotated
-                ? '成品长L沿来源宽度，按成品宽W切片。'
-                : '成品宽W沿来源宽度，按成品长L切片。'
-            }}
-          </p>
-          <el-form-item label="每卷 / 块切片数"
-            ><el-input-number
-              v-model="operation.piecesPerUnit"
-              :min="1"
-              :precision="0"
-              :controls="false"
-              placeholder="留空按可切满"
-              aria-label="每卷切片数"
-              clearable
-          /></el-form-item>
-          <p class="hint">
-            片数留空时由后台按尺寸算可切满数量；填写时按每个来源卷/块解释，剩余部分自动生成余料。
-          </p>
-          <div class="hint" aria-live="polite">
-            <p v-if="cutPreviewBusy">正在计算片数和余料…</p>
-            <el-alert
-              v-else-if="cutPreviewError"
-              :title="cutPreviewError"
-              type="error"
-              :closable="false"
-            />
-            <template v-else-if="cutPreviewPiece">
-              <p>
-                每卷 / 块切 {{ cutPreviewPiece.quantity / operation.useQuantity }} 片，本次合计
-                {{ cutPreviewPiece.quantity }} 片。
-              </p>
-              <p v-for="rest in cutPreviewRemainders" :key="rest.nodeId">
-                {{ rest.role }}：{{ processingTreeSpec(rest) }} × {{ rest.quantity
-                }}{{ rest.unit === 'ROLL' ? '卷' : '片' }}
-              </p>
-              <p v-if="!cutPreviewRemainders.length">无剩余料</p>
-            </template>
-            <p v-else>填写完整尺寸后自动计算片数和余料。</p>
-          </div>
-        </template>
-      </el-form>
-      <el-alert v-if="error" :title="error" type="error" :closable="false" />
-      <template #footer
-        ><el-button
-          v-if="active?.operation"
-          type="danger"
-          link
-          :disabled="busy"
-          @click="clearActive"
-          >清除本步及下级加工</el-button
-        ><el-button :disabled="busy" @click="operationVisible = false">取消</el-button
-        ><el-button type="primary" :loading="busy" @click="applyOperation"
-          >确定并生成余料</el-button
-        ></template
-      >
-    </el-dialog>
-    <el-dialog
+      v-model:operation="operation"
+      :active="active"
+      :active-label="activeLabel"
+      :slit-steps="slitSteps"
+      :busy="busy || !!disabled"
+      :error="error"
+      :cut-preview-busy="cutPreviewBusy"
+      :cut-preview-error="cutPreviewError"
+      :cut-preview-piece="cutPreviewPiece"
+      :cut-preview-remainders="cutPreviewRemainders"
+      @select-slit-step="selectSlitStep"
+      @change-cut-axis="changeCutAxis"
+      @clear="clearActive"
+      @apply="applyOperation"
+    />
+    <PurchaseProcessingBindingDialog
       v-model="bindingVisible"
-      title="指定终端交货物料"
-      width="600px"
-      append-to-body
-      :close-on-click-modal="false"
-      :show-close="!busy"
-    >
-      <p v-if="active">
-        {{ activeLabel || active.role }}：{{ processingTreeSpec(active) }}，{{ active.quantity
-        }}{{ active.unit === 'ROLL' ? '卷' : '片' }}
-      </p>
-      <el-select
-        v-if="!bindingScrap"
-        v-model="bindingId"
-        remote
-        filterable
-        clearable
-        :remote-method="search"
-        :loading="searching"
-        @visible-change="materialSelectOpen = $event"
-        :disabled="busy || disabled"
-        placeholder="选择对应规格物料"
-        style="width: 100%"
-        ><el-option
-          v-for="m in materialOptions"
-          :key="m.materialId"
-          :value="m.materialId"
-          :label="`${m.materialCode} · ${m.materialName} · ${m.specification || ''}`"
-        />
-        <template #empty>
-          <div class="empty-materials">
-            <el-button
-              v-if="canCreateFromSearch"
-              link
-              type="primary"
-              :disabled="busy || disabled"
-              @click="createMaterial"
-              >未找到对应规格？新建此规格档案</el-button
-            >
-            <span v-else>{{ searching ? '正在搜索…' : '暂无匹配物料' }}</span>
-          </div>
-        </template>
-      </el-select>
-      <el-button
-        v-if="canCreateFromSearch && !materialSelectOpen"
-        link
-        type="primary"
-        :disabled="busy || disabled"
-        @click="createMaterial"
-      >
-        未找到对应规格？新建此规格档案
-      </el-button>
-      <p v-if="!bindingScrap" class="hint">
-        仅搜索与当前终端规格匹配的启用物料；没有对应档案时可在搜索后新建。
-      </p>
-      <el-checkbox v-model="bindingScrap" :disabled="busy || disabled" @change="changeDelivery"
-        >报废不入库</el-checkbox
-      >
-      <el-input
-        v-if="bindingScrap"
-        v-model="disposalReason"
-        type="textarea"
-        :disabled="busy || disabled"
-        maxlength="200"
-        show-word-limit
-        placeholder="填写报废原因；实际报废数量在收货时确认，不生成该节点的库存"
-        aria-label="报废原因"
-      />
-      <el-alert v-if="error" :title="error" type="error" :closable="false" class="notice" />
-      <template #footer
-        ><el-button :disabled="busy" @click="bindingVisible = false">取消</el-button
-        ><el-button
-          type="primary"
-          :disabled="disabled || (bindingScrap ? !disposalReason.trim() : !bindingId)"
-          :loading="busy"
-          @click="applyBinding"
-          >{{ bindingScrap ? '确定报废处理' : '确定物料' }}</el-button
-        ></template
-      >
-    </el-dialog>
+      v-model:binding-id="bindingId"
+      v-model:binding-scrap="bindingScrap"
+      v-model:disposal-reason="disposalReason"
+      v-model:material-select-open="materialSelectOpen"
+      :active="active"
+      :active-label="activeLabel"
+      :busy="busy"
+      :disabled="disabled"
+      :searching="searching"
+      :material-options="materialOptions"
+      :can-create-from-search="canCreateFromSearch"
+      :error="error"
+      @search="search"
+      @create-material="createMaterial"
+      @change-delivery="changeDelivery"
+      @apply="applyBinding"
+    />
     <MaterialFormDialog
       v-if="materialFormVisible"
       v-model="materialFormVisible"
@@ -363,7 +143,8 @@ import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import { Permissions } from '@/enums/permissions'
 import PurchaseProcessingTreeRows from './PurchaseProcessingTreeRows.vue'
-import { processingTreeSpec, processingPieceSpec } from './processingTreeDisplay'
+import PurchaseProcessingOperationDialog from './PurchaseProcessingOperationDialog.vue'
+import PurchaseProcessingBindingDialog from './PurchaseProcessingBindingDialog.vue'
 const props = defineProps<{
   modelValue?: string | null
   item: PurchaseEntryItem
@@ -375,6 +156,8 @@ const emit = defineEmits<{
   (e: 'cancel'): void
 }>()
 const deliveryOnly = ref(false)
+const expandNodeId = ref('')
+const expandRevision = ref(0)
 const normalizedPlan = ref('')
 const activeLabel = ref('')
 const slitSteps = ref<ProcessingTreeNode[]>([])
@@ -397,7 +180,7 @@ const canCreateFromSearch = computed(
     hasPermission(Permissions.INVENTORY_MATERIAL_ADD)
 )
 const savedTree = computed(() => readProcessingPlan(props.modelValue)?.tree)
-const visible = ref(false),
+const visible = ref(true),
   busy = ref(false),
   error = ref(''),
   tree = ref<ProcessingTreeNode>(),
@@ -492,8 +275,7 @@ watch(
 )
 let version = 0,
   disposed = false,
-  searchVersion = 0,
-  adopted = false
+  searchVersion = 0
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v))
 function invalidate() {
   ++version
@@ -502,8 +284,7 @@ function invalidate() {
   bindingVisible.value = false
   materialFormVisible.value = false
   ++searchVersion
-  if (!adopted) emit('cancel')
-  adopted = false
+  resetCutPreview()
 }
 function find(n: ProcessingTreeNode, id: string): ProcessingTreeNode | undefined {
   if (n.nodeId === id) return n
@@ -537,7 +318,6 @@ async function recalculate(candidate: ProcessingTreeNode) {
 async function open() {
   if (props.disabled || busy.value) return
   visible.value = true
-  adopted = false
   tree.value = undefined
   error.value = ''
   if (props.item.purchaseUnit !== 'ROLL') {
@@ -565,6 +345,7 @@ function edit(
   sourceLabel = '',
   sources: ProcessingTreeNode[] = []
 ) {
+  if (props.disabled || busy.value) return
   active.value = n
   activeLabel.value = sourceLabel
   slitSteps.value = type === PurchaseProcessingOperationEnum.SLIT.value ? sources : []
@@ -598,13 +379,19 @@ function selectSlitStep(id: string) {
     edit(node, PurchaseProcessingOperationEnum.SLIT.value, activeLabel.value, slitSteps.value)
 }
 async function applyOperation() {
-  if (!tree.value || !active.value || busy.value) return
+  if (!tree.value || !active.value || busy.value || props.disabled) return
   const candidate = clone(tree.value),
     node = find(candidate, active.value.nodeId)!
   node.operation = clone(operation.value)
-  if (await recalculate(candidate)) operationVisible.value = false
+  if (await recalculate(candidate)) {
+    expandNodeId.value = active.value.nodeId
+    ++expandRevision.value
+    publishDraft()
+    operationVisible.value = false
+  }
 }
 async function clear(n: ProcessingTreeNode) {
+  if (props.disabled || busy.value) return false
   try {
     await ElMessageBox.confirm('清除该节点及下级加工，恢复为该规格交货？', '清除下级加工')
     if (!tree.value) return
@@ -612,7 +399,9 @@ async function clear(n: ProcessingTreeNode) {
       node = find(candidate, n.nodeId)!
     node.operation = null
     node.children = []
-    return await recalculate(candidate)
+    if (!(await recalculate(candidate))) return false
+    publishDraft()
+    return true
   } catch {
     /* 取消保留加工树。 */
     return false
@@ -622,6 +411,7 @@ async function clearActive() {
   if (active.value && (await clear(active.value))) operationVisible.value = false
 }
 function bind(n: ProcessingTreeNode, sourceLabel = '') {
+  if (props.disabled || busy.value) return
   active.value = n
   activeLabel.value = sourceLabel
   bindingId.value = n.materialId || undefined
@@ -733,26 +523,29 @@ async function applyBinding() {
       bindingScrap.value
         ? find(tree.value!, id)?.delivery === PurchaseProcessingDeliveryEnum.SCRAP.value
         : find(tree.value!, id)?.materialId === bindingId.value
-    )
+    ) {
+      publishDraft()
       bindingVisible.value = false
-    else error.value = '所选物料与终端规格不匹配，请重新选择'
+    } else error.value = '所选物料与终端规格不匹配，请重新选择'
   }
 }
-async function adopt() {
-  if (!tree.value || busy.value) return
-  if (!tree.value.operation) {
-    error.value = '请至少添加一处分切或切片要求'
-    return
-  }
-  if (!(await recalculate(clone(tree.value)))) return
-  emit('update:modelValue', normalizedPlan.value)
+function publishDraft() {
+  emit('update:modelValue', tree.value?.operation ? normalizedPlan.value : null)
   emit('change')
-  adopted = true
-  visible.value = false
+}
+function cancelAdding() {
+  invalidate()
+  tree.value = undefined
+  error.value = ''
+  emit('cancel')
 }
 async function remove() {
+  if (props.disabled || busy.value) return
   try {
     await ElMessageBox.confirm('移除本采购行的加工树？保存订单后生效。', '移除加工要求')
+    invalidate()
+    tree.value = undefined
+    normalizedPlan.value = ''
     emit('update:modelValue', null)
     emit('change')
   } catch {
@@ -760,18 +553,27 @@ async function remove() {
   }
 }
 watch(
+  () => props.modelValue,
+  (value) => {
+    if (value === normalizedPlan.value) return
+    invalidate()
+    visible.value = true
+    tree.value = savedTree.value ? clone(savedTree.value) : undefined
+    normalizedPlan.value = value || ''
+  },
+  { immediate: true }
+)
+watch(
   () => [
     props.item.materialId,
+    props.item.purchaseUnit,
     props.item.purchaseQuantity,
     props.item.rollWidthMm,
     props.item.rollLengthM,
   ],
-  () => {
-    if (visible.value) {
-      ++version
-      busy.value = false
-      error.value = '来源采购数量或尺寸已变化，请关闭后重新打开加工树'
-    }
+  async () => {
+    invalidate()
+    if (tree.value && !props.disabled && (await recalculate(clone(tree.value)))) publishDraft()
   }
 )
 onBeforeUnmount(() => {

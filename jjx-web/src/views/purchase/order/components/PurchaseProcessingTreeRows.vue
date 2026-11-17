@@ -21,6 +21,16 @@
         <td v-if="materialName">{{ materialName }}</td>
         <td :style="{ paddingLeft: `${8 + (deliveryOnly ? 0 : row.depth * 22)}px` }">
           <small v-if="deliveryOnly">{{ row.path }}</small>
+          <button
+            v-else-if="collapsible && row.children.length"
+            type="button"
+            class="branch-toggle"
+            :aria-expanded="!collapsed.has(row.key)"
+            :aria-label="`${collapsed.has(row.key) ? '展开' : '折叠'} ${row.number} ${row.role}`"
+            @click="toggle(row.key)"
+          >
+            {{ collapsed.has(row.key) ? '▸' : '▾' }}
+          </button>
           <span v-else class="branch">{{ row.depth ? '└ ' : '' }}</span
           ><strong>{{ row.role }}</strong
           ><span v-if="row.node.operation && !row.sourceOnly">
@@ -65,7 +75,7 @@
   </table>
 </template>
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   PurchaseProcessingOperationEnum,
   PurchaseProcessingDeliveryEnum,
@@ -79,10 +89,37 @@ import {
 const props = defineProps<{
   tree: ProcessingTreeNode
   materialName?: string
+  collapsible?: boolean
+  expandNodeId?: string
+  expandRevision?: number
   deliveryOnly?: boolean
 }>()
+const collapsed = ref(new Set<string>())
+const allRows = computed(() => processingTreeDisplayRows(props.tree))
+function toggle(key: string) {
+  if (collapsed.value.has(key)) collapsed.value.delete(key)
+  else collapsed.value.add(key)
+}
+watch(
+  () => props.expandRevision,
+  () => {
+    const targets = allRows.value.filter((row) => row.node.nodeId === props.expandNodeId)
+    for (const row of allRows.value) {
+      if (
+        targets.some(
+          (target) =>
+            target.number === row.number ||
+            target.number.startsWith(`${row.number}.`) ||
+            row.number.startsWith(`${target.number}.`)
+        )
+      )
+        collapsed.value.delete(row.key)
+    }
+  },
+  { flush: 'post' }
+)
 const rows = computed(() => {
-  const all = processingTreeDisplayRows(props.tree)
+  const all = allRows.value
   return props.deliveryOnly
     ? all.filter(
         (row) =>
@@ -90,10 +127,27 @@ const rows = computed(() => {
           !row.node.operation &&
           row.node.delivery !== PurchaseProcessingDeliveryEnum.SCRAP.value
       )
-    : all
+    : props.collapsible
+      ? all.filter(
+          (row) =>
+            !all.some(
+              (parent) =>
+                collapsed.value.has(parent.key) && row.number.startsWith(`${parent.number}.`)
+            )
+        )
+      : all
 })
 </script>
 <style scoped>
+.branch-toggle {
+  border: 0;
+  background: none;
+  padding: 0 6px 0 0;
+  cursor: pointer;
+  color: #606266;
+  font-size: 15px;
+}
+
 .processing-tree-table {
   width: 100%;
   border-collapse: collapse;
