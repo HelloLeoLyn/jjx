@@ -99,7 +99,11 @@
         show-summary
         :summary-method="summaryMethod"
       >
-        <el-table-column prop="paymentNo" label="付款单号" min-width="150" />
+        <el-table-column prop="paymentNo" label="付款单号" min-width="150">
+          <template #default="{ row }">
+            <el-link type="primary" @click="detail(row)">{{ row.paymentNo }}</el-link>
+          </template>
+        </el-table-column>
         <el-table-column prop="orderNo" label="采购订单号" min-width="160">
           <template #default="{ row }">
             <el-link
@@ -334,7 +338,7 @@
       >
     </el-dialog>
 
-    <el-drawer v-model="detailVisible" title="付款详情" size="560px">
+    <el-dialog v-model="detailVisible" title="付款详情" width="1200px" append-to-body>
       <el-descriptions v-if="current" :column="2" border>
         <el-descriptions-item label="付款单号">{{ current.paymentNo }}</el-descriptions-item>
         <el-descriptions-item label="供应商">{{
@@ -390,7 +394,10 @@
           current.remark || '-'
         }}</el-descriptions-item>
       </el-descriptions>
-    </el-drawer>
+      <template #footer>
+        <el-button @click="detailVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -549,7 +556,6 @@ function summaryMethod({ columns }: { columns: any[] }) {
 }
 
 const paymentActions: TableAction<any>[] = [
-  { key: 'detail', label: '详情', order: 10 },
   {
     key: 'approve',
     label: '审批',
@@ -587,7 +593,6 @@ const paymentActions: TableAction<any>[] = [
 
 function handlePaymentAction(key: string, row: any) {
   const handlers: Record<string, () => void> = {
-    detail: () => void detail(row),
     approve: () => openApprove(row),
     confirm: () => openConfirm(row),
     edit: () => void openEdit(row),
