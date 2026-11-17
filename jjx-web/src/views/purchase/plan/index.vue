@@ -168,11 +168,10 @@
       />
     </el-card>
     <MaterialDetailDialog v-model="showMaterialDetail" :material-id="detailMaterialId" />
-    <el-drawer
+    <el-dialog
       v-model="showAddMaterial"
       :title="editingKey ? '采购方案' : '添加物料与采购方案'"
-      size="min(760px, 100vw)"
-      direction="rtl"
+      width="1200px"
       append-to-body
       :close-on-click-modal="false"
       @closed="invalidateDraft"
@@ -441,7 +440,7 @@
           }}</el-button
         ></template
       >
-    </el-drawer>
+    </el-dialog>
     <el-dialog v-model="showConfirmDialog" title="确认采购分组" width="760px" append-to-body>
       <p class="plan-hint">
         按供应商分组下单：一个供应商生成一张采购订单；未安排或待技术确认的行需先处理采购方案。
