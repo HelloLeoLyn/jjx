@@ -1,3 +1,4 @@
+import type { MeasurementPolicy } from '@/types/inventory/measurement'
 import type {
   AttributeValue,
   DictionaryOption,
@@ -43,6 +44,7 @@ export function emptyMasterForm(): MaterialMasterForm {
     brand: '',
     size: '',
     unit: '',
+    measurementPolicy: null,
     grammage: null,
     thicknessTolerance: null,
     attributeJson: {},
@@ -86,7 +88,10 @@ export function changeMasterCategory(
     config.schema.default_meta ||
     (config.schema.meta_options.length === 1 ? config.schema.meta_options[0] : '')
   form.materialForm = config.schema.default_form || ''
-  form.unit = config.schema.default_unit || ''
+  if (!form.materialId) {
+    form.unit = config.schema.default_unit || ''
+    form.measurementPolicy = config.schema.measurement_defaults ? { ...config.schema.measurement_defaults } : null
+  }
   form.attributeJson = attributeDefaults(config.schema)
 }
 
@@ -110,6 +115,7 @@ export function applyCopySource(
   form.color = m.color || ''
   form.brand = m.brand || ''
   form.unit = m.unit || ''
+  form.measurementPolicy = readMeasurementPolicy(m.measurementPolicyJson)
   form.searchKeywords = m.searchKeywords || ''
   form.remark = m.remark || ''
   form.supplierId = m.supplierId ?? null
@@ -237,4 +243,12 @@ export function downloadMaterialBlob(blob: Blob, name: string): void {
   anchor.download = name
   anchor.click()
   URL.revokeObjectURL(url)
+}
+
+/** 只读取已存策略，禁止根据规格/形态猜测实物单位。 */
+export function readMeasurementPolicy(json?: string | null): MeasurementPolicy | null {
+  if (!json?.trim()) return null
+  const policy = JSON.parse(json) as MeasurementPolicy | null
+  if (!policy?.physicalUnit || !policy.priceUnit || !policy.mode) throw new Error('计量策略格式无效，请检查档案配置')
+  return { ...policy }
 }

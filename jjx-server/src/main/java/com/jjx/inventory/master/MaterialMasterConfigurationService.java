@@ -78,7 +78,7 @@ public class MaterialMasterConfigurationService {
         MaterialAttributeSchema fields = dto.attributeSchema();
         MaterialAttributeSchema merged = new MaterialAttributeSchema(fields.version(), fields.metaOptions(), fields.metaRequired(),
                 fields.defaultMeta(), fields.defaultForm(), fields.defaultUnit(), fields.fields(),
-                current == null ? null : current.namePattern(), current == null ? null : current.specPattern(), current == null ? null : current.modelPattern());
+                current == null ? null : current.namePattern(), current == null ? null : current.specPattern(), current == null ? null : current.modelPattern(), fields.measurementDefaults() != null ? fields.measurementDefaults() : current == null ? null : current.measurementDefaults());
         InventoryAttributeTemplate saved = saveTemplate(new TemplateSave(dto.templateCode(), dto.templateName(), dto.categoryId(), merged, dto.status()), operator);
         return new TemplateDetail(saved, merged);
     }
@@ -151,10 +151,22 @@ public class MaterialMasterConfigurationService {
         for (String meta : dto.attributeSchema().metaOptions()) catalog.dictionaryLabel("material_meta", meta, true);
         catalog.dictionaryLabel("form", dto.attributeSchema().defaultForm(), false);
         catalog.dictionaryLabel("unit", dto.attributeSchema().defaultUnit(), true);
+        if (dto.attributeSchema().measurementDefaults() != null) {
+            var measurement = dto.attributeSchema().measurementDefaults().normalized();
+            catalog.dictionaryLabel("unit", measurement.physicalUnit(), true);
+            catalog.dictionaryLabel("unit", measurement.priceUnit(), true);
+        }
         InventoryAttributeTemplate existing = locks.lockTemplate(dto.categoryId());
         String schema;
-        try { schema = objectMapper.writeValueAsString(dto.attributeSchema()); }
-        catch (Exception e) { throw new BusinessException("模板序列化失败"); }
+        try {
+            ObjectNode document = objectMapper.valueToTree(dto.attributeSchema());
+            // 兼容尚未携带新字段的旧客户端，不能因保存其它模板内容清掉计量默认值。
+            if (existing != null && dto.attributeSchema().measurementDefaults() == null) {
+                var previous = MaterialAttributeSchema.parse(existing.getAttributeSchema(), objectMapper).measurementDefaults();
+                if (previous != null) document.set("measurement_defaults", objectMapper.valueToTree(previous));
+            }
+            schema = objectMapper.writeValueAsString(document);
+        } catch (Exception e) { throw new BusinessException("模板序列化失败：" + e.getMessage()); }
         if (existing != null && materialCount(dto.categoryId()) > 0) {
             try {
                 if (StatusEnum.DISABLE.getCode().equals(dto.status())) fail("已有物料引用模板，不能直接停用");

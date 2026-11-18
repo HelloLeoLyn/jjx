@@ -280,7 +280,7 @@ public class MaterialMasterService {
             draftMaterial.setBrand(draft.getBrand());
             draftMaterial.setMaterialMeta(categoryDefinesMaterial(schema) ? schema.defaultMeta() : draft.getMaterialMeta());
             draftMaterial.setMaterialForm(draft.getMaterialForm());
-            draftMaterial.setUnit(draft.getUnit());
+            draftMaterial.setUnit(previewLedgerUnit(draft, schema));
             draftMaterial.setSupplierName(draft.getSupplierName());
             draftMaterial.setSupplierMaterialName(draft.getSupplierMaterialName());
             draftMaterial.setRemark(draft.getRemark());
@@ -328,7 +328,7 @@ public class MaterialMasterService {
             material.setBrand(draft.getBrand());
             material.setModel(draft.getModel());
             material.setColor(draft.getColor());
-            material.setUnit(fallback(draft.getUnit(), schema.defaultUnit()));
+            material.setUnit(previewLedgerUnit(draft, schema));
             material.setWidthMm(draft.getWidthMm());
             material.setLengthMm(draft.getLengthMm());
             material.setThicknessMm(draft.getThicknessMm());
@@ -493,6 +493,36 @@ public class MaterialMasterService {
         return categoryDefinesMaterial(schema) ? schema.defaultMeta() : fallback(input, schema.defaultMeta());
     }
 
+    private static com.jjx.inventory.measurement.MeasurementPolicy measurementPolicy(
+            MaterialMasterDTO dto, MaterialAttributeSchema schema, InventoryMaterial old) {
+        var policy = dto.isMeasurementPolicySupplied() ? dto.getMeasurementPolicy()
+                : old == null ? schema.measurementDefaults()
+                : com.jjx.inventory.measurement.MeasurementPolicy.parse(old.getMeasurementPolicyJson());
+        return policy == null ? null : policy.normalized();
+    }
+
+    /** 新档案的记账单位选择供新版和兼容保存入口共用。 */
+    public static String newLedgerUnit(com.jjx.inventory.measurement.MeasurementPolicy policy) {
+        return com.jjx.common.util.UnitCodes.ROLL.equals(policy.physicalUnit()) ? policy.priceUnit() : policy.physicalUnit();
+    }
+
+    private static String ledgerUnit(MaterialMasterDTO dto, MaterialAttributeSchema schema, InventoryMaterial old,
+                                     com.jjx.inventory.measurement.MeasurementPolicy policy) {
+        // 历史账本单位始终保留；新卷材按计价量记账，退余卷时按实际面积/净重及其成本处理。
+        String unit = old != null ? old.getUnit() : policy != null
+                ? newLedgerUnit(policy)
+                : fallback(dto.getUnit(), schema.defaultUnit());
+        if (old != null && dto.getUnit() != null && !dto.getUnit().isBlank() && !dto.getUnit().equals(old.getUnit()))
+            throw new BusinessException("已有档案库存记账单位不能随计量策略变更");
+        if (policy != null) policy.validateLedgerUnit(unit);
+        return unit;
+    }
+
+    private String previewLedgerUnit(MaterialMasterDTO dto, MaterialAttributeSchema schema) {
+        InventoryMaterial old = dto.getMaterialId() == null ? null : materialMapper.selectById(dto.getMaterialId());
+        return ledgerUnit(dto, schema, old, measurementPolicy(dto, schema, old));
+    }
+
     /** 同时供保存和导入预检使用，不写库、不生成业务编号。 */
     public Prepared prepare(MaterialMasterDTO dto) {
         if (dto == null) throw new BusinessException("物料不能为空");
@@ -507,7 +537,8 @@ public class MaterialMasterService {
         if (config != null && meta != null && !schema.metaOptions().contains(meta)) throw new BusinessException("材质不在该品类允许范围");
         if (meta == null && schema.metaRequired()) throw new BusinessException("请选择材质");
         String form = old == null ? fallback(dto.getMaterialForm(), schema.defaultForm()) : dto.getMaterialForm();
-        String unit = old == null ? fallback(dto.getUnit(), schema.defaultUnit()) : fallback(dto.getUnit(), old.getUnit());
+        var policy = measurementPolicy(dto, schema, old);
+        String unit = ledgerUnit(dto, schema, old, policy);
         var dictionaries = catalog.dictionaries();
         String metaLabel = dictionaryLabel(dictionaries, "material_meta", meta, false);
         String formLabel = dictionaryLabel(dictionaries, "form", form, false);
@@ -534,6 +565,7 @@ public class MaterialMasterService {
         material.setMaterialForm(form);
         material.setMaterialGrade(text(metaLabel + formLabel, "材料显示名", 30, false));
         material.setUnit(com.jjx.common.util.UnitCodes.requireDictUnit(unit, "物料单位"));
+        material.setMeasurementPolicyJson(policy == null ? null : policy.toJson());
         material.setModel(text(dto.getModel(), "型号", 100, false));
         material.setBrand(text(dto.getBrand(), "品牌", 50, false));
         material.setColor(text(dto.getColor(), "颜色", 20, false));
@@ -663,6 +695,7 @@ public class MaterialMasterService {
             columns.put("thickness_mm", material.getThicknessMm());
             columns.put("grammage", material.getGrammage()); columns.put("thickness_tolerance", material.getThicknessTolerance());
             columns.put("spec_basis", material.getSpecBasis()); columns.put("unit", material.getUnit());
+            columns.put("measurement_policy_json", material.getMeasurementPolicyJson());
             columns.put("template_id", material.getTemplateId());
             columns.put("attribute_json", material.getAttributeJson()); columns.put("specification", material.getSpecification());
             columns.put("search_keywords", material.getSearchKeywords());

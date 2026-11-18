@@ -112,7 +112,7 @@
                   :value="o.code"
                 /> </el-select
             ></el-form-item>
-            <el-form-item label="默认单位" required
+            <el-form-item v-if="!schema.measurement_defaults" label="默认库存单位" required
               ><el-select v-model="schema.default_unit">
                 <el-option
                   v-for="o in dictionaries.unit"
@@ -121,6 +121,8 @@
                   :value="o.code"
                 /> </el-select
             ></el-form-item>
+            <el-alert title="双单位默认值仅在新增物料时带入，不修改已有档案。" type="info" :closable="false" style="margin-bottom: 12px" />
+            <MaterialMeasurementPolicyEditor v-model="schema.measurement_defaults" :units="dictionaries.unit || []" :default-unit="schema.default_unit || undefined" />
             <el-table :data="schema.fields" border>
               <el-table-column label="属性编码" width="150"
                 ><template #default="{ row }"><el-input v-model="row.key" /></template
@@ -579,6 +581,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+import MaterialMeasurementPolicyEditor from './MaterialMeasurementPolicyEditor.vue'
 import { CommonStatusEnum } from '@/enums/common/StatusEnum'
 import { MaterialAttributeTypeEnum } from '@/enums/inventory/MaterialAttributeEnum'
 import { materialMasterApi } from '@/api/inventory/materialMaster'

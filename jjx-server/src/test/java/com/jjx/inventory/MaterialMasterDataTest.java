@@ -94,6 +94,16 @@ class MaterialMasterDataTest {
         assertEquals(m.getBrand(), vo.getBrand()); assertEquals(m.getSearchKeywords(), vo.getSearchKeywords());
     }
 
+    @Test void legacySaveWithExplicitRollWeightPolicyUsesSameNewLedgerRule() {
+        when(mapper.selectCategory(2L)).thenReturn(category());
+        when(mapper.insert(any(InventoryMaterial.class))).thenReturn(1);
+        var material = material(); material.setUnit("ROLL");
+        material.setMeasurementPolicyJson(new com.jjx.inventory.measurement.MeasurementPolicy("ROLL", "KG",
+                com.jjx.inventory.measurement.MeasurementPolicy.Mode.MEASURED_WEIGHT, null).toJson());
+        assertTrue(service.create(material, List.of(), "codex"));
+        assertEquals("KG", material.getUnit());
+    }
+
     @Test void attributeSaveDerivesColumnsAndConverterReturnsThem() {
         when(mapper.selectCategory(2L)).thenReturn(category());
         when(mapper.selectTemplateId(2L)).thenReturn(71L);
@@ -278,6 +288,10 @@ class MaterialMasterDataTest {
         try (var wb = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
             var sheet = wb.createSheet(); var head = sheet.createRow(0); var row = sheet.createRow(1);
             for (int i = 0; i < headers.length; i++) { head.createCell(i).setCellValue(headers[i]); row.createCell(i).setCellValue(values[i]); }
+            // dev-20261113-003 起单位是必填真源；本组仅比较命名/属性的旧新表头，夹具须明确单位。
+            if (Arrays.stream(headers).noneMatch("单位"::equals)) {
+                head.createCell(headers.length).setCellValue("单位"); row.createCell(headers.length).setCellValue("PCS");
+            }
             wb.write(out);
             return ExcelUtils.importExcel(new MockMultipartFile("file", "test.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", out.toByteArray()), MaterialImportDTO.class);
         }

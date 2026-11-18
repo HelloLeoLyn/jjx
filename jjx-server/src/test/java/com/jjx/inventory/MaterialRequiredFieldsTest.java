@@ -144,7 +144,7 @@ class MaterialRequiredFieldsTest {
         assertDoesNotThrow(() -> service.prepare(dto));
         service.saveRequiredFields(23L, fields(false, true));
         assertEquals("品牌不能为空（保护膜 必填）", assertThrows(BusinessException.class, () -> service.prepare(dto)).getMessage());
-        var old = new InventoryMaterial(); old.setMaterialId(100L); old.setCategoryId(23L);
+        var old = new InventoryMaterial(); old.setMaterialId(100L); old.setCategoryId(23L); old.setUnit("PCS");
         doReturn(old).when(materials).selectById(100L);
         dto.setMaterialId(100L);
         assertDoesNotThrow(() -> service.prepare(dto));
@@ -185,10 +185,10 @@ class MaterialRequiredFieldsTest {
         long id = 100;
         for (String code : codes) jdbc.update("INSERT INTO inventory_material_category(category_id,category_code) VALUES (?,?)", id++, code);
         service.saveRequiredFields(23L, fields(false, true));
-        String sql = Files.readString(Path.of("../jjx-docs/sql/migrations/347_material_required_fields_unify.sql"));
-        jdbc.execute(sql);
+        String sql = Files.readString(Path.of("../jjx-docs/sql/migrations/applied/347_material_required_fields_unify.sql"));
+        executeMigration347ForH2(sql);
         var first = jdbc.queryForList("SELECT category_code,field_key,required FROM inventory_material_required_field ORDER BY category_code,field_key");
-        jdbc.execute(sql);
+        executeMigration347ForH2(sql);
         assertEquals(first, jdbc.queryForList("SELECT category_code,field_key,required FROM inventory_material_required_field ORDER BY category_code,field_key"));
         assertEquals((codes.size() + 1) * 5, first.size());
         for (var row : first) {
@@ -198,5 +198,16 @@ class MaterialRequiredFieldsTest {
             boolean required = switch (key) { case "model" -> model; case "brand" -> brand; default -> true; };
             assertEquals(required ? 1 : 0, ((Number) row.get("REQUIRED")).intValue(), code + "/" + key);
         }
+    }
+
+    /** H2不支持MySQL UPDATE JOIN；仅改写连接语法，CASE规则仍逐字取迁移原文。 */
+    private void executeMigration347ForH2(String sql) {
+        var update = java.util.regex.Pattern.compile(
+                "(?s)UPDATE\\s+inventory_material_required_field r\\s+JOIN inventory_material_category c ON c.category_code = r.category_code\\s+SET r.required = (.*?);").matcher(sql);
+        assertTrue(update.find(), "迁移347 UPDATE JOIN结构变化，请重新核对H2适配");
+        String expression = update.group(1).replace("c.category_code", "r.category_code");
+        jdbc.execute("UPDATE inventory_material_required_field r SET required = " + expression
+                + " WHERE EXISTS (SELECT 1 FROM inventory_material_category c WHERE c.category_code = r.category_code)");
+        jdbc.execute(sql.substring(update.end()));
     }
 }

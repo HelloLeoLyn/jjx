@@ -33,7 +33,9 @@
         <el-descriptions-item label="规格" :span="2">{{
           text(material.specification)
         }}</el-descriptions-item>
-        <el-descriptions-item label="单位">{{ text(material.unit) }}</el-descriptions-item>
+        <el-descriptions-item label="实物单位">{{ measurementPolicy?.physicalUnit || '未配置' }}</el-descriptions-item>
+        <el-descriptions-item label="采购（计价）单位">{{ measurementPolicy?.priceUnit || '未配置' }}</el-descriptions-item>
+        <el-descriptions-item label="换算方式" :span="2">{{ measurementPolicy ? MeasurementModeEnum.getLabel(measurementPolicy.mode) : '未配置（现有库存单位：' + text(material.unit) + '）' }}</el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag :type="statusTag.type" size="small">{{ statusTag.label }}</el-tag>
         </el-descriptions-item>
@@ -71,21 +73,21 @@
 
       <el-descriptions title="库存" :column="3" border size="small" class="detail-block">
         <el-descriptions-item label="当前库存">{{
-          num(material.currentStock)
+          stockQuantity(material.currentStock)
         }}</el-descriptions-item>
         <el-descriptions-item label="可用库存">{{
-          num(material.availableStock)
+          stockQuantity(material.availableStock)
         }}</el-descriptions-item>
         <el-descriptions-item label="预留库存">{{
-          num(material.reservedStock)
+          stockQuantity(material.reservedStock)
         }}</el-descriptions-item>
         <el-descriptions-item label="在途库存">{{
-          num(material.inTransitStock)
+          stockQuantity(material.inTransitStock)
         }}</el-descriptions-item>
-        <el-descriptions-item label="安全库存">{{ num(material.safeStock) }}</el-descriptions-item>
-        <el-descriptions-item label="最高库存">{{ num(material.maxStock) }}</el-descriptions-item>
+        <el-descriptions-item label="安全库存">{{ stockQuantity(material.safeStock) }}</el-descriptions-item>
+        <el-descriptions-item label="最高库存">{{ stockQuantity(material.maxStock) }}</el-descriptions-item>
         <el-descriptions-item label="再订货点">{{
-          num(material.reorderPoint)
+          stockQuantity(material.reorderPoint)
         }}</el-descriptions-item>
       </el-descriptions>
 
@@ -144,7 +146,8 @@ import type {
   MaterialDictionaries,
 } from '@/types/inventory/materialMaster'
 import { materialMasterApi } from '@/api/inventory/materialMaster'
-import { previewMasterSpecification } from './materialMasterModel'
+import { previewMasterSpecification, readMeasurementPolicy } from './materialMasterModel'
+import { MeasurementModeEnum } from '@/enums/inventory/MeasurementEnum'
 import { parseMaterialSize, renderMaterialDimensions } from './materialSize'
 
 interface Props {
@@ -168,6 +171,8 @@ const loading = ref(false)
 const material = ref<MaterialMasterRecord | null>(null)
 const masterDetail = ref<MaterialMasterDetail | null>(null)
 const dictionaries = ref<MaterialDictionaries>({})
+const stockQuantity = (value?: number | null) => `${num(value)} ${material.value?.unit || ''}`.trim()
+const measurementPolicy = computed(() => readMeasurementPolicy(material.value?.measurementPolicyJson))
 let detailRequest = 0
 const dictionaryText = (dict: string, value?: string | null) =>
   dictionaries.value[dict]?.find((o) => o.code === value)?.label || text(value)

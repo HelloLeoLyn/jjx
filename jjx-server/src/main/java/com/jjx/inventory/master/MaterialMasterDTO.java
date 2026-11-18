@@ -36,6 +36,14 @@ public class MaterialMasterDTO {
     private String brand;
     private String unit;
     private com.jjx.inventory.measurement.MeasurementPolicy measurementPolicy;
+    /** Distinguish omitted legacy input from an explicit unconfigured policy when copying. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private boolean measurementPolicySupplied;
+    @com.fasterxml.jackson.annotation.JsonSetter("measurementPolicy")
+    public void setMeasurementPolicy(com.jjx.inventory.measurement.MeasurementPolicy policy) {
+        this.measurementPolicy = policy;
+        this.measurementPolicySupplied = true;
+    }
     private Map<String, Object> attributeJson;
     private Boolean isCustomerSupplied;
     private Boolean isSample;

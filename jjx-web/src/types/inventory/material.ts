@@ -42,6 +42,7 @@ export interface InventoryMaterial {
   specBasis?: string | null
   /** 规格补充（属性生成的规格文本之外，≤30 字） */
   unit: string
+  measurementPolicyJson?: string | null
   /** 库存视图字段（MaterialVO 返回，只读展示） */
   currentStock?: number
   availableStock?: number

@@ -128,8 +128,8 @@
                     :label="o.label"
                 /></el-select> </el-form-item
             ></el-col>
-            <el-col :span="12"
-              ><el-form-item label="基本单位" required>
+            <el-col v-if="!form.measurementPolicy" :span="12"
+              ><el-form-item label="现有库存单位" required>
                 <el-select v-model="form.unit" filterable style="width: 100%"
                   ><el-option
                     v-for="o in dictionaries.unit"
@@ -139,6 +139,17 @@
                 /></el-select> </el-form-item
             ></el-col>
           </el-row>
+          <MaterialMeasurementPolicyEditor v-model="form.measurementPolicy" :units="dictionaries.unit || []" :default-unit="form.unit" />
+          <el-form-item v-if="form.measurementPolicy" label="换算试算">
+            <el-input-number v-model="measurementQuantity" :min="0" :precision="4" style="width: 135px" />
+            <span style="margin: 0 8px">{{ form.measurementPolicy.physicalUnit }}</span>
+            <template v-if="form.measurementPolicy.mode === MeasurementModeEnum.MEASURED_WEIGHT.value">
+              <el-input-number v-model="measurementWeight" :min="0" :precision="4" style="width: 135px" /> KG净重
+            </template>
+            <el-button :loading="measurementLoading" style="margin-left: 8px" @click="previewMeasurement">试算</el-button>
+            <div v-if="measurementPreview" style="width: 100%">{{ measurementPreview.physicalQuantity }} {{ measurementPreview.physicalUnit }} = {{ measurementPreview.priceQuantity }} {{ measurementPreview.priceUnit }}；{{ measurementPreview.formula }}</div>
+            <div v-if="measurementError" style="width: 100%; color: var(--el-color-danger)">{{ measurementError }}</div>
+          </el-form-item>
           <el-form-item label="尺寸">
             <MaterialSizeEditor
               v-model="dimensions"
@@ -190,7 +201,7 @@
             <el-collapse-item title="库存、采购与保质期参数" name="parameters">
               <el-row :gutter="16">
                 <el-col v-for="field in numericFields" :key="field.key" :span="12">
-                  <el-form-item :label="field.label"
+                  <el-form-item :label="field.key === 'standardPrice' && form.measurementPolicy ? `${field.label}/${form.measurementPolicy.priceUnit}` : field.label"
                     ><el-input-number
                       v-model="form[field.key]"
                       :min="0"
@@ -361,6 +372,10 @@ import type {
 } from '@/types/inventory/materialMaster'
 import MaterialAttributeFields from './MaterialAttributeFields.vue'
 import MaterialSizeEditor from './MaterialSizeEditor.vue'
+import MaterialMeasurementPolicyEditor from './MaterialMeasurementPolicyEditor.vue'
+import { materialMeasurementApi } from '@/api/inventory/measurement'
+import { MeasurementModeEnum } from '@/enums/inventory/MeasurementEnum'
+import type { MeasurementResult } from '@/types/inventory/measurement'
 import SupplierSelector from '@/components/Selector/SupplierSelector.vue'
 import { emptyMaterialSize, parseMaterialSize, renderMaterialDimensions } from './materialSize'
 import type { MaterialSizeValue } from './materialSize'
@@ -373,6 +388,7 @@ import {
   previewMasterName,
   previewMasterSpecification,
   pruneAttributes,
+  readMeasurementPolicy,
 } from './materialMasterModel'
 import { usePermission } from '@/composables/usePermission'
 import { Permissions } from '@/enums/permissions'
@@ -417,6 +433,36 @@ const dimensions = computed<MaterialSizeValue>({
   }),
   set: (value) => Object.assign(form, value),
 })
+const measurementQuantity = ref(1)
+const measurementWeight = ref<number | null>(null)
+const measurementPreview = ref<MeasurementResult>()
+const measurementError = ref('')
+const measurementLoading = ref(false)
+let measurementRequest = 0
+watch(() => [props.modelValue, form.measurementPolicy, form.widthMm, form.lengthMm, form.grammage, measurementQuantity.value, measurementWeight.value], () => {
+  measurementRequest++
+  measurementPreview.value = undefined
+  measurementError.value = ''
+  measurementLoading.value = false
+}, { deep: true })
+async function previewMeasurement() {
+  if (!form.measurementPolicy) return
+  const request = ++measurementRequest
+  measurementLoading.value = true
+  measurementError.value = ''
+  try {
+    const response = await materialMeasurementApi.preview({
+      policy: { ...form.measurementPolicy },
+      actual: { physicalQuantity: measurementQuantity.value, widthMm: form.widthMm, lengthMm: form.lengthMm,
+        grammage: form.grammage, actualWeightKg: form.measurementPolicy.mode === MeasurementModeEnum.MEASURED_WEIGHT.value ? measurementWeight.value : null },
+    })
+    if (request === measurementRequest) measurementPreview.value = response.data ?? undefined
+  } catch (error) {
+    if (request === measurementRequest) measurementError.value = error instanceof Error ? error.message : '换算试算失败'
+  } finally {
+    if (request === measurementRequest) measurementLoading.value = false
+  }
+}
 const categories = ref<MaterialMasterCategory[]>([])
 const dictionaries = ref<MaterialDictionaries>({})
 const configuration = ref<MaterialMasterConfiguration>()
@@ -602,6 +648,8 @@ function onModelInput() {
 }
 function modelDraft() {
   return {
+    materialId: form.materialId,
+    measurementPolicy: form.measurementPolicy,
     materialMeta: form.materialMeta,
     materialForm: form.materialForm,
     unit: form.unit,
@@ -733,6 +781,7 @@ watch(
     form.color,
     form.brand,
     form.unit,
+    JSON.stringify(form.measurementPolicy),
     form.widthMm,
     form.lengthMm,
     form.thicknessMm,
@@ -754,6 +803,8 @@ watch(
     ruleTimer = setTimeout(async () => {
       try {
         const draft = {
+          materialId: form.materialId,
+          measurementPolicy: form.measurementPolicy,
           materialMeta: form.materialMeta,
           materialForm: form.materialForm,
           model: form.model,
@@ -966,6 +1017,7 @@ async function initialize() {
         if (key in material)
           Object.assign(form, { [key]: material[key as keyof typeof material] ?? form[key] })
       }
+      form.measurementPolicy = readMeasurementPolicy(material.measurementPolicyJson)
       form.materialId = material.materialId
       form.materialCode = material.materialCode
       form.materialName = material.materialName || ''
@@ -1052,7 +1104,7 @@ async function save() {
     (form.nameManual ? '' : ruleName.value || '').trim() ||
     effectiveMasterName(form, dictionaries.value).trim()
   if (!finalName) return void ElMessage.warning('请填写名称，或先选择材料/型号/颜色自动生成')
-  if (!form.unit) return void ElMessage.warning('请选择基本单位')
+  if (!form.unit && !form.measurementPolicy) return void ElMessage.warning('请选择库存单位或配置双单位')
   if (!props.materialId && !form.materialId) {
     if (!requiredFields.value) return void ElMessage.warning('必填字段尚未加载，请重新选择品类')
     const values: Record<MaterialRequiredFieldKey, string> = {

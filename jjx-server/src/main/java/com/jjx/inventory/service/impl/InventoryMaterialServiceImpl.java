@@ -727,6 +727,17 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (isNewModelMaterial(material) || existing != null && isNewModelMaterial(existing)) {
             throw new BusinessException("新模型物料请使用新版物料保存入口");
         }
+        String policyJson = StringUtils.trimToNull(material.getMeasurementPolicyJson());
+        if (policyJson == null && existing != null) policyJson = existing.getMeasurementPolicyJson();
+        var policy = com.jjx.inventory.measurement.MeasurementPolicy.parse(policyJson);
+        material.setMeasurementPolicyJson(policy == null ? null : policy.toJson());
+        if (policy != null) {
+            String unit = existing == null ? com.jjx.inventory.master.MaterialMasterService.newLedgerUnit(policy) : existing.getUnit();
+            if (existing == null) material.setUnit(unit);
+            policy.validateLedgerUnit(unit);
+            if (existing != null && material.getUnit() != null && !material.getUnit().equals(unit))
+                throw new BusinessException("已有档案库存记账单位不能随计量策略变更");
+        }
         if (existing != null && material.getSuppliedFields().contains("categoryId") && material.getCategoryId() == null) {
             throw new BusinessException("品类不能为空");
         }

@@ -8,6 +8,7 @@ import {
   previewMasterName,
   previewMasterSpecification,
   pruneAttributes,
+  readMeasurementPolicy,
 } from '../materialMasterModel'
 import type {
   MaterialAttributeSchema,
@@ -144,6 +145,7 @@ describe('复制新增带入档案信息（dev-20261107-016）', () => {
         color: 'CLEAR',
         brand: '3M',
         unit: 'M',
+        measurementPolicyJson: JSON.stringify({ physicalUnit: 'M', priceUnit: '㎡', mode: 'LENGTH_AREA' }),
         searchKeywords: '老料号',
         remark: '原备注',
         supplierId: 9,
@@ -177,6 +179,7 @@ describe('复制新增带入档案信息（dev-20261107-016）', () => {
     expect(form.categoryId).toBe(2)
     expect(form.materialMeta).toBe('PC')
     expect(form.unit).toBe('M')
+    expect(form.measurementPolicy).toEqual({ physicalUnit: 'M', priceUnit: '㎡', mode: 'LENGTH_AREA' })
     expect(form.supplierName).toBe('某某供应商')
     expect(form.attributeJson).toEqual({ thickness_mm: 0.175, surface_treatment: ['MATTE'] })
     expect(form.tagIds).toEqual([3])
@@ -187,5 +190,26 @@ describe('复制新增带入档案信息（dev-20261107-016）', () => {
     expect(form.shelfLife).toBe(365)
     expect(form.widthMm).toBe(300)
     expect(form.lengthMm).toBe(305)
+  })
+})
+
+describe('双单位档案策略', () => {
+  const policy = { physicalUnit: 'ROLL', priceUnit: '㎡', mode: 'ROLL_AREA' as const }
+  const config = { category: { categoryId: 99 }, schema: { ...schema, default_unit: 'PCS', measurement_defaults: policy } } as MaterialMasterConfiguration
+  it('品类预设只带入新增且深拷贝，编辑不覆盖已存策略', () => {
+    const form = emptyMasterForm()
+    changeMasterCategory(form, config)
+    expect(form.measurementPolicy).toEqual(policy)
+    form.measurementPolicy!.physicalUnit = 'M'
+    expect(config.schema.measurement_defaults!.physicalUnit).toBe('ROLL')
+    form.materialId = 12
+    changeMasterCategory(form, config)
+    expect(form.measurementPolicy!.physicalUnit).toBe('M')
+  })
+  it('未配置旧档案明确为空，错误策略不静默猜单位', () => {
+    expect(readMeasurementPolicy(null)).toBeNull()
+    expect(readMeasurementPolicy('')).toBeNull()
+    expect(readMeasurementPolicy(JSON.stringify(policy))).toEqual(policy)
+    expect(() => readMeasurementPolicy('{"physicalUnit":"ROLL"}')).toThrow('计量策略格式无效')
   })
 })

@@ -142,8 +142,9 @@
         <el-table-column label="样品专用" width="90"
           ><template #default="{ row }">{{ row.isSample ? '是' : '否' }}</template></el-table-column
         >
-        <el-table-column label="单位" prop="unit" width="80" align="center" />
-        <el-table-column label="安全库存" prop="safeStock" width="100" align="right" />
+        <el-table-column label="实物单位" width="95" align="center"><template #default="{ row }">{{ readMeasurementPolicy(row.measurementPolicyJson)?.physicalUnit || '未配置' }}</template></el-table-column>
+        <el-table-column label="采购（计价）单位" width="140" align="center"><template #default="{ row }">{{ readMeasurementPolicy(row.measurementPolicyJson)?.priceUnit || '未配置' }}</template></el-table-column>
+        <el-table-column label="安全库存" width="120" align="right"><template #default="{ row }">{{ row.safeStock ?? 0 }} {{ row.unit }}</template></el-table-column>
         <el-table-column label="供应商" prop="supplierName" width="200" />
         <el-table-column label="状态" prop="status" width="80" align="center">
           <template #default="{ row }">
@@ -261,7 +262,7 @@ import { MaterialClassStatusEnum, resolveClassStatus } from '@/enums/inventory/M
 import MaterialMasterImportDialog from '@/components/inventory/MaterialMasterImportDialog.vue'
 import MaterialMasterSettingsDialog from '@/components/inventory/MaterialMasterSettingsDialog.vue'
 import { materialMasterApi } from '@/api/inventory/materialMaster'
-import { downloadMaterialBlob } from '@/components/inventory/materialMasterModel'
+import { downloadMaterialBlob, readMeasurementPolicy } from '@/components/inventory/materialMasterModel'
 import { CommonStatusEnum } from '@/enums/common/StatusEnum'
 import type { MaterialMasterCategory, MaterialDictionaries } from '@/types/inventory/materialMaster'
 import { materialApi } from '@/api/inventory/material'

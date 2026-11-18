@@ -40,9 +40,11 @@ const mocks = vi.hoisted(() => ({
   success: vi.fn(),
   error: vi.fn(),
   warning: vi.fn(),
+  measurementPreview: vi.fn(),
 }))
 vi.mock('@/composables/usePermission', () => ({ usePermission: () => ({ hasPermission: mocks.hasPermission }) }))
 vi.mock('@/api/inventory/materialMaster', () => ({ materialMasterApi: mocks }))
+vi.mock('@/api/inventory/measurement', () => ({ materialMeasurementApi: { preview: mocks.measurementPreview } }))
 vi.mock('@/api/inventory/material', () => ({ materialApi: { getTags: mocks.tags } }))
 vi.mock('element-plus', async (importOriginal) => ({
   ...await importOriginal<typeof import('element-plus')>(),
@@ -699,6 +701,39 @@ describe('复制回显与常驻规则按钮（dev-20261110-009）', () => {
     await flushPromises()
     expect(wrapper.find('[data-test="material-name-generate"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="material-model-regenerate"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+})
+
+describe('双单位试算和保存', () => {
+  it('保存明确配置并保留旧账本单位，重新打开按档案回显', async () => {
+    const savedPolicy = { physicalUnit: 'ROLL', priceUnit: '㎡', mode: 'ROLL_AREA' }
+    mocks.detail.mockResolvedValue({ data: { material: { materialId: 100, categoryId: 2, unit: '㎡', materialName: '卷材', measurementPolicyJson: JSON.stringify(savedPolicy) }, attributes: {}, tags: [], configuration: config(2, 'PC') } })
+    const wrapper = create({ materialId: 100 })
+    await flushPromises()
+    const state = (wrapper.vm as any).$.setupState
+    expect(state.form.measurementPolicy).toEqual(savedPolicy)
+    await state.save()
+    expect(mocks.save.mock.calls[0][0]).toMatchObject({ unit: '㎡', measurementPolicy: savedPolicy })
+    wrapper.unmount()
+  })
+  it('切换尺寸使旧试算失效，迟到响应不能覆盖当前草稿', async () => {
+    let resolve: (response: unknown) => void = () => {}
+    mocks.measurementPreview.mockImplementation(() => new Promise(r => { resolve = r }))
+    const wrapper = create()
+    await flushPromises()
+    const state = (wrapper.vm as any).$.setupState
+    state.form.measurementPolicy = { physicalUnit: 'PCS', priceUnit: '㎡', mode: 'PIECE_AREA' }
+    state.form.widthMm = 285
+    state.form.lengthMm = 315
+    await flushPromises()
+    const pending = state.previewMeasurement()
+    state.form.widthMm = 300
+    await flushPromises()
+    resolve({ data: { physicalQuantity: 1, priceQuantity: 0.089775, formula: '旧结果' } })
+    await pending
+    expect(state.measurementPreview).toBeUndefined()
+    expect(mocks.measurementPreview.mock.calls[0][0]).toMatchObject({ actual: { widthMm: 285, lengthMm: 315 } })
     wrapper.unmount()
   })
 })

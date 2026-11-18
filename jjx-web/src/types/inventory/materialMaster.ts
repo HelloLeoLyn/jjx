@@ -1,3 +1,4 @@
+import type { MeasurementPolicy } from './measurement'
 import type { InventoryMaterial } from './material'
 import type { SysTag } from '@/types/system/tag'
 
@@ -34,6 +35,7 @@ export interface MaterialAttributeSchema {
   default_meta?: string | null
   default_form?: string | null
   default_unit?: string | null
+  measurement_defaults?: MeasurementPolicy | null
   fields: MaterialAttributeField[]
   /** 命名规则：勾选参与命名的字段与顺序（品类维度配置，dev-20261028-005） */
   name_pattern?: MaterialNamingPattern | null
@@ -142,6 +144,7 @@ export interface MaterialMasterForm {
   /** 后端拼装的只读展示值；不提交。 */
   readonly size?: string
   unit: string
+  measurementPolicy?: MeasurementPolicy | null
   attributeJson: Record<string, AttributeValue>
   isCustomerSupplied: boolean
   isSample: boolean
