@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jjx.event.EventPublisher;
 import com.jjx.inventory.domain.InventoryInboundItem;
 import com.jjx.inventory.domain.InventoryInboundOrder;
@@ -27,6 +29,7 @@ import com.jjx.inventory.dto.vo.IqcQuarantineLedgerPageVO;
 import com.jjx.inventory.dto.vo.IqcQuarantineLedgerRowVO;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.common.util.UnitCodes;
 import com.jjx.common.utils.ReasonSanitizer;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.production.mapper.ProductionOrderMapper;
@@ -36,6 +39,9 @@ import com.jjx.purchase.mapper.PurchaseOrderMapper;
 import com.jjx.purchase.mapper.PurchaseOrderItemMapper;
 import com.jjx.purchase.domain.entity.PurchaseOrder;
 import com.jjx.purchase.domain.entity.PurchaseOrderItem;
+import com.jjx.purchase.domain.dto.PurchaseProcessingPlan;
+import com.jjx.purchase.domain.enums.PurchaseProcessingDelivery;
+import com.jjx.purchase.service.impl.PurchaseProcessingService.ReceiptFact;
 import com.jjx.inventory.enums.InventoryOrderStatusEnum;
 import com.jjx.inventory.enums.InspectionResultEnum;
 import com.jjx.inventory.enums.MaterialEnums;
@@ -80,6 +86,8 @@ import com.jjx.system.annotation.Event;
 @RequiredArgsConstructor
 public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrderMapper, InventoryInboundOrder>
         implements InventoryInboundService {
+
+    private static final ObjectMapper PROCESSING_JSON = new ObjectMapper();
 
     private final com.jjx.inventory.mapper.InventoryAlertLogMapper alertLogMapper;
     private final org.springframework.transaction.PlatformTransactionManager transactionManager;
@@ -2173,6 +2181,36 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     }
 
     /**
+     * 母卷采购可以交付切片（基本单位为片或㎡）。仅豁免能对应加工方案切片产物的交付事实；
+     * 不能仅凭有加工快照或缺少卷字段就豁免，否则丢失卷信息的余卷也会按散料入库。
+     */
+    private boolean isProcessingPieceReceipt(PurchaseOrderItem source, InventoryInboundItem item) {
+        if (source.getProcessingPlan() == null || source.getProcessingPlan().isBlank()
+                || item.getPurchaseProcessingJson() == null || item.getPurchaseProcessingJson().isBlank()
+                || item.getRollWidthMm() != null || item.getRollLengthM() != null) {
+            return false;
+        }
+        try {
+            var fact = PROCESSING_JSON.readValue(item.getPurchaseProcessingJson(), ReceiptFact.class);
+            var plan = PROCESSING_JSON.readValue(source.getProcessingPlan(), PurchaseProcessingPlan.class);
+            if (fact == null || plan == null || plan.getGroups() == null
+                    || fact.getGroupId() == null || fact.getOutputId() == null
+                    || fact.getRollLengthM() != null || fact.getDelivery() == PurchaseProcessingDelivery.SCRAP) {
+                return false;
+            }
+            return plan.getGroups().stream().filter(Objects::nonNull)
+                    .filter(group -> fact.getGroupId().equals(group.getGroupId()) && group.getOutputs() != null)
+                    .flatMap(group -> group.getOutputs().stream()).filter(Objects::nonNull)
+                    .anyMatch(output -> fact.getOutputId().equals(output.getOutputId())
+                            && UnitCodes.PCS.equals(output.getUnit())
+                            && output.getDelivery() != PurchaseProcessingDelivery.SCRAP
+                            && item.getMaterialId() != null && item.getMaterialId().equals(output.getMaterialId()));
+        } catch (JsonProcessingException ex) {
+            throw new BusinessException("采购加工交付记录或方案格式无效，请核对收货明细");
+        }
+    }
+
+    /**
      * 执行入库加库存（DEV-651：库存操作统一由 confirm 调用）
      * 原 approve 中的加库存逻辑抽取，供 confirm 直接使用
      */
@@ -2186,7 +2224,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 if (poItem != null && poItem.getRollCount()!=null && poItem.getRollCount()>0
                         && poItem.getRollWidthMm()!=null && poItem.getRollLengthM()!=null
                         && (item.getRollNo()==null || item.getRollNo().isBlank())
-                        && item.getRollPlanJson()==null)
+                        && item.getRollPlanJson()==null
+                        && !isProcessingPieceReceipt(poItem, item))
                     throw new BusinessException("采购行按卷采购，入库明细缺少卷信息，请重新收货");
             }
             if (item.getInventoryItemId() == null) {

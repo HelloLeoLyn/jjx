@@ -16,10 +16,19 @@ import static org.mockito.Mockito.*;
 /** 隔离H2真实Mapper和事务：实收切片/独立余卷→IQC允收→applyDelta；失败整笔回滚，不代表运行态MySQL。 */
 class PurchaseProcessingInboundTest extends RollFixture {
     PurchaseOrderItemMapper sources;
+    PurchaseOrderItem source;
     @BeforeEach void sources(){
         var po=new PurchaseOrder();po.setOrderId(777L);po.setOrderNo("PO-PROCESS");po.setSupplierId(16L);po.setSupplierName("加工供方");
         var orders=mock(PurchaseOrderMapper.class);when(orders.selectById(777L)).thenReturn(po);
-        sources=mock(PurchaseOrderItemMapper.class);var source=new PurchaseOrderItem();source.setItemId(99L);source.setOrderId(777L);source.setMaterialId(354L);when(sources.selectById(99L)).thenReturn(source);
+        sources=mock(PurchaseOrderItemMapper.class);source=new PurchaseOrderItem();source.setItemId(99L);source.setOrderId(777L);source.setMaterialId(354L);when(sources.selectById(99L)).thenReturn(source);
+        source.setRollCount(3);source.setRollWidthMm(bd("1220"));source.setRollLengthM(bd("100"));
+        source.setProcessingPlan("""
+            {"groups":[{"groupId":"g1","outputs":[
+              {"outputId":"r1","materialId":11,"unit":"ROLL"},
+              {"outputId":"p1","materialId":12,"unit":"PCS"},
+              {"outputId":"p2","materialId":11,"unit":"PCS"}
+            ]}]}
+            """);
         ReflectionTestUtils.setField(inboundTarget,"purchaseOrderMapper",orders);ReflectionTestUtils.setField(inboundTarget,"purchaseOrderItemMapper",sources);
         var material=new InventoryMaterial();material.setMaterialId(12L);material.setMaterialCode("CUT-12");material.setMaterialName("切片");material.setUnit("PCS");material.setWidthMm(bd("100"));material.setLengthMm(bd("200"));material.setStatus(StatusEnum.NORMAL.getCode());when(materials.selectById(12L)).thenReturn(material);
         var ii=new InventoryItem();ii.setInventoryItemId(32L);ii.setItemType(InventoryItemTypeEnum.MATERIAL.getCode());ii.setSourceId(12L);ii.setItemCode("CUT-12");ii.setUnit("PCS");when(inventoryItems.selectById(32L)).thenReturn(ii);
@@ -55,4 +64,37 @@ class PurchaseProcessingInboundTest extends RollFixture {
         assertThrows(Exception.class,()->inbound.confirm(id,1L,"test"));assertEquals(0,stocks.selectCount(null));assertEquals(0,txs.selectCount(null));for(var row:inItems.selectByInboundId(id)){eq("0",row.getPostedQuantity());assertTrue(row.getQuantity().signum()>0);}
     }
     @Test void foreignPurchaseLineCannotCreateAnyInboundDocument(){var rows=actual();rows.get(0).setSourcePurchaseItemId(100L);assertThrows(BusinessException.class,()->inbound.createInboundRecordFromPurchase(777L,rows));assertEquals(0,ins.selectCount(null));assertEquals(0,inItems.selectCount(null));}
+
+    @Test void processingPiecesWithAreaBaseUnitDoNotRequireRollInformation(){
+        var piece=actual().get(2);piece.setMaterialId(11L);piece.setInventoryItemId(31L);piece.setMaterialCode("AUX-TEST");piece.setUnit("㎡");piece.setQuantity(bd("3"));
+        piece.setPurchaseProcessingJson(piece.getPurchaseProcessingJson().replace("p1","p2"));
+        long id=inbound.createInboundRecordFromPurchase(777L,List.of(piece));iqc(id);
+        assertTrue(inbound.confirm(id,1L,"test"));assertEquals(1,txs.selectCount(null));eq("3",stocks.selectList(null).get(0).getQuantity());assertNull(stocks.selectList(null).get(0).getRollNo());
+    }
+    @Test void ordinaryRollPurchaseStillRequiresRollInformation(){
+        source.setProcessingPlan(null);long id=receipt();iqc(id);
+        assertMissingRollRejected(id);
+    }
+    @Test void processingRollWithMissingAllRollFieldsCannotMasqueradeAsPiece(){
+        long id=receipt();iqc(id);var row=inItems.selectByInboundId(id).get(1);
+        jdbc.update("UPDATE inventory_inbound_item SET roll_no=NULL,roll_width_mm=NULL,roll_length_m=NULL WHERE item_id=?",row.getItemId());
+        assertMissingRollRejected(id);
+    }
+    @Test void processingRollWithDimensionsButMissingNumberStillRejected(){
+        long id=receipt();iqc(id);jdbc.update("UPDATE inventory_inbound_item SET roll_no=NULL WHERE item_id=?",inItems.selectByInboundId(id).get(1).getItemId());
+        assertMissingRollRejected(id);
+    }
+    @Test void missingOrForeignProcessingFactsCannotBypassRollGuard(){
+        long id=receipt();iqc(id);long pieceId=inItems.selectByInboundId(id).get(2).getItemId();
+        for(String fact:Arrays.asList(null,"{}","{\"groupId\":\"foreign\",\"outputId\":\"p1\"}","{\"groupId\":\"g1\",\"outputId\":\"r1\"}","{\"groupId\":\"g1\",\"outputId\":\"p2\"}")){
+            jdbc.update("UPDATE inventory_inbound_item SET purchase_processing_json=? WHERE item_id=?",fact,pieceId);
+            assertMissingRollRejected(id);
+        }
+    }
+    void assertMissingRollRejected(long id){
+        assertTrue(assertThrows(BusinessException.class,()->inbound.confirm(id,1L,"test")).getMessage().contains("缺少卷信息"));
+        assertEquals(0,stocks.selectCount(null));assertEquals(0,txs.selectCount(null));
+        assertEquals(InventoryOrderStatusEnum.APPROVED.getValue(),ins.selectById(id).getOrderStatus());
+        for(var row:inItems.selectByInboundId(id))eq("0",row.getPostedQuantity());
+    }
 }
