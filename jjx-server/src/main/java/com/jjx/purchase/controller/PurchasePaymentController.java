@@ -225,8 +225,8 @@ public class PurchasePaymentController extends BaseController {
      */
     @GetMapping("/statistics")
     @SaCheckPermission("purchase:payment:view")
-    public Result<Map<String, Object>> statistics() {
-        return Result.success(paymentService.getPaymentStatistics());
+    public Result<Map<String, Object>> statistics(PurchasePaymentDTO dto) {
+        return Result.success(paymentService.getPaymentStatistics(dto));
     }
 
     /**

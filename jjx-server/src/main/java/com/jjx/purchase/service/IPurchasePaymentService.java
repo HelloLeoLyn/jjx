@@ -104,7 +104,7 @@ public interface IPurchasePaymentService {
     /**
      * 获取付款统计信息
      */
-    Map<String, Object> getPaymentStatistics();
+    Map<String, Object> getPaymentStatistics(PurchasePaymentDTO dto);
 
     /**
      * 导出付款列表

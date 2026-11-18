@@ -166,10 +166,11 @@ export function getMonthPayments() {
 }
 
 // 获取付款统计信息
-export function getPaymentStatistics() {
+export function getPaymentStatistics(params?: Record<string, unknown>) {
   return request({
     url: '/purchase/payment/statistics',
     method: 'get',
+    params,
   })
 }
 
@@ -276,5 +277,13 @@ export interface PurchasePaymentSummary {
 export function getOrderPaymentSummary(orderId: number, excludedPaymentId?: number) {
   return request.get<R<PurchasePaymentSummary>>(`/purchase/payment/order/${orderId}/summary`, {
     params: { excludedPaymentId },
+  })
+}
+
+export function downloadPaymentVouchers(paymentId: number) {
+  return request({
+    url: '/purchase/payment/' + paymentId + '/vouchers',
+    method: 'get',
+    responseType: 'blob',
   })
 }

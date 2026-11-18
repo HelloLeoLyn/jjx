@@ -92,6 +92,10 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
     }
 
     private LambdaQueryWrapper<PurchasePayment> buildPaymentQuery(PurchasePaymentDTO dto) {
+        return buildPaymentQuery(dto, true);
+    }
+
+    private LambdaQueryWrapper<PurchasePayment> buildPaymentQuery(PurchasePaymentDTO dto, boolean ordered) {
         LambdaQueryWrapper<PurchasePayment> wrapper = Wrappers.lambdaQuery();
         if (StringUtils.isNotEmpty(dto.getPaymentNo())) {
             wrapper.like(PurchasePayment::getPaymentNo, dto.getPaymentNo());
@@ -115,7 +119,7 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
         if (StringUtils.isNotEmpty(dto.getPaymentMethod())) {
             wrapper.eq(PurchasePayment::getPaymentMethod, dto.getPaymentMethod());
         }
-        wrapper.orderByDesc(PurchasePayment::getCreateTime).orderByDesc(PurchasePayment::getPaymentId);
+        if (ordered) wrapper.orderByDesc(PurchasePayment::getCreateTime).orderByDesc(PurchasePayment::getPaymentId);
         return wrapper;
     }
 
@@ -433,32 +437,12 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
     }
 
     @Override
-    public Map<String, Object> getPaymentStatistics() {
-        List<PurchasePayment> allPayments = paymentMapper.selectList(Wrappers.emptyWrapper());
-
-        long totalCount = allPayments.size();
-        long pendingCount = allPayments.stream()
-                .filter(p -> PurchasePaymentApprovalStatusEnum.PENDING.getCode().equals(p.getApprovalStatus()))
-                .count();
-        long approvedCount = allPayments.stream()
-                .filter(p -> PurchasePaymentApprovalStatusEnum.APPROVED.getCode().equals(p.getApprovalStatus()))
-                .count();
-        long paidCount = allPayments.stream()
-                .filter(p -> Objects.equals(PurchasePaymentStatusEnum.COMPLETED.getValue(), p.getPaymentStatus()))
-                .count();
-
-        BigDecimal totalAmount = allPayments.stream()
-                .filter(p -> p.getPaymentAmount() != null)
-                .map(PurchasePayment::getPaymentAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        return Map.of(
-                "totalCount", totalCount,
-                "pendingCount", pendingCount,
-                "approvedCount", approvedCount,
-                "paidCount", paidCount,
-                "totalAmount", totalAmount
-        );
+    public Map<String, Object> getPaymentStatistics(PurchasePaymentDTO dto) {
+        LocalDate today = LocalDate.now();
+        return paymentMapper.selectStatistics(buildPaymentQuery(dto == null ? new PurchasePaymentDTO() : dto, false),
+                today, today.withDayOfMonth(1), today.withDayOfMonth(1).plusMonths(1),
+                PurchasePaymentStatusEnum.COMPLETED.getValue(), PurchasePaymentApprovalStatusEnum.PENDING.getCode(),
+                PurchasePaymentApprovalStatusEnum.APPROVED.getCode(), PurchasePaymentApprovalStatusEnum.REJECTED.getCode());
     }
 
     @Override

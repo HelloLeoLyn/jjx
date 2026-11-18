@@ -14,6 +14,28 @@ import java.util.List;
 @Mapper
 public interface PurchasePaymentMapper extends BaseMapper<PurchasePayment> {
 
+    /** 金额只在数据库汇总；筛选与列表共用，分页不影响统计。应付按计划日，已付按实际日，驳回不计应付/逾期。 */
+    @Select("""
+        SELECT COUNT(*) AS "totalCount",
+          COALESCE(SUM(CASE WHEN approval_status=#{pending} THEN 1 ELSE 0 END),0) AS "pendingCount",
+          COALESCE(SUM(CASE WHEN approval_status=#{approved} THEN 1 ELSE 0 END),0) AS "approvedCount",
+          COALESCE(SUM(CASE WHEN payment_status=#{paid} THEN 1 ELSE 0 END),0) AS "paidCount",
+          COALESCE(SUM(payment_amount),0) AS "totalAmount",
+          COALESCE(SUM(CASE WHEN (approval_status IS NULL OR approval_status != #{rejected})
+            AND payment_date >= #{monthStart} AND payment_date < #{monthEnd} THEN payment_amount ELSE 0 END),0) AS "monthDueAmount",
+          COALESCE(SUM(CASE WHEN payment_status=#{paid} AND actual_payment_date >= #{monthStart}
+            AND actual_payment_date < #{monthEnd} THEN payment_amount ELSE 0 END),0) AS "monthPaidAmount",
+          COALESCE(SUM(CASE WHEN (approval_status IS NULL OR approval_status != #{rejected})
+            AND (payment_status IS NULL OR payment_status != #{paid}) AND payment_date < #{today}
+            THEN payment_amount ELSE 0 END),0) AS "overdueAmount"
+        FROM purchase_payment ${ew.customSqlSegment}
+        """)
+    java.util.Map<String, Object> selectStatistics(
+        @Param("ew") com.baomidou.mybatisplus.core.conditions.Wrapper<PurchasePayment> query,
+        @Param("today") java.time.LocalDate today, @Param("monthStart") java.time.LocalDate monthStart,
+        @Param("monthEnd") java.time.LocalDate monthEnd, @Param("paid") Integer paid,
+        @Param("pending") String pending, @Param("approved") String approved, @Param("rejected") String rejected);
+
     /**
      * 检查付款单号是否唯一
      */

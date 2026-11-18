@@ -3,78 +3,37 @@
     :title="title"
     :model-value="props.visible"
     width="1200px"
+    destroy-on-close
     append-to-body
     :close-on-click-modal="false"
     @close="handleClose"
     @update:model-value="(val: boolean) => emit('update:visible', val)"
   >
-    <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
-      <el-form-item label="订单号">
-        <el-input :model-value="orderNo" disabled />
-      </el-form-item>
-      <PaymentAmountSummary
-        v-if="props.visible"
-        :order-id="props.orderId"
-        @loaded="handleSummaryLoaded"
-      />
-      <el-alert
-        title="提交后生成正式付款单，需在付款管理中审批并确认付款；订单已付金额将自动汇总。"
-        type="info"
-        :closable="false"
-        show-icon
-      />
-      <el-form-item label="付款单号" prop="paymentNo">
-        <el-input v-model="form.paymentNo" disabled />
-      </el-form-item>
-      <el-form-item label="计划付款日" prop="paymentDate">
-        <el-date-picker
-          v-model="form.paymentDate"
-          type="date"
-          value-format="YYYY-MM-DD"
-          style="width: 100%"
-        />
-      </el-form-item>
-      <el-form-item label="申请金额" prop="paymentAmount">
-        <el-input-number
-          v-model="form.paymentAmount"
-          :min="Number(paymentSummary?.availableAmount || 0) > 0 ? 0.01 : 0"
-          :max="paymentSummary ? Number(paymentSummary.availableAmount) : undefined"
-          :disabled="!paymentSummary || Number(paymentSummary.availableAmount) <= 0"
-          :precision="2"
-          :step="100"
-          style="width: 100%"
-        />
-      </el-form-item>
-      <el-form-item label="付款方式" prop="paymentMethod">
-        <el-select v-model="form.paymentMethod" placeholder="请选择" style="width: 100%">
-          <el-option
-            v-for="dict in PaymentMethodEnum.items"
-            :key="dict.value"
-            :label="dict.label"
-            :value="dict.value"
-          />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="银行账户">
-        <el-input v-model="form.bankAccount" maxlength="100" />
-      </el-form-item>
-      <el-form-item label="付款备注" prop="remark">
-        <el-input
-          v-model="form.remark"
-          type="textarea"
-          :rows="3"
-          placeholder="请输入付款备注"
-          maxlength="500"
-          show-word-limit
-        />
-      </el-form-item>
-
-    </el-form>
+    <el-alert
+      title="提交后生成正式付款单，需在付款管理中审批并确认付款；订单已付金额将自动汇总。"
+      type="info"
+      :closable="false"
+      show-icon
+    />
+    <PaymentForm
+      v-if="props.visible"
+      ref="formRef"
+      :model-value="form"
+      :order-no="props.orderNo"
+      :disabled="submitting"
+      @summary-loaded="handleSummaryLoaded"
+    />
 
     <template #footer>
       <div class="dialog-footer">
         <el-button @click="handleClose">取 消</el-button>
-        <el-button type="primary" @click="handleSubmit" :loading="submitting" :disabled="!paymentSummary || Number(paymentSummary.availableAmount) <= 0">提交申请</el-button>
+        <el-button
+          type="primary"
+          @click="handleSubmit"
+          :loading="submitting"
+          :disabled="!paymentSummary || Number(paymentSummary.availableAmount) <= 0"
+          >提交申请</el-button
+        >
       </div>
     </template>
   </el-dialog>
@@ -83,12 +42,12 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import type { FormInstance, FormRules } from 'element-plus'
+
 import { PaymentMethodEnum, PaymentStatusEnum } from '@/enums/purchase'
 import { addPayment, generatePaymentNo } from '@/api/purchase/payment'
 import type { PurchasePayment } from '@/types/purchase'
 import type { PurchasePaymentSummary } from '@/api/purchase/payment'
-import PaymentAmountSummary from '@/views/purchase/components/PaymentAmountSummary.vue'
+import PaymentForm from '@/views/purchase/components/PaymentForm.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -104,7 +63,7 @@ const emit = defineEmits<{
   (e: 'success'): void
 }>()
 
-const formRef = ref<FormInstance>()
+const formRef = ref<InstanceType<typeof PaymentForm>>()
 const submitting = ref(false)
 const paymentSummary = ref<PurchasePaymentSummary | null>(null)
 
@@ -114,35 +73,41 @@ function handleSummaryLoaded(summary: PurchasePaymentSummary | null) {
 }
 
 const form = reactive({
+  orderId: props.orderId,
   paymentNo: '',
   paymentDate: '',
   paymentAmount: 0,
-  paymentMethod: 'bank',
+  paymentMethod: PaymentMethodEnum.items[0].value,
   bankAccount: '',
   remark: '',
 })
 
 const title = computed(() => `申请付款 - ${props.orderNo}`)
 
-const rules = reactive<FormRules>({
-  paymentNo: [{ required: true, message: '付款单号生成失败，请关闭后重试', trigger: 'blur' }],
-  paymentDate: [{ required: true, message: '请选择计划付款日期', trigger: 'change' }],
-  paymentAmount: [{ required: true, message: '请输入付款金额', trigger: 'blur' }],
-  paymentMethod: [{ required: true, message: '请选择付款方式', trigger: 'change' }],
-})
-
 // 打开申请时初始化日期与单号，金额由共享额度组件加载。
+let numberSequence = 0
 watch(
-  () => props.visible,
-  async (val) => {
+  () => [props.visible, props.orderId] as const,
+  async ([val]) => {
+    const sequence = ++numberSequence
     if (val) {
+      form.orderId = props.orderId
+      form.paymentNo = ''
+      form.paymentMethod = PaymentMethodEnum.items[0].value
+      form.bankAccount = ''
+      form.remark = ''
       form.paymentDate = today()
       paymentSummary.value = null
       form.paymentAmount = 0
-      const numberResult = await generatePaymentNo()
-      form.paymentNo = numberResult.data || ''
+      try {
+        const numberResult = await generatePaymentNo()
+        if (sequence === numberSequence) form.paymentNo = numberResult.data || ''
+      } catch {
+        if (sequence === numberSequence) ElMessage.error('付款单号生成失败，请重试或手动填写')
+      }
     }
-  }
+  },
+  { immediate: true }
 )
 
 const handleSubmit = async () => {
@@ -154,10 +119,6 @@ const handleSubmit = async () => {
   submitting.value = true
   try {
     if (!props.orderId) return
-    if (form.paymentAmount <= 0 || form.paymentAmount > Number(paymentSummary.value.availableAmount)) {
-      ElMessage.warning('申请金额必须大于0且不超过可申请金额')
-      return
-    }
     const payment: PurchasePayment = {
       paymentNo: form.paymentNo,
       orderId: Number(props.orderId),

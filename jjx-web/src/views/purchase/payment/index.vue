@@ -1,5 +1,16 @@
 <template>
   <div class="app-container">
+    <el-row :gutter="16" class="statistics" v-loading="loading">
+      <el-col v-for="card in statisticCards" :key="card.key" :xs="24" :sm="8"
+        ><el-card shadow="never"
+          ><div>{{ card.label }}</div>
+          <strong>{{ statistics ? money(statistics[card.key]) : '-' }}</strong></el-card
+        ></el-col
+      >
+    </el-row>
+    <p class="statistics-note">
+      统计按当前查询条件汇总全部结果；本月应付按计划日（含已付、排除驳回），本月已付按实际日，逾期为计划日早于今天的未付且未驳回申请。
+    </p>
     <el-card shadow="never" class="search-card">
       <el-form :model="query" inline>
         <el-form-item label="付款单号"
@@ -82,8 +93,19 @@
           @click="openCreate"
           >新增申请</el-button
         >
-        <el-button v-if="userStore.hasPermission('purchase:payment:approve')" :disabled="!selectedPayments.length || submitting || loading" @click="openBatchApprove">批量审批（{{ selectedPayments.length }}）</el-button>
-        <el-button v-if="userStore.hasPermission('purchase:payment:export')" :loading="exporting" :disabled="loading" @click="handleExport">导出当前筛选</el-button>
+        <el-button
+          v-if="userStore.hasPermission('purchase:payment:approve')"
+          :disabled="!selectedPayments.length || submitting || loading"
+          @click="openBatchApprove"
+          >批量审批（{{ selectedPayments.length }}）</el-button
+        >
+        <el-button
+          v-if="userStore.hasPermission('purchase:payment:export')"
+          :loading="exporting"
+          :disabled="loading"
+          @click="handleExport"
+          >导出当前筛选</el-button
+        >
       </div>
 
       <el-tabs v-model="activeTab" class="payment-tabs" @tab-change="handleTabChange">
@@ -103,7 +125,12 @@
         :summary-method="summaryMethod"
         @selection-change="selectedPayments = $event"
       >
-        <el-table-column v-if="userStore.hasPermission('purchase:payment:approve')" type="selection" width="48" :selectable="isPendingPayment" />
+        <el-table-column
+          v-if="userStore.hasPermission('purchase:payment:approve')"
+          type="selection"
+          width="48"
+          :selectable="isPendingPayment"
+        />
         <el-table-column prop="paymentNo" label="付款单号" min-width="150">
           <template #default="{ row }">
             <el-link type="primary" @click="detail(row)">{{ row.paymentNo }}</el-link>
@@ -167,71 +194,15 @@
       width="560px"
       destroy-on-close
     >
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
-        <el-form-item label="付款单号" prop="paymentNo">
-          <el-input v-model="form.paymentNo" :disabled="isEdit" placeholder="付款单号" />
-        </el-form-item>
-        <el-form-item label="采购订单" prop="orderId">
-          <el-select
-            v-model="form.orderId"
-            filterable
-            placeholder="选择采购订单"
-            style="width: 100%"
-            :disabled="isEdit"
-          >
-            <el-option
-              v-for="o in pendingOrders"
-              :key="o.orderId"
-              :label="`${o.orderNo} - ${o.supplierName}`"
-              :value="o.orderId"
-            />
-          </el-select>
-        </el-form-item>
-        <PaymentAmountSummary
-          v-if="formVisible"
-          :order-id="form.orderId"
-          :excluded-payment-id="isEdit ? form.paymentId : undefined"
-          @loaded="handleSummaryLoaded"
-        />
-        <el-row :gutter="16">
-          <el-col :span="12"
-            ><el-form-item label="计划付款日" prop="paymentDate"
-              ><el-date-picker
-                v-model="form.paymentDate"
-                type="date"
-                value-format="YYYY-MM-DD"
-                style="width: 100%" /></el-form-item
-          ></el-col>
-          <el-col :span="12"
-            ><el-form-item label="申请金额" prop="paymentAmount"
-              ><el-input-number
-                v-model="form.paymentAmount"
-                :min="Number(paymentSummary?.availableAmount || 0) > 0 ? 0.01 : 0"
-                :max="paymentSummary ? Number(paymentSummary.availableAmount) : undefined"
-                :disabled="!paymentSummary || Number(paymentSummary.availableAmount) <= 0"
-                :precision="2"
-                :controls="false"
-                style="width: 100%" /></el-form-item
-          ></el-col>
-          <el-col :span="12"
-            ><el-form-item label="付款方式" prop="paymentMethod">
-              <el-select v-model="form.paymentMethod" style="width: 100%">
-                <el-option
-                  v-for="item in PaymentMethodEnum.items"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value"
-                />
-              </el-select> </el-form-item
-          ></el-col>
-          <el-col :span="12"
-            ><el-form-item label="银行账号"><el-input v-model="form.bankAccount" /></el-form-item
-          ></el-col>
-        </el-row>
-        <el-form-item label="备注"
-          ><el-input v-model="form.remark" type="textarea" :rows="3"
-        /></el-form-item>
-      </el-form>
+      <PaymentForm
+        v-if="formVisible"
+        ref="formRef"
+        :model-value="form"
+        :editing="isEdit"
+        :orders="pendingOrders"
+        :disabled="submitting"
+        @summary-loaded="handleSummaryLoaded"
+      />
       <template #footer
         ><el-button @click="formVisible = false">取消</el-button
         ><el-button
@@ -244,21 +215,39 @@
       >
     </el-dialog>
 
-    <el-dialog v-model="approveVisible" :title="approveTargets.length > 1 ? '批量付款审批' : '付款审批'" width="800px" :close-on-click-modal="false" :close-on-press-escape="!submitting" :show-close="!submitting">
+    <el-dialog
+      v-model="approveVisible"
+      :title="approveTargets.length > 1 ? '批量付款审批' : '付款审批'"
+      width="800px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="!submitting"
+      :show-close="!submitting"
+    >
       <el-table :data="approveTargets" size="small" border max-height="300">
         <el-table-column prop="paymentNo" label="付款单号" min-width="140" />
         <el-table-column prop="supplierName" label="供应商" min-width="150" />
         <el-table-column prop="orderNo" label="采购订单号" min-width="140" />
-        <el-table-column label="申请金额" width="120"><template #default="{ row }">{{ money(row.paymentAmount) }}</template></el-table-column>
+        <el-table-column label="申请金额" width="120"
+          ><template #default="{ row }">{{ money(row.paymentAmount) }}</template></el-table-column
+        >
         <el-table-column prop="paymentDate" label="计划付款日" width="110" />
       </el-table>
-      <p v-if="approveTargets.length > 1">本次选择 {{ approveTargets.length }} 笔，使用相同审批决定和意见；任一笔失败整批不保存。</p>
+      <p v-if="approveTargets.length > 1">
+        本次选择 {{ approveTargets.length }} 笔，使用相同审批决定和意见；任一笔失败整批不保存。
+      </p>
       <el-form :model="approveForm" label-width="90px">
         <el-form-item label="审批人"
           ><el-input :model-value="approverName" readonly
         /></el-form-item>
         <el-form-item label="审批意见"
-          ><el-input v-model="approveForm.approvalComment" type="textarea" :rows="3" maxlength="500" show-word-limit :disabled="submitting" placeholder="驳回时必须填写意见"
+          ><el-input
+            v-model="approveForm.approvalComment"
+            type="textarea"
+            :rows="3"
+            maxlength="500"
+            show-word-limit
+            :disabled="submitting"
+            placeholder="驳回时必须填写意见"
         /></el-form-item>
       </el-form>
       <template #footer>
@@ -422,8 +411,19 @@
         <div class="detail-remark">{{ current.remark || '-' }}</div>
       </template>
       <template #footer>
+        <el-button @click="openPrint(current)">打印付款单</el-button>
+        <el-button :loading="downloading" @click="downloadVouchers(current)"
+          >打包下载回单</el-button
+        >
         <el-button @click="detailVisible = false">关闭</el-button>
       </template>
+    </el-dialog>
+    <el-dialog v-model="printVisible" title="付款单打印预览" width="900px" destroy-on-close>
+      <PaymentPrint v-if="printPayment" ref="printRef" :payment="printPayment" />
+      <template #footer
+        ><el-button @click="printVisible = false">关闭</el-button
+        ><el-button type="primary" @click="printRef?.print()">打印</el-button></template
+      >
     </el-dialog>
   </div>
 </template>
@@ -445,6 +445,8 @@ import {
   generatePaymentNo,
   batchApprove,
   exportPayment,
+  getPaymentStatistics,
+  downloadPaymentVouchers,
 } from '@/api/purchase/payment'
 import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import {
@@ -456,7 +458,8 @@ import {
   paymentStageOf,
 } from '@/enums/purchase/payment'
 import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
-import PaymentAmountSummary from '@/views/purchase/components/PaymentAmountSummary.vue'
+import PaymentForm from '@/views/purchase/components/PaymentForm.vue'
+import PaymentPrint from '@/views/purchase/components/PaymentPrint.vue'
 import OrderDetailDialog from '@/views/purchase/order/components/OrderDetailDialog.vue'
 import type { PurchasePaymentSummary } from '@/api/purchase/payment'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
@@ -494,7 +497,7 @@ const paymentTable = ref<any>()
 const batchApproval = ref(false)
 const exporting = ref(false)
 const confirmTarget = ref<any>()
-const formRef = ref<FormInstance>()
+const formRef = ref<InstanceType<typeof PaymentForm>>()
 
 const query = reactive<any>({
   pageNum: 1,
@@ -546,13 +549,6 @@ function handleSummaryLoaded(summary: PurchasePaymentSummary | null) {
     })
   }
 }
-const rules = {
-  paymentNo: [{ required: true, message: '请输入付款单号', trigger: 'blur' }],
-  orderId: [{ required: true, message: '请选择采购订单', trigger: 'change' }],
-  paymentDate: [{ required: true, message: '请选择付款日期', trigger: 'change' }],
-  paymentAmount: [{ required: true, message: '请输入金额', trigger: 'blur' }],
-  paymentMethod: [{ required: true, message: '请选择付款方式', trigger: 'change' }],
-}
 const userStore = useUserStore()
 const approverName = computed(
   () => userStore.userInfo?.realName?.trim() || userStore.userName || '-'
@@ -592,6 +588,8 @@ function summaryMethod({ columns }: { columns: any[] }) {
 }
 
 const paymentActions: TableAction<any>[] = [
+  { key: 'print', label: '打印', permission: 'purchase:payment:view', order: 60 },
+  { key: 'vouchers', label: '回单打包', permission: 'purchase:payment:view', order: 70 },
   {
     key: 'approve',
     label: '审批',
@@ -633,6 +631,8 @@ function handlePaymentAction(key: string, row: any) {
     confirm: () => openConfirm(row),
     edit: () => void openEdit(row),
     delete: () => void remove(row),
+    print: () => void openPrint(row),
+    vouchers: () => void downloadVouchers(row),
   }
   handlers[key]?.()
 }
@@ -646,12 +646,30 @@ function today() {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10)
 }
 
+const statistics = ref<Record<string, number> | null>(null)
+const statisticCards = [
+  { key: 'monthDueAmount', label: '本月应付（申请金额）' },
+  { key: 'monthPaidAmount', label: '本月已付' },
+  { key: 'overdueAmount', label: '逾期未付（申请金额）' },
+]
+let loadSequence = 0
 async function load() {
+  const sequence = ++loadSequence
   selectedPayments.value = []
   paymentTable.value?.clearSelection?.()
   loading.value = true
   try {
-    const res: any = await listPayment({ ...query })
+    statistics.value = null
+    const { pageNum: _page, pageSize: _size, ...filters } = query
+    const [listResult, statsResult] = await Promise.allSettled([
+      listPayment({ ...query }),
+      getPaymentStatistics({ ...filters }),
+    ])
+    if (sequence !== loadSequence) return
+    if (statsResult.status === 'fulfilled') statistics.value = statsResult.value.data
+    else ElMessage.error('加载付款统计失败，请重新查询')
+    if (listResult.status === 'rejected') throw listResult.reason
+    const res: any = listResult.value
     const data = res.data || []
     rows.value = Array.isArray(data) ? data : data.records || []
     total.value = Array.isArray(data) ? data.length : data.total || 0
@@ -660,7 +678,7 @@ async function load() {
     total.value = 0
     ElMessage.error(e?.message || '加载付款列表失败')
   } finally {
-    loading.value = false
+    if (sequence === loadSequence) loading.value = false
   }
 }
 
@@ -693,7 +711,7 @@ function emptyForm() {
     orderId: undefined,
     paymentDate: today(),
     paymentAmount: undefined,
-    paymentMethod: 'bank',
+    paymentMethod: PaymentMethodEnum.items[0].value,
     bankAccount: '',
     remark: '',
   }
@@ -728,13 +746,6 @@ async function submitForm() {
     !(await formRef.value.validate().catch(() => false))
   )
     return
-  if (
-    Number(form.paymentAmount) <= 0 ||
-    Number(form.paymentAmount) > Number(paymentSummary.value.availableAmount)
-  ) {
-    ElMessage.warning('申请金额必须大于0且不超过可申请金额')
-    return
-  }
   submitting.value = true
   try {
     if (isEdit.value) {
@@ -761,7 +772,12 @@ function openApprove(row: any) {
   approveVisible.value = true
 }
 function openBatchApprove() {
-  if (submitting.value || !userStore.hasPermission('purchase:payment:approve') || !selectedPayments.value.length) return
+  if (
+    submitting.value ||
+    !userStore.hasPermission('purchase:payment:approve') ||
+    !selectedPayments.value.length
+  )
+    return
   if (selectedPayments.value.some((row) => !isPendingPayment(row))) {
     ElMessage.warning('批量审批只能选择待审批且未付款的付款单')
     return
@@ -773,7 +789,12 @@ function openBatchApprove() {
   approveVisible.value = true
 }
 async function submitApprove(decision: string) {
-  if (submitting.value || !approveTargets.value.length || !userStore.hasPermission('purchase:payment:approve')) return
+  if (
+    submitting.value ||
+    !approveTargets.value.length ||
+    !userStore.hasPermission('purchase:payment:approve')
+  )
+    return
   if (decision === PaymentApprovalStatus.REJECTED && !approveForm.approvalComment.trim()) {
     ElMessage.warning('驳回意见不能为空')
     return
@@ -781,7 +802,14 @@ async function submitApprove(decision: string) {
   submitting.value = true
   try {
     const comment = approveForm.approvalComment.trim()
-    if (batchApproval.value) await batchApprove(approveTargets.value.map((row) => ({ paymentId: row.paymentId, approvalStatus: decision, approvalComment: comment })))
+    if (batchApproval.value)
+      await batchApprove(
+        approveTargets.value.map((row) => ({
+          paymentId: row.paymentId,
+          approvalStatus: decision,
+          approvalComment: comment,
+        }))
+      )
     else await approvePayment(approveTarget.value.paymentId, decision, comment)
     ElMessage.success(decision === PaymentApprovalStatus.APPROVED ? '审批通过' : '已驳回')
     approveVisible.value = false
@@ -871,6 +899,42 @@ async function submitConfirm() {
   }
 }
 
+const printVisible = ref(false)
+const printPayment = ref<any>()
+const printRef = ref<InstanceType<typeof PaymentPrint>>()
+const downloading = ref(false)
+async function openPrint(row: any) {
+  try {
+    const res: any = await getPayment(row.paymentId)
+    printPayment.value = res.data
+    printVisible.value = true
+  } catch (error: any) {
+    ElMessage.error(error?.message || '加载打印内容失败')
+  }
+}
+async function downloadVouchers(row: any) {
+  if (downloading.value) return
+  downloading.value = true
+  try {
+    const blob: any = await downloadPaymentVouchers(row.paymentId)
+    if (!(blob instanceof Blob)) throw new Error('下载响应无效')
+    if (blob.type.includes('json')) {
+      const error = JSON.parse(await blob.text())
+      throw new Error(error.msg || error.message || '回单下载失败')
+    }
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download =
+      String(row.paymentNo || row.paymentId).replace(/[\/:*?"<>|]/g, '_') + '-回单.zip'
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch (error: any) {
+    ElMessage.error(error?.message || '回单下载失败')
+  } finally {
+    downloading.value = false
+  }
+}
 async function detail(row: any) {
   const res: any = await getPayment(row.paymentId)
   current.value = res.data
@@ -897,6 +961,15 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.statistics strong {
+  display: block;
+  margin-top: 12px;
+  font-size: 24px;
+}
+.statistics-note {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
 .search-card {
   margin-bottom: 16px;
 }
