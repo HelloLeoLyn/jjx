@@ -278,6 +278,7 @@ TRUNCATE purchase_order_item;
 
 TRUNCATE purchase_order;
 
+TRUNCATE purchase_processing_disposition;
 -- v7：供应商保留不清（基础档案）
 -- TRUNCATE purchase_supplier;
 
@@ -503,6 +504,7 @@ UNION ALL SELECT 'order_shortage_ledger', COUNT(*) FROM order_shortage_ledger
 UNION ALL SELECT 'sales_return_item', COUNT(*) FROM sales_return_item
 UNION ALL SELECT 'purchase_order', COUNT(*) FROM purchase_order
 UNION ALL SELECT 'purchase_payment', COUNT(*) FROM purchase_payment
+UNION ALL SELECT 'purchase_processing_disposition', COUNT(*) FROM purchase_processing_disposition
 UNION ALL SELECT 'inventory_inbound_order', COUNT(*) FROM inventory_inbound_order
 UNION ALL SELECT 'inventory_iqc_quarantine', COUNT(*) FROM inventory_iqc_quarantine
 UNION ALL SELECT 'inventory_iqc_batch', COUNT(*) FROM inventory_iqc_batch

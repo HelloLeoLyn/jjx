@@ -1,6 +1,6 @@
 <template>
   <div class="product-code-generator">
-    <el-form label-width="auto">
+    <el-form :label-width="labelWidth">
       <el-row :gutter="16">
         <el-col :span="12">
           <el-form-item label="面板结构" required>
@@ -149,6 +149,8 @@ const props = withDefaults(
     serialEditable?: boolean
     /** 禁用 */
     disabled?: boolean
+
+    labelWidth?: string
   }>(),
   {
     emitParams: false,
@@ -156,6 +158,7 @@ const props = withDefaults(
     hideGenerate: false,
     serialEditable: true,
     disabled: false,
+    labelWidth: '120px',
   }
 )
 

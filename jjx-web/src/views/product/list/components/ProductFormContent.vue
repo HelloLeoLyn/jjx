@@ -24,7 +24,7 @@
           <div class="form-tip">支持分类编码/名称搜索，选择后自动生成产品编码</div>
         </el-form-item>
       </el-col> -->
-      <el-col :span="12">
+      <el-col :span="24">
         <el-form-item label="客户" prop="codeCustomerId" required>
           <CustomerSelector
             :disabled="props.mode === 'draft'"
@@ -477,12 +477,27 @@ const resetForm = () => {
 const init = async () => {
   await loadCategoryTree()
   if (props.mode === 'draft') {
-    Object.assign(formData, props.initialDraft || {}, { customerId: props.customerId, codeCustomerId: props.customerId })
+    Object.assign(formData, props.initialDraft || {}, {
+      customerId: props.customerId,
+      codeCustomerId: props.customerId,
+    })
     selectedCustomerShortName.value = props.customerShortName || ''
     const draft = props.initialDraft
     if (draft) {
-      codeState.value = { serialNo: draft.serialNo || '', panelType: draft.panelType || '', panelFeature: draft.panelFeature || '', circuitType: draft.circuitType || '', circuitFeature: draft.circuitFeature || '' }
-      if (draft.specJson) { try { Object.assign(specData, JSON.parse(draft.specJson)) } catch { /* 保留默认规格 */ } }
+      codeState.value = {
+        serialNo: draft.serialNo || '',
+        panelType: draft.panelType || '',
+        panelFeature: draft.panelFeature || '',
+        circuitType: draft.circuitType || '',
+        circuitFeature: draft.circuitFeature || '',
+      }
+      if (draft.specJson) {
+        try {
+          Object.assign(specData, JSON.parse(draft.specJson))
+        } catch {
+          /* 保留默认规格 */
+        }
+      }
     }
     return
   }
