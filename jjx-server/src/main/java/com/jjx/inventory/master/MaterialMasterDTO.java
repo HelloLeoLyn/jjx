@@ -35,6 +35,7 @@ public class MaterialMasterDTO {
     private String color;
     private String brand;
     private String unit;
+    private com.jjx.inventory.measurement.MeasurementPolicy measurementPolicy;
     private Map<String, Object> attributeJson;
     private Boolean isCustomerSupplied;
     private Boolean isSample;

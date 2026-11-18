@@ -25,7 +25,14 @@ public record MaterialAttributeSchema(
         @JsonProperty("name_pattern") MaterialNamingPattern namePattern,
         /** 规格模板：字段顺序 + 每字段 1–3 字符分隔符；为空时回落旧拼接（dev-20261029-027）。 */
         @JsonProperty("spec_pattern") SpecPattern specPattern,
-        @JsonProperty("model_pattern") MaterialNamingPattern modelPattern) {
+        @JsonProperty("model_pattern") MaterialNamingPattern modelPattern,
+        @JsonProperty("measurement_defaults") com.jjx.inventory.measurement.MeasurementPolicy measurementDefaults) {
+
+    public MaterialAttributeSchema(int version, List<String> metaOptions, boolean metaRequired, String defaultMeta,
+                                   String defaultForm, String defaultUnit, List<Field> fields,
+                                   MaterialNamingPattern namePattern, SpecPattern specPattern, MaterialNamingPattern modelPattern) {
+        this(version, metaOptions, metaRequired, defaultMeta, defaultForm, defaultUnit, fields, namePattern, specPattern, modelPattern, null);
+    }
 
     /** 保持既有命名/规格调用的构造方式。 */
     public MaterialAttributeSchema(int version, List<String> metaOptions, boolean metaRequired, String defaultMeta,
@@ -90,6 +97,7 @@ public record MaterialAttributeSchema(
     }
 
     public void validateDefinition() {
+        if (measurementDefaults != null) measurementDefaults.normalized();
         if (version < 1 || metaOptions == null || fields == null || fields.size() > 100) fail("模板版本、材质候选或字段定义无效");
         if (new HashSet<>(metaOptions).size() != metaOptions.size()) fail("模板材质候选重复");
         if (metaRequired && metaOptions.isEmpty()) fail("材质必填时必须配置材质候选");

@@ -46,6 +46,8 @@ public class MaterialVO {
     private String color;
     private String brand;
     private String unit;
+    /** 明确配置的实物/计价单位策略；空值保留历史单位行为。 */
+    private String measurementPolicyJson;
     private BigDecimal unitConv;
     private String unitAlt;
     private Boolean batchControl;
