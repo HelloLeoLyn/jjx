@@ -37,15 +37,60 @@ class PurchaseMeasurementPolicyTest extends RollFixture {
         var material=materials.selectById(11L);material.setUnit("PCS");material.setWidthMm(bd("999"));
         material.setMeasurementPolicyJson(new MeasurementPolicy("PCS","KG",MeasurementPolicy.Mode.PIECE_WEIGHT,bd("5")).toJson());
         var policy=new MeasurementPolicy("PCS","㎡",MeasurementPolicy.Mode.PIECE_AREA,null);
-        var old=new PurchaseOrderItem();old.setItemId(9L);old.setOrderId(55L);old.setMaterialId(11L);
+        var old=new PurchaseOrderItem();old.setItemId(9L);old.setOrderId(55L);old.setMaterialId(11L);old.setUnit("PCS");old.setPurchaseUnit("PCS");old.setPriceUnit("㎡");
         old.setMeasurementSnapshot(InventoryMeasurementSnapshotService.freeze(policy,MeasurementCalculator.calculate(policy,
             new MeasurementInput(bd("984"),bd("285"),bd("315"),null,null,null,null))));
         var mapper=mock(PurchaseOrderItemMapper.class);when(mapper.selectById(9L)).thenReturn(old);
         var service=purchasing();ReflectionTestUtils.setField(service,"orderItemMapper",mapper);
-        var item=new PurchaseOrderItemDTO();item.setItemId(9L);item.setOrderId(55L);item.setMaterialId(11L);
+        var item=new PurchaseOrderItemDTO();item.setItemId(9L);item.setMaterialId(11L);
         item.setPurchaseQuantity(bd("984"));item.setUnitPrice(bd("2"));
-        var dto=new PurchaseOrderDTO();dto.setItems(List.of(item));service.previewPricing(dto);
+        var dto=new PurchaseOrderDTO();dto.setOrderId(55L);dto.setItems(List.of(item));service.previewPricing(dto);
         eq("88.3386",item.getPriceQuantity());assertEquals("㎡",item.getPriceUnit());eq("285",item.getPieceWidthMm());
+    }
+    @Test void legacyStoredLineDoesNotAdoptNewMasterPolicyOrNewDimensions() throws Exception {
+        var material=materials.selectById(11L);material.setUnit("PCS");material.setWidthMm(bd("999"));
+        material.setMeasurementPolicyJson(new MeasurementPolicy("PCS","KG",MeasurementPolicy.Mode.PIECE_WEIGHT,bd("5")).toJson());
+        var old=new PurchaseOrderItem();old.setItemId(9L);old.setOrderId(55L);old.setMaterialId(11L);
+        old.setUnit("PCS");old.setPurchaseUnit("PCS");old.setPriceUnit("㎡");old.setPieceWidthMm(bd("285"));old.setPieceLengthMm(bd("315"));
+        var mapper=mock(PurchaseOrderItemMapper.class);when(mapper.selectById(9L)).thenReturn(old);
+        var service=purchasing();ReflectionTestUtils.setField(service,"orderItemMapper",mapper);
+        var item=new PurchaseOrderItemDTO();item.setItemId(9L);item.setMaterialId(11L);item.setPurchaseQuantity(bd("984"));item.setUnitPrice(bd("2"));
+        var dto=new PurchaseOrderDTO();dto.setOrderId(55L);dto.setItems(List.of(item));service.previewPricing(dto);
+        assertNull(item.getMeasurementSnapshot());eq("88.3386",item.getPriceQuantity());eq("285",item.getPieceWidthMm());
+        assertEquals("㎡",item.getPriceUnit());
+        dto.setOrderId(56L);assertThrows(BusinessException.class,()->service.previewPricing(dto));
+    }
+    @Test void unchangedMeasuredOrderKeepsFrozenNetWeightButChangedQuantityMustBeReconfirmed() throws Exception {
+        var material=materials.selectById(11L);material.setUnit("KG");
+        material.setMeasurementPolicyJson(new MeasurementPolicy("ROLL","KG",MeasurementPolicy.Mode.ROLL_WEIGHT,null).toJson());
+        var old=new PurchaseOrderItem();old.setItemId(9L);old.setOrderId(55L);old.setMaterialId(11L);
+        old.setUnit("KG");old.setPurchaseUnit("ROLL");old.setPriceUnit("KG");
+        var policy=new MeasurementPolicy("ROLL","KG",MeasurementPolicy.Mode.MEASURED_WEIGHT,null);
+        old.setMeasurementSnapshot(InventoryMeasurementSnapshotService.freeze(policy,MeasurementCalculator.calculate(policy,
+            new MeasurementInput(bd("2"),bd("195"),null,bd("50"),null,null,bd("10")))));
+        var mapper=mock(PurchaseOrderItemMapper.class);when(mapper.selectById(9L)).thenReturn(old);
+        var service=purchasing();ReflectionTestUtils.setField(service,"orderItemMapper",mapper);
+        var item=new PurchaseOrderItemDTO();item.setItemId(9L);item.setMaterialId(11L);item.setPurchaseQuantity(bd("2"));item.setUnitPrice(bd("2"));
+        var dto=new PurchaseOrderDTO();dto.setOrderId(55L);dto.setItems(List.of(item));service.previewPricing(dto);
+        eq("10",item.getMeasurementActual().actualWeightKg());eq("20",item.getAmount());eq("2",item.getMeasurementActual().physicalQuantity());
+        var original=item.getMeasurementActual();item.setPurchaseQuantity(bd("1"));
+        assertThrows(BusinessException.class,()->service.previewPricing(dto));
+        item.setMeasurementActual(null);
+        assertThrows(BusinessException.class,()->service.previewPricing(dto));
+        item.setPurchaseQuantity(bd("2"));item.setMeasurementActual(new MeasurementInput(original.physicalQuantity(),original.widthMm(),null,original.rollLengthM(),null,null,null));
+        assertThrows(BusinessException.class,()->service.previewPricing(dto));
+    }
+    @Test void legacyReceiptEndpointRejectsForeignOrMeasuredLinesBeforeAnyReceiptWrite() throws Exception {
+        var service=purchasing();var orders=mock(com.jjx.purchase.mapper.PurchaseOrderMapper.class);
+        var order=new com.jjx.purchase.domain.entity.PurchaseOrder();order.setOrderId(55L);
+        order.setApprovalStatus(com.jjx.common.enums.ApproveStatusEnum.APPROVED.getValue());
+        when(orders.selectById(55L)).thenReturn(order);ReflectionTestUtils.setField(service,"orderMapper",orders);
+        var mapper=mock(PurchaseOrderItemMapper.class);var line=new PurchaseOrderItem();line.setItemId(9L);line.setOrderId(56L);
+        when(mapper.selectById(9L)).thenReturn(line);ReflectionTestUtils.setField(service,"orderItemMapper",mapper);
+        assertThrows(BusinessException.class,()->service.receiveOrderItem(55L,9L,bd("1")));
+        line.setOrderId(55L);line.setMeasurementSnapshot("{}");
+        assertThrows(BusinessException.class,()->service.receiveOrderItem(55L,9L,bd("1")));
+        verify(mapper,never()).updateById(any(PurchaseOrderItem.class));
     }
     @Test void kilogramRollReceiptUsesActualWeightAndLengthAndRequiresEveryRoll() throws Exception {
         var source=new PurchaseOrderItem();source.setItemId(9L);source.setMaterialId(11L);source.setUnit("KG");source.setPriceUnit("KG");source.setAmount(bd("100"));

@@ -265,16 +265,26 @@ public class InventoryRollServiceImpl implements InventoryRollService {
                 BigDecimal.ONE,origin.getRollWidthMm(),null,input.getReturnedLengthM(),prior.unitWeightG(),prior.grammage(),input.getActualWeightKg()));
         } else if(input.getActualWeightKg()!=null) throw new BusinessException("历史卷缺少重量换算依据，不能按名义长度换算公斤");
         BigDecimal quantity = actualSnapshot==null?area(origin.getRollWidthMm(), input.getReturnedLengthM()):InventoryMeasurementSnapshotService.ledger(actualSnapshot,issued.getUnit());
+        BigDecimal returnCost=issue.getUnitCost();
+        if(actualSnapshot!=null) {
+            var original=InventoryMeasurementSnapshotService.read(frozen);var remaining=InventoryMeasurementSnapshotService.read(actualSnapshot);
+            if(remaining.result().priceQuantity().compareTo(original.result().priceQuantity())>0)
+                throw new BusinessException("退回计价数量不能超过本次实发的冻结计价数量");
+            // 历史按ROLL记账但按面积/重量计价：余卷仍1卷，返还价值须只覆盖剩余实际计价量。
+            if(com.jjx.common.util.UnitCodes.normalize(issued.getUnit()).equals(original.policy().physicalUnit())
+                    && !original.policy().physicalUnit().equals(original.policy().priceUnit()))
+                returnCost=returnCost.multiply(remaining.result().priceQuantity()).divide(original.result().priceQuantity(),4,RoundingMode.HALF_UP);
+        }
         positive(input.getReturnedLengthM(), "退回长度");
         if(issuedLength==null || input.getReturnedLengthM().compareTo(issuedLength)>0)throw new BusinessException("退回长度不能超过本次实发卷长");
         if (quantity.compareTo(issue.getQuantity().negate().subtract(netReturned)) > 0)
             throw new BusinessException("退料面积不能超过原实发净额");
         validatePosition(input.getWarehouseId(), input.getLocationId());
         InventoryStockItem target = position(rows, origin, input.getWarehouseId(), input.getLocationId());
-        target.setUnitCost(issue.getUnitCost());
-        InventoryInboundOrder order = returnHeader(issued.getOutboundId(), quantity, issue.getUnitCost(), input.getWarehouseId(), input.getReason());
+        target.setUnitCost(returnCost);
+        InventoryInboundOrder order = returnHeader(issued.getOutboundId(), quantity, returnCost, input.getWarehouseId(), input.getReason());
         inboundMapper.insert(order);
-        InventoryInboundItem returned = returnItem(issued, origin, order.getInboundId(), quantity, issue.getUnitCost());
+        InventoryInboundItem returned = returnItem(issued, origin, order.getInboundId(), quantity, returnCost);
         returned.setMeasurementSnapshot(actualSnapshot);
         returned.setRollLengthM(input.getReturnedLengthM()); returned.setLocationId(input.getLocationId());
         inboundItemMapper.insert(returned);
@@ -346,6 +356,7 @@ public class InventoryRollServiceImpl implements InventoryRollService {
         tx.setTransactionType(TransactionTypeEnum.OUTBOUND.getCode()); tx.setSourceType(REVERSAL_SOURCE);
         tx.setSourceId(order.getOutboundId()); tx.setSourceNo(order.getOutboundNo()); tx.setSourceItemId(reverse.getItemId());
         tx.setUnitCost(issue.getUnitCost()); actor(tx, reason);
+        tx.setMeasurementSnapshot(item.getMeasurementSnapshot());
         mutation.applyDelta(stock, item.getQuantity(), tx);
         return order.getOutboundId();
     }

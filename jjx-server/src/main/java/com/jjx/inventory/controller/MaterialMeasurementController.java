@@ -11,9 +11,12 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class MaterialMeasurementController {
     private final MaterialMeasurementService service;
+    public record Preview(@com.fasterxml.jackson.annotation.JsonUnwrapped MeasurementResult result,
+                          java.math.BigDecimal inventoryArea) { }
     @PostMapping("/preview")
     @SaCheckLogin
-    public Result<MeasurementResult> preview(@RequestBody MaterialMeasurementService.PreviewRequest request) {
-        return Result.success(service.preview(request));
+    public Result<Preview> preview(@RequestBody MaterialMeasurementService.PreviewRequest request) {
+        var result=service.preview(request);
+        return Result.success(new Preview(result,MeasurementCalculator.inventoryArea(result)));
     }
 }

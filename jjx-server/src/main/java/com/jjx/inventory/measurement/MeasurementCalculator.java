@@ -93,7 +93,11 @@ public final class MeasurementCalculator {
             throw new BusinessException("反算缺少明确策略、参数或非负账面数量");
         MeasurementPolicy p = policy.normalized();
         String unit = UnitCodes.requireDictUnit(ledgerUnit, "库存记账单位");
-        if (unit.equals(p.physicalUnit())) return calculate(p, quantity(input, ledgerQuantity));
+        if (unit.equals(p.physicalUnit())) {
+            if (p.mode()==MeasurementPolicy.Mode.MEASURED_WEIGHT && input.physicalQuantity()!=null && input.physicalQuantity().compareTo(ledgerQuantity)!=0)
+                throw new BusinessException("实测重量对应的实物数量与采购数量不一致，请重新确认净重");
+            return calculate(p, quantity(input, ledgerQuantity));
+        }
         if (!unit.equals(p.priceUnit())) throw new BusinessException("反算单位不属于该物料双单位策略");
         if (input.physicalQuantity() != null) {
             MeasurementResult known = calculate(p, input);

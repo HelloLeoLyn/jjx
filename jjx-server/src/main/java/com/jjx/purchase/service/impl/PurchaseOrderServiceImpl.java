@@ -540,6 +540,11 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEM_NOT_FOUND);
         }
 
+        if (!Objects.equals(orderId,item.getOrderId())) throw new BusinessException("收货明细不属于当前采购订单");
+        if (StringUtils.isNotBlank(item.getMeasurementSnapshot()) || (item.getRollCount()!=null && item.getRollCount()>0
+                && item.getRollWidthMm()!=null && item.getRollLengthM()!=null))
+            throw new BusinessException("双单位或按卷采购请使用统一收货窗口登记实际交付明细");
+
         // 030/087超收校验：单次收货>0（防负数/零）且 累计收货≤明细订单数量（防超收）
         if (receivedQuantity == null || receivedQuantity.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException("收货数量必须大于0");
@@ -1075,16 +1080,19 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
     private void normalizePurchaseUnits(PurchaseOrderItemDTO item) {
         var material = item.getMaterialId() == null ? null : materialMapper.selectById(item.getMaterialId());
-        String base = material == null ? item.getUnit() : StringUtils.defaultIfBlank(material.getUnit(), item.getUnit());
+        var old = item.getItemId()==null?null:orderItemMapper.selectById(item.getItemId());
+        if (item.getItemId()!=null && item.getOrderId()!=null && (old==null || !Objects.equals(old.getOrderId(),item.getOrderId())))
+            throw new BusinessException("采购明细不属于当前订单");
+        boolean storedMaterial=old!=null && Objects.equals(old.getOrderId(),item.getOrderId()) && Objects.equals(old.getMaterialId(),item.getMaterialId());
+        String base = storedMaterial && StringUtils.isNotBlank(old.getUnit()) ? old.getUnit() : material == null ? item.getUnit() : StringUtils.defaultIfBlank(material.getUnit(), item.getUnit());
         if (StringUtils.isBlank(base)) return;
         item.setUnit(normalizeUnit(base));
-        var old = item.getItemId()==null?null:orderItemMapper.selectById(item.getItemId());
-        var frozen = old!=null && Objects.equals(old.getOrderId(),item.getOrderId()) && Objects.equals(old.getMaterialId(),item.getMaterialId())
+        var frozen = storedMaterial
             ? com.jjx.inventory.service.impl.InventoryMeasurementSnapshotService.read(old.getMeasurementSnapshot()):null;
-        var policy = frozen!=null?frozen.policy():material==null?null:com.jjx.inventory.measurement.MeasurementPolicy.parse(material.getMeasurementPolicyJson());
+        var policy = storedMaterial ? frozen==null?null:frozen.policy() : material==null?null:com.jjx.inventory.measurement.MeasurementPolicy.parse(material.getMeasurementPolicyJson());
         item.setMeasurementSnapshot(null); // 不信任客户端注入的历史策略。
-        item.setPurchaseUnit(normalizeUnit(StringUtils.defaultIfBlank(item.getPurchaseUnit(), policy==null?base:policy.physicalUnit())));
-        item.setPriceUnit(normalizeUnit(StringUtils.defaultIfBlank(item.getPriceUnit(), policy==null?base:policy.priceUnit())));
+        item.setPurchaseUnit(normalizeUnit(StringUtils.defaultIfBlank(item.getPurchaseUnit(), storedMaterial ? StringUtils.defaultIfBlank(old.getPurchaseUnit(),base) : policy==null?base:policy.physicalUnit())));
+        item.setPriceUnit(normalizeUnit(StringUtils.defaultIfBlank(item.getPriceUnit(), storedMaterial ? StringUtils.defaultIfBlank(old.getPriceUnit(),base) : policy==null?base:policy.priceUnit())));
         if(policy!=null && (!java.util.List.of(policy.physicalUnit(),policy.priceUnit()).contains(item.getPurchaseUnit())
                 || !java.util.List.of(policy.physicalUnit(),policy.priceUnit()).contains(item.getPriceUnit()))) {
             com.jjx.purchase.domain.model.PurchaseQuantityPricing.validateCombination(base,item.getPurchaseUnit(),item.getPriceUnit());
@@ -1099,10 +1107,12 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                 extra==null?null:extra.unitWeightG(),extra==null?null:extra.grammage(),extra==null?null:extra.actualWeightKg());
             if(frozen!=null) {
                 var prior=frozen.result().actual();
-                actual=new com.jjx.inventory.measurement.MeasurementInput(actual.physicalQuantity(),
+                BigDecimal entered=item.getPurchaseQuantity()!=null?item.getPurchaseQuantity():item.getQuantity();
+                boolean sameQuantity=entered!=null && entered.compareTo(com.jjx.inventory.measurement.MeasurementCalculator.ledgerQuantity(item.getPurchaseUnit(),frozen.result()))==0;
+                actual=new com.jjx.inventory.measurement.MeasurementInput(actual.physicalQuantity()==null && sameQuantity && extra==null?prior.physicalQuantity():actual.physicalQuantity(),
                     actual.widthMm()==null?prior.widthMm():actual.widthMm(),actual.lengthMm()==null?prior.lengthMm():actual.lengthMm(),
                     actual.rollLengthM()==null?prior.rollLengthM():actual.rollLengthM(),actual.unitWeightG()==null?prior.unitWeightG():actual.unitWeightG(),
-                    actual.grammage()==null?prior.grammage():actual.grammage(),actual.actualWeightKg());
+                    actual.grammage()==null?prior.grammage():actual.grammage(),actual.actualWeightKg()==null && sameQuantity && extra==null?prior.actualWeightKg():actual.actualWeightKg());
             } else actual=com.jjx.inventory.measurement.MaterialMeasurementService.defaults(actual,material);
             var result=com.jjx.inventory.measurement.MeasurementCalculator.convertLedger(policy,actual,item.getPurchaseUnit(),
                 item.getPurchaseQuantity()!=null?item.getPurchaseQuantity():item.getQuantity());
@@ -1116,7 +1126,12 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                 item.setPieceLengthMm(result.actual().lengthMm());
             }
         }
-        if (material != null && policy==null) {
+        if (storedMaterial && policy==null) {
+            if(item.getRollWidthMm()==null)item.setRollWidthMm(old.getRollWidthMm());
+            if(item.getRollLengthM()==null)item.setRollLengthM(old.getRollLengthM());
+            if(item.getPieceWidthMm()==null)item.setPieceWidthMm(old.getPieceWidthMm());
+            if(item.getPieceLengthMm()==null)item.setPieceLengthMm(old.getPieceLengthMm());
+        } else if (material != null && policy==null) {
             if (item.getRollWidthMm() == null) item.setRollWidthMm(material.getWidthMm());
             if (item.getPieceWidthMm() == null) item.setPieceWidthMm(material.getWidthMm());
             if (item.getPieceLengthMm() == null) item.setPieceLengthMm(material.getLengthMm());
@@ -1168,6 +1183,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         BigDecimal orderTax = BigDecimal.ZERO;
 
         for (PurchaseOrderItemDTO itemDTO : orderDTO.getItems()) {
+            // 父单ID为本次操作的归属依据，不能依赖客户端是否重复携带行orderId。
+            itemDTO.setOrderId(orderDTO.getOrderId());
             // 计算明细项金额
             normalizePurchaseUnits(itemDTO);
             calculateItemPricing(itemDTO);

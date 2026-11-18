@@ -4,5 +4,5 @@ import type { MeasurementPolicy, MeasurementInput, MeasurementResult } from '@/t
 
 export const materialMeasurementApi = {
   preview: (data: { materialId?: number; policy?: MeasurementPolicy | null; actual: MeasurementInput }) =>
-    request.post<R<MeasurementResult>>('/inventory/material/measurement/preview', data),
+    request.post<R<MeasurementResult & { inventoryArea?: number | null }>>('/inventory/material/measurement/preview', data),
 }

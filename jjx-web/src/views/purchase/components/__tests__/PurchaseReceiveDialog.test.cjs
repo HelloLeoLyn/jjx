@@ -87,9 +87,9 @@ test('双单位普通收货保留4位账量，不将88.3386裁成88.34', async (
 })
 test('按卷收货由后端计量预览，提交实测参数交服务端合计', async () => {
   const snapshot=JSON.stringify({policy:{physicalUnit:'ROLL',priceUnit:'KG',mode:'MEASURED_WEIGHT'},result:{actual:{}}})
-  const h=harness({items:[{itemId:10,unit:'KG',quantity:10,receivedQuantity:0,rollCount:1,rollWidthMm:1220,rollLengthM:40,measurementSnapshot:snapshot}],preview:async()=>({data:{physicalUnit:'ROLL',priceUnit:'KG',physicalQuantity:1,priceQuantity:6}})})
+  const h=harness({items:[{itemId:10,unit:'KG',quantity:10,receivedQuantity:0,rollCount:1,rollWidthMm:1220,rollLengthM:40,measurementSnapshot:snapshot}],preview:async()=>({data:{physicalUnit:'ROLL',priceUnit:'KG',physicalQuantity:1,priceQuantity:6,inventoryArea:48.8}})})
   await h.open();const row=h.state.form.items[0];row.rolls[0].actualWeightKg=6;await h.state.syncRollQuantity(row)
-  assert.equal(row.receiveQuantity,6);await h.state.handleSubmit()
+  assert.equal(row.receiveQuantity,6);assert.equal(row.rolls[0].inventoryArea,48.8);await h.state.handleSubmit()
   assert.equal(h.calls[0][1][0].receivedQuantity,undefined);assert.equal(h.calls[0][1][0].rolls[0].actualWeightKg,6);h.stop()
 })
 test('清空卷明细后，迟到的计量预览不能恢复旧数量', async()=>{

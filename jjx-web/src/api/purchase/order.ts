@@ -378,6 +378,6 @@ export function confirmPlan(orderId: string, supplierId: string, supplierName: s
 }
 
 /** 只读计算，采购金额规则与保存共用服务端实现。 */
-export function previewOrderPricing(data: { items: unknown[] }) {
+export function previewOrderPricing(data: { orderId?: number; items: unknown[] }) {
   return request({ url: '/purchase/order/pricing-preview', method: 'post', data })
 }

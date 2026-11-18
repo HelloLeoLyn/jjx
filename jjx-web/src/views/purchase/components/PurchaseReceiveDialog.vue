@@ -47,7 +47,7 @@
                   <template #default="{ row: roll }"><el-input-number v-model="roll.actualWeightKg" :min="0.0001" :precision="4" :controls="false" @change="syncRollQuantity(parent)" /></template>
                 </el-table-column>
                 <el-table-column label="面积(㎡)">
-                  <template #default="{ row: roll }">{{ rollArea(roll.rollWidthMm, roll.rollLengthM) }}</template>
+                  <template #default="{ row: roll }">{{ parent.measurement ? (roll.inventoryArea ?? '—') : rollArea(roll.rollWidthMm, roll.rollLengthM) }}</template>
                 </el-table-column>
               </el-table>
               <div class="doc-tip">
@@ -244,6 +244,7 @@ interface ReceiveItem {
 }
 
 interface RollRow {
+  inventoryArea?: number | null
   actualWeightKg?: number
   rollNo?: string
   rollWidthMm: number
@@ -381,6 +382,7 @@ async function syncRollQuantity(row: ReceiveItem) {
           actualWeightKg:roll.actualWeightKg,
         }})).data
         if (!result) throw new Error('计量预览未返回结果')
+        if(row.previewVersion===version)roll.inventoryArea=result.inventoryArea
         return row.unit===result.physicalUnit?result.physicalQuantity:result.priceQuantity
       }))
       if(row.previewVersion===version)row.receiveQuantity=Number(quantities.reduce((a,b)=>a+Number(b),0).toFixed(4))

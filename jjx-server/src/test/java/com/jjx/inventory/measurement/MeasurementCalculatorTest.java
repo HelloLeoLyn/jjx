@@ -101,4 +101,12 @@ class MeasurementCalculatorTest {
         eq("48.8",service.preview(new MaterialMeasurementService.PreviewRequest(1L,p,input("1","1220","40000",null,null,null,null))).priceQuantity());
         assertThrows(BusinessException.class,()->MaterialMeasurementService.actual(material,input("1","1220","40000",null,null,null,null),false));
     }
+    @Test void previewAddsAreaWithoutChangingExistingFlattenedQuantityContract() throws Exception {
+        var p=policy("ROLL","KG",MeasurementPolicy.Mode.ROLL_WEIGHT);
+        var result=MeasurementCalculator.calculate(p,input("1","1220",null,"40",null,"200",null));
+        var view=new com.jjx.inventory.controller.MaterialMeasurementController.Preview(result,MeasurementCalculator.inventoryArea(result));
+        var json=new ObjectMapper().valueToTree(view);
+        eq("9.76",json.get("priceQuantity").decimalValue());eq("48.8",json.get("inventoryArea").decimalValue());
+        assertFalse(json.has("result"));
+    }
 }

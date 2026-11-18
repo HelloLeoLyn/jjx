@@ -10,8 +10,29 @@ const api = vi.hoisted(() => ({
   previewOrderPricing: vi.fn(),
 }))
 vi.mock('@/api/purchase/order', () => api)
-const mount = () => shallowMount(OrderFormDialog, { props: { visible: false } })
+const mount = (orderId?: number) => shallowMount(OrderFormDialog, { props: { visible: false, orderId } })
 describe('采购双单位与服务端金额预览', () => {
+  it('称重旧单改变卷数后必须重新确认净重，不能沿用旧重量', async () => {
+    api.previewOrderPricing.mockRejectedValueOnce(new Error('请确认实际净重'))
+    const w=mount(55),vm=w.vm as any
+    vm.form.items=[{itemId:9,materialId:11,unit:'KG',purchaseUnit:'ROLL',purchaseQuantity:1,unitPrice:2,
+      measurementSnapshot:JSON.stringify({policy:{mode:'MEASURED_WEIGHT',physicalUnit:'ROLL',priceUnit:'KG'}}),
+      measurementActual:{physicalQuantity:2,actualWeightKg:10}}]
+    vm.handlePurchaseQuantityChange(0)
+    expect(vm.form.items[0].measurementActual).toMatchObject({physicalQuantity:1,actualWeightKg:undefined})
+    await Promise.resolve();await Promise.resolve();w.unmount()
+  })
+  it('旧单预览从父单传归属，并回显冻结净重与卷长供再次保存', async () => {
+    const actual = { physicalQuantity: 2, actualWeightKg: 10, widthMm: 195, rollLengthM: 50 }
+    api.previewOrderPricing.mockResolvedValue({ data: { items: [{ unit: 'KG', purchaseUnit: 'ROLL', priceUnit: 'KG', quantity: 10, purchaseQuantity: 2, amount: 20, measurementActual: actual, rollLengthM: 50 }] } })
+    const w = mount(55), vm = w.vm as any
+    vm.form.items = [{ itemId: 9, materialId: 11, unit: 'KG', purchaseUnit: 'ROLL', purchaseQuantity: 2, unitPrice: 2 }]
+    await vm.calculateRowTotal(0)
+    expect(api.previewOrderPricing).toHaveBeenLastCalledWith(expect.objectContaining({ orderId: 55, items: [expect.objectContaining({ itemId: 9 })] }))
+    expect(vm.form.items[0].measurementActual).toEqual(actual)
+    expect(vm.form.items[0].rollLengthM).toBe(50)
+    w.unmount()
+  })
   it('默认采用物料单位、卷宽；把服务端金额和空折合价作为只读值', async () => {
     api.previewOrderPricing.mockResolvedValue({
       data: { orderAmount: 0, orderTax: 0, orderTotalAmount: 0,

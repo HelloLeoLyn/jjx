@@ -187,6 +187,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
+import { MeasurementModeEnum } from '@/enums/inventory/MeasurementEnum'
 import type { FormInstance, FormRules } from 'element-plus'
 import { PurchaseOrderTypeEnum, CurrencyEnum, DeliveryMethodEnum } from '@/enums/purchase'
 import { normalizePurchaseOrderType } from '@/enums/purchase/order'
@@ -371,7 +372,7 @@ async function initForm() {
         form.items = data.items?.length
           ? data.items.map((item: any) => ({
               itemId: item.itemId,
-              measurementSnapshot: item.measurementSnapshot, measurementActual: item.measurementActual,
+              measurementSnapshot: item.measurementSnapshot, measurementActual: item.measurementActual || (item.measurementSnapshot ? JSON.parse(item.measurementSnapshot).result.actual : undefined),
               materialId: item.materialId,
               materialCode: item.materialCode,
               materialName: item.materialName,
@@ -611,10 +612,10 @@ async function calculateRowTotal(index: number, showInputError = false): Promise
   }
   const current = () => !disposed && !closed && epoch === formEpoch && form.items.includes(item) && pricingVersions.get(item) === version
   try {
-    const response = await previewOrderPricing({ items: [{ ...item, orderId: props.orderId }] })
+    const response = await previewOrderPricing({ orderId: props.orderId, items: [{ ...item }] })
     if (!current()) return false
     const priced = response.data.items[0]
-    Object.assign(item, { measurementSnapshot: priced.measurementSnapshot, quantity: Number(priced.quantity), amount: Number(priced.amount), quotedAmount: priced.quotedAmount, processingPlan: priced.processingPlan ?? item.processingPlan,
+    Object.assign(item, { measurementSnapshot: priced.measurementSnapshot, measurementActual: priced.measurementActual, rollLengthM: priced.rollLengthM ?? item.rollLengthM, quantity: Number(priced.quantity), amount: Number(priced.amount), quotedAmount: priced.quotedAmount, processingPlan: priced.processingPlan ?? item.processingPlan,
       purchaseUnit: priced.purchaseUnit || item.purchaseUnit, priceUnit: priced.priceUnit || item.priceUnit,
       purchaseQuantity: priced.purchaseQuantity ?? item.purchaseQuantity,
       priceQuantity: priced.priceQuantity ?? null, rollCount: priced.rollCount,
@@ -644,11 +645,17 @@ const touchPricing = (index: number) => {
 const handlePurchaseQuantityChange = (index: number) => {
   const row = form.items[index]
   if (!row) return
+  invalidateMeasuredQuantity(row)
   // 同单位只透传原始数量，不在浏览器换算；卷数由后端承接。
   if (row.purchaseUnit === row.unit) row.quantity = Number(row.purchaseQuantity || 0)
   touchPricing(index)
 }
-const handlePurchaseUnitChange = (index: number) => { touchPricing(index) }
+function invalidateMeasuredQuantity(row: OrderItem) {
+  const policy=row.measurementSnapshot ? JSON.parse(row.measurementSnapshot).policy : row.measurementPolicy
+  if (policy?.mode===MeasurementModeEnum.MEASURED_WEIGHT.value)
+    row.measurementActual={...row.measurementActual,physicalQuantity:row.purchaseUnit===policy.physicalUnit?Number(row.purchaseQuantity):undefined,actualWeightKg:undefined}
+}
+const handlePurchaseUnitChange = (index: number) => { const row=form.items[index];if(row)invalidateMeasuredQuantity(row);touchPricing(index) }
 const retryDefaults = (index: number) => { const row = form.items[index]; if (row && !submitting.value) void loadDefaults(row, true) }
 const handleSaveDefault = async (index: number) => {
   const row = form.items[index]
