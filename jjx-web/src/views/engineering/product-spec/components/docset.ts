@@ -302,6 +302,18 @@ export function groupBomMaterials(rows: Record<string, any>[]): Record<string, a
     }))
   )
 }
+
+/** A版固定行数分页：组跨页时在每页重新起合并格，保留全局项目序号。 */
+function materialPageRows(rows: Record<string, any>[], start: number, capacity: number): Record<string, any>[] {
+  const page: Record<string, any>[] = rows.slice(start, start + capacity).map(row => ({ ...row, projectSpan: 0 }))
+  for (let i = 0; i < page.length;) {
+    let end = i + 1
+    while (end < page.length && page[end].projectGroupKey === page[i].projectGroupKey) end++
+    page[i].projectSpan = end - i
+    i = end
+  }
+  return page
+}
 /** 刀模位置按 BOM 行（展平后）对齐取值，与纸张行序一致。map 优先；该行无 map 值时回退旧版多行文本（dieLocationText，按行对齐）。 */
 export function dieLocationRows(
   map: DieLocationMap | undefined,
@@ -743,7 +755,7 @@ export function makePages(
         )
       }
       const materialCapacity = 14
-      const bom = bomMaterialPrintRows(data)
+      const bom = groupBomMaterials(bomMaterialPrintRows(data))
       const diePositions = bom.map(row => row.dieLocation || '')
       const groups = flowGroups.map((group) => ({
         ...group,
@@ -770,7 +782,7 @@ export function makePages(
             (i + 1) * materialCapacity
           ),
           changeLines: text.changeLines,
-          rows: bom.slice(i * materialCapacity, (i + 1) * materialCapacity),
+          rows: materialPageRows(bom, i * materialCapacity, materialCapacity),
           groups: groups.map((group, j) => ({
             label: group.label,
             symbol: group.symbol,

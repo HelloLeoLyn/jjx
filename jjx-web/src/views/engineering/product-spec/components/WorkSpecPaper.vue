@@ -44,12 +44,12 @@
         <tr
           v-for="(row, i) in padded(page.rows, materialCapacity)"
           :key="i"
-          :data-material-group="specTemplate === 'B' ? row?.projectGroupKey : undefined"
+          :data-material-group="row?.projectGroupKey"
         >
           <td
-            v-if="specTemplate !== 'B' || !row || row.projectSpan"
+            v-if="!row || row.projectSpan || (specTemplate === 'A' && row.projectSpan == null)"
             class="center material-number"
-            :rowspan="specTemplate === 'B' ? row?.projectSpan || 1 : 1"
+            :rowspan="row?.projectSpan || 1"
             :style="columnFont('materialNumber', 'Content')"
             :data-work-spec-cell="materialCellKeyFor(i, 'number')"
             :data-cell-label="materialLabel(i) + '序号'"
@@ -57,15 +57,13 @@
             data-cell-fit
           >
             {{
-              specTemplate === 'B'
-                ? (row?.projectNo ?? '')
-                : (page.continuation || 0) * materialCapacity + i + 1
+              row?.projectNo ?? (specTemplate === 'A' && row ? (page.continuation || 0) * materialCapacity + i + 1 : '')
             }}
           </td>
           <td
-            v-if="specTemplate !== 'B' || !row || row.projectSpan"
+            v-if="!row || row.projectSpan || (specTemplate === 'A' && row.projectSpan == null)"
             class="center material-project"
-            :rowspan="specTemplate === 'B' ? row?.projectSpan || 1 : 1"
+            :rowspan="row?.projectSpan || 1"
             :style="columnFont('materialProject', 'Content')"
             :data-work-spec-cell="materialCellKeyFor(i, 'project')"
             :data-cell-label="materialLabel(i) + '项目'"
