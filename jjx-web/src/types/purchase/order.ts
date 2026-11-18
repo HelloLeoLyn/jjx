@@ -32,6 +32,8 @@ export interface PurchaseOrderVO {
 
 // 采购订单明细
 export interface PurchaseOrderItem {
+  measurementSnapshot?: string | null
+  measurementActual?: Partial<import('@/types/inventory/measurement').MeasurementInput>
   purchaseUnit?: string
   priceUnit?: string
   rollCount?: number

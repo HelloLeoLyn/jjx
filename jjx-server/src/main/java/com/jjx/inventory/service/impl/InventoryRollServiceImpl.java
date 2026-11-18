@@ -41,6 +41,7 @@ public class InventoryRollServiceImpl implements InventoryRollService {
     private final InventoryWarehouseMapper warehouseMapper;
     private final InventoryStockMutationService mutation;
     private final RedisSequenceService sequence;
+    private final MaterialStockAllocationService allocations;
 
     @Override
     public BigDecimal area(BigDecimal widthMm, BigDecimal lengthM) {
@@ -77,8 +78,8 @@ public class InventoryRollServiceImpl implements InventoryRollService {
         validatePosition(order.getWarehouseId(), item.getLocationId());
         if (item.getSourceOutboundItemId() != null || item.getReversalOfItemId() != null)
             throw new BusinessException("余卷退料和红冲请使用专用入口");
-        validateWidth(item.getMaterialId(), item.getRollWidthMm());
-        BigDecimal measured = area(item.getRollWidthMm(), item.getRollLengthM());
+        if (item.getMeasurementSnapshot()==null) validateWidth(item.getMaterialId(), item.getRollWidthMm());
+        BigDecimal measured = item.getMeasurementSnapshot()==null?area(item.getRollWidthMm(), item.getRollLengthM()):InventoryMeasurementSnapshotService.ledger(item.getMeasurementSnapshot(),item.getUnit());
         if (measured.compareTo(delta) != 0 || zero(item.getPostedQuantity()).signum() != 0)
             throw new BusinessException("逐卷入库必须整卷允收过账，部分合格请先按实际物理卷拆分收货明细");
         if (!stockMapper.selectRollForUpdate(item.getRollNo()).isEmpty()) throw new BusinessException("卷号已存在，不可重复入库");
@@ -90,6 +91,7 @@ public class InventoryRollServiceImpl implements InventoryRollService {
         stock.setProductionDate(item.getProductionDate()); stock.setExpiryDate(item.getExpiryDate());
         stock.setRollNo(item.getRollNo()); stock.setRollWidthMm(item.getRollWidthMm());
         stock.setOriginalRollLengthM(item.getRollLengthM()); stock.setSourceInboundItemId(item.getItemId());
+        stock.setMeasurementSnapshot(item.getMeasurementSnapshot());
         stock.setQuantity(BigDecimal.ZERO); stock.setReservedQuantity(BigDecimal.ZERO); stock.setUnitCost(item.getUnitPrice());
         stock.setStatus(StockItemStatusEnum.ACTIVE.getValue());
         return stock;
@@ -159,6 +161,8 @@ public class InventoryRollServiceImpl implements InventoryRollService {
 
     @Override
     public List<InventoryStockItem> receiptStocks(InventoryInboundOrder order, InventoryInboundItem item, BigDecimal delta) {
+        if(item.getMeasurementSnapshot()!=null) return List.of(initialStock(order,item,delta));
+
         if (item.getRollPlanJson() == null || item.getRollPlanJson().isBlank()) {
             BigDecimal measured = area(item.getRollWidthMm(), item.getRollLengthM());
             if ("PURCHASE".equalsIgnoreCase(order.getSourceType()) || "PURCHASE_ORDER".equalsIgnoreCase(order.getSourceType())) {
@@ -217,17 +221,18 @@ public class InventoryRollServiceImpl implements InventoryRollService {
                 || (item.getRollNo() != null && !Objects.equals(item.getRollNo(), stock.getRollNo()))
                 || (item.getLocationId() != null && !Objects.equals(item.getLocationId(), stock.getLocationId())))
             throw new BusinessException("卷材物料、仓库、库位或卷号与单据不一致");
-        validateWidth(stock.getMaterialId(), stock.getRollWidthMm());
+        if (stock.getMeasurementSnapshot()==null) validateWidth(stock.getMaterialId(), stock.getRollWidthMm());
         positive(stock.getQuantity(), "卷材在库面积");
         if (stock.getUnitCost() == null) throw new BusinessException("原卷过账成本缺失，请先核实");
-        if (zero(stock.getReservedQuantity()).signum() != 0) throw new BusinessException("该卷已被预留，请先释放对应预留");
+        if (zero(stock.getReservedQuantity()).subtract(zero(allocations.ownedQuantity(order,stock.getItemId()))).signum() != 0) throw new BusinessException("该卷已被其他订单预留，不可领出");
         if (item.getQuantity() == null || stock.getQuantity().compareTo(item.getQuantity()) != 0)
-            throw new BusinessException("卷材必须整卷发出，实发面积应为 " + stock.getQuantity().toPlainString() + "㎡");
+            throw new BusinessException("卷材必须整卷发出，实发数量应为 " + stock.getQuantity().toPlainString() + item.getUnit());
         copyIssueIdentity(item, stock);
         return stock;
     }
 
     private void copyIssueIdentity(InventoryOutboundItem item, InventoryStockItem stock) {
+        item.setMeasurementSnapshot(stock.getMeasurementSnapshot());
         item.setStockItemId(stock.getItemId()); item.setRollNo(stock.getRollNo());
         item.setInventoryItemId(stock.getInventoryItemId()); item.setMaterialId(stock.getMaterialId());
         item.setMaterialCode(stock.getMaterialCode()); item.setMaterialName(stock.getMaterialName());
@@ -250,7 +255,18 @@ public class InventoryRollServiceImpl implements InventoryRollService {
         if (netReturned.signum() != 0) throw new BusinessException("该次发料已有退料记录；纠正长度请先红冲原退料");
         InventoryStockItem origin = rows.stream().filter(s -> s.getItemId().equals(issue.getStockItemId())).findFirst()
                 .orElseThrow(() -> new BusinessException("原卷库存追溯缺失"));
-        BigDecimal quantity = area(origin.getRollWidthMm(), input.getReturnedLengthM());
+        String actualSnapshot=null;
+        String frozen=issued.getMeasurementSnapshot()!=null?issued.getMeasurementSnapshot():origin.getMeasurementSnapshot();
+        BigDecimal issuedLength=origin.getOriginalRollLengthM();
+        if(frozen!=null) {
+            var prior=InventoryMeasurementSnapshotService.read(frozen).result().actual();
+            issuedLength=prior.rollLengthM();
+            actualSnapshot=InventoryMeasurementSnapshotService.actual(frozen,new com.jjx.inventory.measurement.MeasurementInput(
+                BigDecimal.ONE,origin.getRollWidthMm(),null,input.getReturnedLengthM(),prior.unitWeightG(),prior.grammage(),input.getActualWeightKg()));
+        } else if(input.getActualWeightKg()!=null) throw new BusinessException("历史卷缺少重量换算依据，不能按名义长度换算公斤");
+        BigDecimal quantity = actualSnapshot==null?area(origin.getRollWidthMm(), input.getReturnedLengthM()):InventoryMeasurementSnapshotService.ledger(actualSnapshot,issued.getUnit());
+        positive(input.getReturnedLengthM(), "退回长度");
+        if(issuedLength==null || input.getReturnedLengthM().compareTo(issuedLength)>0)throw new BusinessException("退回长度不能超过本次实发卷长");
         if (quantity.compareTo(issue.getQuantity().negate().subtract(netReturned)) > 0)
             throw new BusinessException("退料面积不能超过原实发净额");
         validatePosition(input.getWarehouseId(), input.getLocationId());
@@ -259,9 +275,11 @@ public class InventoryRollServiceImpl implements InventoryRollService {
         InventoryInboundOrder order = returnHeader(issued.getOutboundId(), quantity, issue.getUnitCost(), input.getWarehouseId(), input.getReason());
         inboundMapper.insert(order);
         InventoryInboundItem returned = returnItem(issued, origin, order.getInboundId(), quantity, issue.getUnitCost());
+        returned.setMeasurementSnapshot(actualSnapshot);
         returned.setRollLengthM(input.getReturnedLengthM()); returned.setLocationId(input.getLocationId());
         inboundItemMapper.insert(returned);
         InventoryTransaction tx = inboundFlow(order, returned, input.getReason());
+        tx.setMeasurementSnapshot(actualSnapshot);
         InventoryStockItem saved = mutation.applyDelta(target, quantity, tx);
         returned.setStockItemId(saved.getItemId()); inboundItemMapper.updateById(returned);
         return order.getInboundId();
@@ -287,6 +305,7 @@ public class InventoryRollServiceImpl implements InventoryRollService {
         order.setSourceType(REVERSAL_SOURCE); order.setSourceId(item.getInboundId()); order.setSourceNo(original.getInboundNo());
         inboundMapper.insert(order);
         InventoryInboundItem reverse = returnItem(issued, stock, order.getInboundId(), item.getQuantity().negate(), item.getUnitPrice());
+        reverse.setMeasurementSnapshot(item.getMeasurementSnapshot());
         reverse.setReversalOfItemId(itemId); reverse.setStockItemId(stock.getItemId());
         reverse.setRollLengthM(item.getRollLengthM().negate()); inboundItemMapper.insert(reverse);
         mutation.applyDelta(stock, reverse.getQuantity(), inboundFlow(order, reverse, reason));
@@ -411,13 +430,14 @@ public class InventoryRollServiceImpl implements InventoryRollService {
     }
     private void validateIdentity(Long id, Long materialId, String code, String suppliedUnit) {
         InventoryMaterial material = materialId == null ? null : materialMapper.selectById(materialId);
-        if (material == null || !Objects.equals(code, material.getMaterialCode()) || !squareMetre(material.getUnit())
-                || (suppliedUnit != null && !squareMetre(suppliedUnit)))
+        if (material == null || !Objects.equals(code, material.getMaterialCode())
+                || !(squareMetre(material.getUnit()) || java.util.Set.of("KG","ROLL").contains(com.jjx.common.util.UnitCodes.normalize(material.getUnit())))
+                || (suppliedUnit != null && !Objects.equals(com.jjx.common.util.UnitCodes.normalize(suppliedUnit),com.jjx.common.util.UnitCodes.normalize(material.getUnit()))))
             throw new BusinessException("卷材必须使用匹配的物料及㎡库存单位，请先核对物料档案");
         if (id != null) {
             InventoryItem item = itemMapper.selectById(id);
             if (item == null || !InventoryItemTypeEnum.MATERIAL.getCode().equals(item.getItemType())
-                    || !Objects.equals(item.getSourceId(), materialId) || !Objects.equals(item.getItemCode(), code) || !squareMetre(item.getUnit()))
+                    || !Objects.equals(item.getSourceId(), materialId) || !Objects.equals(item.getItemCode(), code) || !Objects.equals(com.jjx.common.util.UnitCodes.normalize(item.getUnit()),com.jjx.common.util.UnitCodes.normalize(material.getUnit())))
                 throw new BusinessException("库存物品身份与物料档案不一致，请先核实，不可自动改旧账身份");
         }
     }

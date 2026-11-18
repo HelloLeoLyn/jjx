@@ -9,6 +9,7 @@ public class RollReturnSaveDTO {
     @NotNull private Long sourceOutboundItemId;
     @NotBlank @Size(max = 64) private String rollNo;
     @NotNull @DecimalMin(value = "0", inclusive = false) private BigDecimal returnedLengthM;
+    private BigDecimal actualWeightKg;
     @NotNull private Long warehouseId;
     private Long locationId;
     @NotBlank @Size(max = 200) private String reason;

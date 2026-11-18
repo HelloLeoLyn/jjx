@@ -18,6 +18,10 @@ import java.time.LocalDateTime;
 @TableName("inventory_transaction")
 public class InventoryTransaction extends BaseEntity {
 
+    /** 本批/本次计量参数快照；数量结存仍由流水唯一派生。 */
+    private String measurementSnapshot;
+
+
     private static final long serialVersionUID = 1L;
 
     /** 流水ID */

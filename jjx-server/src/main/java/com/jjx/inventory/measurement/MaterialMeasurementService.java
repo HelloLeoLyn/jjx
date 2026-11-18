@@ -17,7 +17,12 @@ public class MaterialMeasurementService {
         if (request.materialId() != null && material == null) throw new BusinessException("物料不存在");
         MeasurementPolicy policy = request.policy() != null ? request.policy()
                 : material == null ? null : MeasurementPolicy.parse(material.getMeasurementPolicyJson());
-        MeasurementInput input = defaults(request.actual(), material);
+        MeasurementInput draft = request.actual();
+        // 草稿尺寸本身就是明确输入；此便捷转换只限预览，不放宽余卷业务实际参数。
+        if (draft != null && draft.rollLengthM() == null && draft.lengthMm() != null)
+            draft = new MeasurementInput(draft.physicalQuantity(), draft.widthMm(), draft.lengthMm(),
+                    draft.lengthMm().movePointLeft(3), draft.unitWeightG(), draft.grammage(), draft.actualWeightKg());
+        MeasurementInput input = defaults(draft, material);
         return MeasurementCalculator.calculate(policy, input);
     }
     public static MeasurementInput defaults(MeasurementInput actual, InventoryMaterial material) {

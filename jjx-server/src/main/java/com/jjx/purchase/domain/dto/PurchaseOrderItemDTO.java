@@ -17,6 +17,10 @@ import java.time.LocalDate;
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class PurchaseOrderItemDTO {
+    private com.jjx.inventory.measurement.MeasurementInput measurementActual;
+    /** 服务端冻结的策略及本单实际参数。 */
+    private String measurementSnapshot;
+
 
     /**
      * 明细ID（更新时使用）

@@ -192,16 +192,21 @@
         <el-table-column label="物料编码" prop="materialCode" width="150" />
         <el-table-column label="物料名称" prop="materialName" width="150" show-overflow-tooltip />
         <el-table-column label="规格型号" prop="specification" width="120" show-overflow-tooltip />
-        <el-table-column label="单位" prop="unit" width="80" align="center" />
-        <el-table-column label="总库存" prop="totalQuantity" width="100" align="right">
-          <template #default="{ row }">
-            <span :class="{ 'low-stock': row.lowStock }">
-              {{ formatNumber(row.totalQuantity) }}
-            </span>
-          </template>
+        <el-table-column label="库存数量" width="130" align="right">
+          <template #default="{ row }"><span :class="{ 'low-stock': row.lowStock }">{{ formatNumber(row.physicalQuantity ?? row.totalQuantity) }} {{ row.physicalQuantity == null ? row.unit : row.physicalUnit }}</span></template>
         </el-table-column>
-        <el-table-column label="预留数量" prop="totalReserved" width="100" align="right" />
-        <el-table-column label="可用数量" prop="availableQuantity" width="100" align="right" />
+        <el-table-column label="预留数量" width="130" align="right">
+          <template #default="{ row }">{{ formatNumber(row.reservedPhysicalQuantity ?? row.totalReserved) }} {{ row.reservedPhysicalQuantity == null ? row.unit : row.physicalUnit }}</template>
+        </el-table-column>
+        <el-table-column label="可用数量" width="130" align="right">
+          <template #default="{ row }">{{ formatNumber(row.availablePhysicalQuantity ?? row.availableQuantity) }} {{ row.availablePhysicalQuantity == null ? row.unit : row.physicalUnit }}</template>
+        </el-table-column>
+        <el-table-column label="库存面积（㎡）" width="145" align="right">
+          <template #default="{ row }">{{ row.inventoryArea == null ? '—' : Number(row.inventoryArea).toLocaleString('zh-CN', { maximumFractionDigits: 6 }) }}</template>
+        </el-table-column>
+        <el-table-column label="计价数量" width="140" align="right">
+          <template #default="{ row }">{{ row.priceQuantity == null ? '—' : formatNumber(row.priceQuantity) }} {{ row.priceQuantity == null ? '' : row.priceUnit }}</template>
+        </el-table-column>
         <el-table-column label="最早库位" prop="locationName" width="150" />
         <el-table-column label="最早有效期" prop="earliestExpiry" width="110" align="center">
           <template #default="{ row }">

@@ -20,6 +20,16 @@
               <label>宽度(mm)</label>
               <el-input-number v-model="row.rollWidthMm" :disabled="disabled || row.defaultLoading || Number(row.archiveWidthMm) > 0" :min="0.01" :precision="2" :controls="false" @change="emit('pricing', $index)" />
             </template>
+            <template v-if="measurementMode(row) === MeasurementModeEnum.PIECE_WEIGHT.value">
+              <span>单重(g)</span><el-input-number :disabled="disabled || row.defaultLoading" :model-value="row.measurementActual?.unitWeightG" :min="0" :precision="8" :controls="false" @update:model-value="value => updateActual(row, 'unitWeightG', value)" @change="emit('pricing', $index)" />
+            </template>
+            <template v-if="[MeasurementModeEnum.AREA_WEIGHT.value, MeasurementModeEnum.ROLL_WEIGHT.value, MeasurementModeEnum.PIECE_AREA_WEIGHT.value].includes(measurementMode(row) as any)">
+              <span>克重(g/㎡)</span><el-input-number :disabled="disabled || row.defaultLoading" :model-value="row.measurementActual?.grammage" :min="0" :precision="4" :controls="false" @update:model-value="value => updateActual(row, 'grammage', value)" @change="emit('pricing', $index)" />
+            </template>
+            <template v-if="measurementMode(row) === MeasurementModeEnum.MEASURED_WEIGHT.value">
+              <span>对应实物数量</span><el-input-number :disabled="disabled || row.defaultLoading" :model-value="row.measurementActual?.physicalQuantity" :min="0" :precision="4" :controls="false" @update:model-value="value => updateActual(row, 'physicalQuantity', value)" @change="emit('pricing', $index)" />
+              <span>实际净重(KG)</span><el-input-number :disabled="disabled || row.defaultLoading" :model-value="row.measurementActual?.actualWeightKg" :min="0" :precision="4" :controls="false" @update:model-value="value => updateActual(row, 'actualWeightKg', value)" @change="emit('pricing', $index)" />
+            </template>
             <el-checkbox v-model="row.priceTaxInclusive" :disabled="disabled || row.defaultLoading" @change="emit('pricing', $index)">单价含税</el-checkbox>
             <label>税率(%)</label>
             <el-input-number v-model="row.taxRate" :disabled="disabled || row.defaultLoading" :min="0" :max="100" :precision="2" :controls="false" @change="emit('pricing', $index)" />
@@ -81,6 +91,8 @@ import PurchaseProcessingEditor from './PurchaseProcessingEditor.vue'
 import type { PurchaseEntryItem, PurchaseUnitOption } from '@/api/purchase/orderEntry'
 import { entryNumber, entryPrice, entrySpecification } from '@/api/purchase/orderEntry'
 import type { InventoryMaterial } from '@/types/inventory/material'
+import { MeasurementModeEnum } from '@/enums/inventory/MeasurementEnum'
+import type { MeasurementPolicy } from '@/types/inventory/measurement'
 const props = defineProps<{ items: PurchaseEntryItem[]; materials: InventoryMaterial[]; supplierId?: string; materialLoading: boolean; units: PurchaseUnitOption[]; currency?: string; disabled?: boolean; materialLocked?: boolean }>()
 const emit = defineEmits<{
   (e: 'materialChange', id: number | undefined, index: number): void
@@ -97,7 +109,15 @@ const rowKey = (row: PurchaseEntryItem) => {
   return rowKeys.get(row)!
 }
 const optionsFor = (row: PurchaseEntryItem) => props.units.filter(u => !row.allowedUnits || row.allowedUnits.includes(u.value))
-const usesRoll = (row: PurchaseEntryItem) => row.purchaseUnit === 'ROLL' || row.priceUnit === 'ROLL'
+const updateActual = (row: PurchaseEntryItem, field: 'physicalQuantity' | 'unitWeightG' | 'grammage' | 'actualWeightKg', value?: number) => { row.measurementActual = { ...row.measurementActual, [field]: value } }
+function measurementPolicy(row: PurchaseEntryItem): MeasurementPolicy | undefined {
+  if (row.measurementSnapshot) {
+    try { return JSON.parse(row.measurementSnapshot).policy } catch { return undefined }
+  }
+  return row.measurementPolicy || undefined
+}
+const measurementMode = (row: PurchaseEntryItem) => measurementPolicy(row)?.mode
+const usesRoll = (row: PurchaseEntryItem) => measurementPolicy(row)?.physicalUnit === 'ROLL' || row.purchaseUnit === 'ROLL' || row.priceUnit === 'ROLL'
 const usesPieceArea = (row: PurchaseEntryItem) => [row.unit, row.purchaseUnit, row.priceUnit].some(u => u === 'PCS' || u === 'SHEET') && [row.unit, row.purchaseUnit, row.priceUnit].includes('㎡')
 </script>
 <style scoped>

@@ -2247,9 +2247,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             if (item.getRollNo() != null || item.getRollPlanJson() != null) {
                 List<InventoryStockItem> rolls = rollService.receiptStocks(order, item, quantityToPost);
                 BigDecimal measuredTotal = rolls.stream()
-                        .map(roll -> rollService.area(roll.getRollWidthMm(), roll.getOriginalRollLengthM()))
+                        .map(roll -> roll.getMeasurementSnapshot()==null?rollService.area(roll.getRollWidthMm(), roll.getOriginalRollLengthM()):InventoryMeasurementSnapshotService.ledger(roll.getMeasurementSnapshot(),item.getUnit()))
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
-                String trace = isPurchaseInbound(order)
+                String trace = isPurchaseInbound(order) && item.getMeasurementSnapshot()==null
                         ? InventoryRollServiceImpl.areaToleranceRemark(measuredTotal, quantityToPost) : null;
                 if (trace != null) {
                     measuredAreaTotal = measuredAreaTotal.add(measuredTotal);
@@ -2260,8 +2260,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 int remainingRolls = rolls.size();
                 Long singleStockId = null;
                 for (InventoryStockItem roll : rolls) {
-                    BigDecimal area = rollService.area(roll.getRollWidthMm(), roll.getOriginalRollLengthM());
+                    BigDecimal area = roll.getMeasurementSnapshot()==null?rollService.area(roll.getRollWidthMm(), roll.getOriginalRollLengthM()):InventoryMeasurementSnapshotService.ledger(roll.getMeasurementSnapshot(),item.getUnit());
                     InventoryTransaction tx = new InventoryTransaction();
+                    tx.setMeasurementSnapshot(roll.getMeasurementSnapshot());
                     tx.setTransactionType(com.jjx.inventory.enums.TransactionTypeEnum.INBOUND.getCode());
                     tx.setSourceType(order.getSourceType()); tx.setSourceId(order.getInboundId());
                     tx.setSourceNo(order.getInboundNo()); tx.setSourceItemId(item.getItemId());
@@ -2354,6 +2355,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
             tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getDisplayName());
             tx.setRemark(remark != null ? remark : "入库确认");
+            tx.setMeasurementSnapshot(item.getMeasurementSnapshot());
             stockMutationService.applyDelta(existing, quantityToPost, tx);
             item.setPostedQuantity(postedQuantity.add(quantityToPost));
             inboundItemMapper.updateById(item);

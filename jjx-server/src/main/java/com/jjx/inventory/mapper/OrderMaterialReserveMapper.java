@@ -16,6 +16,12 @@ import java.util.Map;
 @Mapper
 public interface OrderMaterialReserveMapper extends BaseMapper<OrderMaterialReserve> {
 
+    @Select("SELECT * FROM order_material_reserve WHERE order_id=#{orderId} AND stock_item_id IS NOT NULL ORDER BY stock_item_id,id")
+    List<OrderMaterialReserve> selectAllocations(@Param("orderId") Long orderId);
+
+    @Select("SELECT COALESCE(SUM(reserve_quantity-COALESCE(consumed_quantity,0)),0) FROM order_material_reserve WHERE stock_item_id=#{stockItemId} AND status=0")
+    java.math.BigDecimal allocatedOnStock(@Param("stockItemId") Long stockItemId);
+
     /**
      * 查询某订单未释放的预占记录
      */
@@ -25,14 +31,14 @@ public interface OrderMaterialReserveMapper extends BaseMapper<OrderMaterialRese
     /**
      * 按物料汇总所有订单的预占占用（status=0）
      */
-    @Select("SELECT material_id, SUM(reserve_quantity) AS total_reserve FROM order_material_reserve " +
+    @Select("SELECT material_id, SUM(reserve_quantity-COALESCE(consumed_quantity,0)) AS total_reserve FROM order_material_reserve " +
             "WHERE status = 0 GROUP BY material_id")
     List<Map<String, Object>> selectGroupByMaterial();
 
     /**
      * 查询某物料所有订单的预占占用合计（status=0）
      */
-    @Select("SELECT COALESCE(SUM(reserve_quantity), 0) FROM order_material_reserve " +
+    @Select("SELECT COALESCE(SUM(reserve_quantity-COALESCE(consumed_quantity,0)), 0) FROM order_material_reserve " +
             "WHERE material_id = #{materialId} AND status = 0")
     java.math.BigDecimal selectReserveByMaterial(@Param("materialId") Long materialId);
 

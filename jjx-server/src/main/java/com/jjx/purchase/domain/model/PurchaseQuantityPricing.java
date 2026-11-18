@@ -81,13 +81,27 @@ public final class PurchaseQuantityPricing {
         String base = UnitCodes.requireDictUnit(i.getUnit(), "物料基本单位");
         String purchase = UnitCodes.requireDictUnit(blank(i.getPurchaseUnit()) ? base : i.getPurchaseUnit(), "采购单位");
         String price = UnitCodes.requireDictUnit(blank(i.getPriceUnit()) ? base : i.getPriceUnit(), "报价单位");
+        BigDecimal entered=i.getPurchaseQuantity();
+        ExactQuantity priced;
+        if(i.getMeasurementSnapshot()!=null) {
+            var snapshot=com.jjx.inventory.service.impl.InventoryMeasurementSnapshotService.read(i.getMeasurementSnapshot());
+            var result=snapshot.result();
+            BigDecimal basic=com.jjx.inventory.measurement.MeasurementCalculator.ledgerQuantity(base,result);
+            BigDecimal priceQty=com.jjx.inventory.measurement.MeasurementCalculator.ledgerQuantity(price,result);
+            i.setUnit(base);i.setPurchaseUnit(purchase);i.setPriceUnit(price);
+            i.setQuantity(basic.setScale(4,RoundingMode.HALF_UP));
+            entered=com.jjx.inventory.measurement.MeasurementCalculator.ledgerQuantity(purchase,result);
+            i.setRollCount(UnitCodes.ROLL.equals(result.physicalUnit())?result.physicalQuantity().intValueExact():null);
+            bounded(i.getQuantity(),4,8,"库存基本数量",false);
+            priced=exact(priceQty);
+        } else {
         validateCombination(base, purchase, price);
         i.setUnit(base); i.setPurchaseUnit(purchase); i.setPriceUnit(price);
         bounded(i.getRollLengthM(), 4, 8, "每卷长度", true);
         bounded(i.getRollWidthMm(), 2, 10, "宽度", true);
         bounded(i.getPieceLengthMm(), 2, 10, "每片长度", true);
         bounded(i.getPieceWidthMm(), 2, 10, "每片宽度", true);
-        BigDecimal entered = i.getPurchaseQuantity();
+        entered = i.getPurchaseQuantity();
         if (entered == null) entered = UnitCodes.ROLL.equals(purchase)
                 ? (i.getRollCount() == null ? null : BigDecimal.valueOf(i.getRollCount())) : i.getQuantity();
         if (entered == null) throw new BusinessException("请填写采购数量");
@@ -101,7 +115,8 @@ public final class PurchaseQuantityPricing {
         if (raw.isPositive() && basicStored.signum() == 0)
             throw new BusinessException("采购数量换算后小于库存精度，请核对计量依据");
         bounded(basicStored, 4, 8, "库存基本数量", false);
-        ExactQuantity priced = fromBase(basic, base, price, i);
+        i.setQuantity(basicStored);
+        priced = fromBase(basic, base, price, i);
         if (UnitCodes.ROLL.equals(price)) {
             // 沿用已定口径：按卷报价不足整卷向上取整。
             priced = ExactQuantity.of(priced.ceilToInteger(), java.math.BigInteger.ONE);
@@ -111,11 +126,12 @@ public final class PurchaseQuantityPricing {
             try { i.setRollCount(priced.ceilToInteger().intValueExact()); }
             catch (ArithmeticException e) { throw new BusinessException("折算卷数超出范围"); }
         } else i.setRollCount(null);
+        }
         BigDecimal unitPrice = Objects.requireNonNullElse(i.getUnitPrice(), BigDecimal.ZERO);
         bounded(unitPrice, 4, 8, "采购单价", false);
         BigDecimal amount = priced.multiply(exact(unitPrice)).toBigDecimal(2, RoundingMode.HALF_UP);
         bounded(amount, 2, 10, "采购金额", false);
-        i.setPurchaseQuantity(entered); i.setQuantity(basicStored);
+        i.setPurchaseQuantity(entered);
         i.setPriceQuantity(priced.toBigDecimal(12, RoundingMode.HALF_UP));
         i.setUnitPrice(unitPrice.setScale(4, RoundingMode.HALF_UP)); i.setAmount(amount);
         BigDecimal rate = Objects.requireNonNullElse(i.getTaxRate(), BigDecimal.ZERO);

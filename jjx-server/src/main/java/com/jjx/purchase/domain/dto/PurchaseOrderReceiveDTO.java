@@ -64,6 +64,7 @@ public class PurchaseOrderReceiveDTO {
          */
         @Positive(message = "收货数量必须大于0")
         private BigDecimal receivedQuantity;
+        private com.jjx.inventory.measurement.MeasurementInput measurementActual;
         /** 加工收货仅提交实收，receivedQuantity由后端按面积＋明确损耗重算。 */
         @Valid
         private List<PurchaseProcessingPlan.ReceiptGroup> processingGroups;
@@ -80,5 +81,6 @@ public class PurchaseOrderReceiveDTO {
         private String rollNo;
         private BigDecimal rollWidthMm;
         private BigDecimal rollLengthM;
+        private BigDecimal actualWeightKg;
     }
 }

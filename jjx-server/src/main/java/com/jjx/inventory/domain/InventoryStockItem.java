@@ -18,6 +18,10 @@ import java.time.LocalDateTime;
 @TableName("inventory_stock_item")
 public class InventoryStockItem implements Serializable {
 
+    /** 本批/本次计量参数快照；数量结存仍由流水唯一派生。 */
+    private String measurementSnapshot;
+
+
     @Serial
     private static final long serialVersionUID = 1L;
 

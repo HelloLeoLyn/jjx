@@ -44,6 +44,17 @@ public class StockVO {
     /** 单位 */
     private String unit;
 
+    /** 以下均由本页有效批次及冻结参数派生，不单独维护数量余额。 */
+    private String physicalUnit;
+    private BigDecimal physicalQuantity;
+    private BigDecimal reservedPhysicalQuantity;
+    private BigDecimal availablePhysicalQuantity;
+    private String priceUnit;
+    private BigDecimal priceQuantity;
+    /** 净几何面积；无法可靠换算时为空。 */
+    private BigDecimal inventoryArea;
+    private String measurementMessage;
+
     /** 总库存数量 */
     private BigDecimal totalQuantity;
 

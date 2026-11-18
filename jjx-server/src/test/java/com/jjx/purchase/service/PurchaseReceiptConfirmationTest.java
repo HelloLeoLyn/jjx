@@ -91,7 +91,7 @@ class PurchaseReceiptConfirmationTest {
         order = new PurchaseOrder(); order.setOrderId(1L); order.setOrderNo("PO-1"); order.setApprovalStatus(ApproveStatusEnum.APPROVED.getValue());
         when(orderMapper.selectById(1L)).thenReturn(order);
         when(itemMapper.selectById(10L)).thenAnswer(c -> {
-            var item = new PurchaseOrderItem(); item.setItemId(10L); item.setOrderId(1L); item.setQuantity(new BigDecimal("100"));
+            var item = ordinaryPurchaseLine();
             item.setReceivedQuantity(jdbc.queryForObject("SELECT received FROM purchase_order_item WHERE item_id=10", BigDecimal.class)); return item;
         });
         when(itemMapper.updateById(any(PurchaseOrderItem.class))).thenAnswer(c -> jdbc.update("UPDATE purchase_order_item SET received=? WHERE item_id=10", ((PurchaseOrderItem)c.getArgument(0)).getReceivedQuantity()));
@@ -120,9 +120,19 @@ class PurchaseReceiptConfirmationTest {
     }
     int count(String table) { return jdbc.queryForObject("SELECT COUNT(*) FROM " + table,Integer.class); }
 
+    /** 有完整采购身份与金额的普通PCS行；票据/事务测试不跳过真实收货成本适配。 */
+    private PurchaseOrderItem ordinaryPurchaseLine() {
+        var item=new PurchaseOrderItem();item.setItemId(10L);item.setOrderId(1L);
+        item.setMaterialId(55L);item.setMaterialCode("MAT-55");item.setMaterialName("收货夹具物料");item.setMaterialSpec("固定规格");
+        item.setUnit("PCS");item.setPurchaseUnit("PCS");item.setPriceUnit("PCS");
+        item.setQuantity(new BigDecimal("100"));item.setPurchaseQuantity(new BigDecimal("100"));
+        item.setUnitPrice(new BigDecimal("2"));item.setAmount(new BigDecimal("200"));item.setTaxRate(BigDecimal.ZERO);
+        return item;
+    }
+
     PurchaseProcessingService enableDisposal(boolean withGoods){
         var processing=mock(PurchaseProcessingService.class);ReflectionTestUtils.setField(service,"processingService",processing);
-        var source=new PurchaseOrderItem();source.setItemId(10L);source.setOrderId(1L);source.setQuantity(new BigDecimal("100"));source.setProcessingPlan("tree fixture");
+        var source=ordinaryPurchaseLine();source.setProcessingPlan("tree fixture");
         when(itemMapper.selectById(10L)).thenAnswer(c->{var s=new PurchaseOrderItem();org.springframework.beans.BeanUtils.copyProperties(source,s);s.setReceivedQuantity(jdbc.queryForObject("SELECT received FROM purchase_order_item WHERE item_id=10",BigDecimal.class));return s;});
         when(itemMapper.selectList(any())).thenReturn(List.of(source));
         var fact=new PurchaseProcessingService.ReceiptFact();fact.setGroupId("root");fact.setOutputId("root-tail");fact.setQuantity(BigDecimal.ONE);fact.setDelivery(PurchaseProcessingDelivery.SCRAP);fact.setScrapArea(BigDecimal.ONE);fact.setSettledArea(withGoods?BigDecimal.ZERO:BigDecimal.ONE);fact.setNetCost(BigDecimal.ONE);fact.setLossReason("尾料不用");

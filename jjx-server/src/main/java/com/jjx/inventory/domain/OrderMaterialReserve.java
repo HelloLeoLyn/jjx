@@ -41,6 +41,14 @@ public class OrderMaterialReserve implements Serializable {
     /** 预占数量 */
     private BigDecimal reserveQuantity;
 
+    /** 绑定的实际库存批次；历史需求预占为空。 */
+    private Long stockItemId;
+    private String rollNo;
+    /** 本批分配覆盖的订单需求，与整卷实际占用分别记录。 */
+    private BigDecimal demandQuantity;
+    /** 已出库消费量；原分配量永久保留。 */
+    private BigDecimal consumedQuantity;
+
     /** 状态：0占用中 1已释放 2已转正式预留 */
     private Integer status;
 

@@ -1,4 +1,4 @@
-export type MeasurementMode = 'SAME' | 'PIECE_AREA' | 'LENGTH_AREA' | 'ROLL_AREA' | 'PIECE_WEIGHT' | 'AREA_WEIGHT' | 'MEASURED_WEIGHT'
+export type MeasurementMode = 'SAME' | 'PIECE_AREA' | 'LENGTH_AREA' | 'ROLL_AREA' | 'PIECE_WEIGHT' | 'AREA_WEIGHT' | 'ROLL_WEIGHT' | 'PIECE_AREA_WEIGHT' | 'MEASURED_WEIGHT'
 export interface MeasurementPolicy {
   physicalUnit: string
   priceUnit: string

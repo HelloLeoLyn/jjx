@@ -74,6 +74,14 @@ public class InventoryStockMutationServiceImpl implements InventoryStockMutation
         if (stock.getRollNo() != null && delta.signum() > 0 && transaction.getUnitCost() != null) {
             stock.setUnitCost(transaction.getUnitCost());
         }
+        // 参数快照和流水/余额同事务；出库沿用被扣批次快照，余卷归还携带新的实测参数。
+        if (transaction.getMeasurementSnapshot()==null) transaction.setMeasurementSnapshot(stock.getMeasurementSnapshot());
+        if (transaction.getMeasurementSnapshot()!=null) {
+            if(delta.signum()>0 && before.signum()>0 && stock.getMeasurementSnapshot()!=null
+                    && !sameMeasurementRate(stock.getMeasurementSnapshot(),transaction.getMeasurementSnapshot()))
+                throw new BusinessException("本批次实际计量依据不同，请使用独立批次收货");
+            if(delta.signum()>0) stock.setMeasurementSnapshot(transaction.getMeasurementSnapshot());
+        }
         stock.setQuantity(after);
         if (delta.signum() > 0) {
             stock.setLastInboundTime(LocalDateTime.now());
@@ -122,6 +130,13 @@ public class InventoryStockMutationServiceImpl implements InventoryStockMutation
         if (tx.getUnitCost() == null) tx.setUnitCost(stock.getUnitCost());
     }
 
+    private boolean sameMeasurementRate(String old,String incoming) {
+        var a=InventoryMeasurementSnapshotService.read(old);var b=InventoryMeasurementSnapshotService.read(incoming);
+        return a.policy().equals(b.policy()) && a.result().priceQuantity().multiply(b.result().physicalQuantity())
+            .compareTo(b.result().priceQuantity().multiply(a.result().physicalQuantity()))==0
+            && java.util.Objects.equals(a.result().actual().widthMm(),b.result().actual().widthMm())
+            && java.util.Objects.equals(a.result().actual().lengthMm(),b.result().actual().lengthMm());
+    }
     private BigDecimal value(BigDecimal quantity) {
         return quantity == null ? BigDecimal.ZERO : quantity;
     }

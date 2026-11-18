@@ -7,6 +7,7 @@
     </el-descriptions>
     <el-form label-width="110px" style="margin-top: 16px">
       <el-form-item label="退回实测长度(m)"><el-input-number v-model="length" :min="0.0001" :precision="4" @change="preview" /></el-form-item>
+      <el-form-item label="退回实际净重(KG)"><el-input-number v-model="actualWeightKg" :min="0.0001" :precision="4" /><small>仅实际称重模式填写。</small></el-form-item>
       <el-form-item label="退回面积(㎡)">{{ area ?? '-' }}</el-form-item>
       <el-form-item label="退入仓库">
         <el-select v-model="warehouseId" @change="loadLocations">
@@ -37,6 +38,7 @@ const emit = defineEmits<{ (e: 'update:modelValue', value: boolean): void; (e: '
 const visible = computed({ get: () => props.modelValue, set: (v) => emit('update:modelValue', v) })
 const length = ref<number>()
 const area = ref<number>()
+const actualWeightKg = ref<number>()
 const warehouseId = ref('')
 const locationId = ref('')
 const reason = ref('')
@@ -47,6 +49,7 @@ let previewId = 0
 watch(() => props.modelValue, async (open) => {
   if (!open) return
   previewId++
+  actualWeightKg.value=undefined
   length.value = undefined; area.value = undefined; reason.value = ''
   warehouseId.value = String(props.row?.warehouseId || '')
   warehouses.value = (await warehouseApi.list({ current: 1, pageSize: 100 })).data?.records || []
@@ -72,7 +75,7 @@ const submit = async () => {
   saving.value = true
   try {
     await rollApi.returnRoll({ sourceOutboundItemId: String(props.row.lastOutboundItemId), rollNo: props.row.rollNo,
-      returnedLengthM: length.value, warehouseId: warehouseId.value, locationId: locationId.value || undefined, reason: reason.value.trim() })
+      actualWeightKg:actualWeightKg.value, returnedLengthM: length.value, warehouseId: warehouseId.value, locationId: locationId.value || undefined, reason: reason.value.trim() })
     ElMessage.success('余卷已退料入库')
     emit('success'); visible.value = false
   } finally { saving.value = false }

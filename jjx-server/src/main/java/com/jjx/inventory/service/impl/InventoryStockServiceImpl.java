@@ -111,8 +111,8 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
         // 转换为 StockVO
         List<StockVO> voList = pageResult.getRecords().stream()
                 .map(this::convertToStockVO)
-                .peek(this::enrichStockVO)
                 .collect(Collectors.toList());
+        enrichPage(voList);
 
         // 低库存过滤（需要关联物料表的安全库存，在 enrichStockVO 中已判断）
         if (Boolean.TRUE.equals(query.getLowStock())) {
@@ -178,7 +178,7 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
         InventoryStock stock = stockMapper.selectById(stockId);
         if (stock == null) return null;
         StockVO vo = convertToStockVO(stock);
-        enrichStockVO(vo);
+        enrichPage(java.util.List.of(vo));
         return vo;
     }
 
@@ -187,7 +187,7 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
         InventoryStock stock = stockMapper.selectByMaterialId(materialId);
         if (stock == null) return null;
         StockVO vo = convertToStockVO(stock);
-        enrichStockVO(vo);
+        enrichPage(java.util.List.of(vo));
         return vo;
     }
 
@@ -716,6 +716,43 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
         }
 
         return vo;
+    }
+
+    /** 当前页按ID集合读取，不逐行查档案/库位/批次，也不为展示拉全库库存。 */
+    private void enrichPage(List<StockVO> rows) {
+        if(rows.isEmpty())return;
+        var itemIds=rows.stream().map(StockVO::getInventoryItemId).filter(java.util.Objects::nonNull).distinct().toList();
+        var materialIds=rows.stream().map(StockVO::getMaterialId).filter(java.util.Objects::nonNull).distinct().toList();
+        var locationIds=rows.stream().map(StockVO::getLocationId).filter(java.util.Objects::nonNull).distinct().toList();
+        var items=itemIds.isEmpty()?java.util.Map.<Long,com.jjx.inventory.domain.InventoryItem>of():inventoryItemMapper.selectBatchIds(itemIds).stream()
+            .collect(Collectors.toMap(com.jjx.inventory.domain.InventoryItem::getInventoryItemId,v->v));
+        var materials=materialIds.isEmpty()?java.util.Map.<Long,InventoryMaterial>of():materialMapper.selectBatchIds(materialIds).stream()
+            .collect(Collectors.toMap(InventoryMaterial::getMaterialId,v->v));
+        var locations=locationIds.isEmpty()?java.util.Map.<Long,InventoryStorageLocation>of():storageLocationMapper.selectBatchIds(locationIds).stream()
+            .collect(Collectors.toMap(InventoryStorageLocation::getLocationId,v->v));
+        var batches=itemIds.isEmpty()?java.util.Map.<Long,List<InventoryStockItem>>of():stockItemMapper.selectList(new LambdaQueryWrapper<InventoryStockItem>()
+            .in(InventoryStockItem::getInventoryItemId,itemIds)
+            .eq(InventoryStockItem::getStatus,com.jjx.inventory.enums.StockItemStatusEnum.ACTIVE.getValue())
+            .gt(InventoryStockItem::getQuantity,BigDecimal.ZERO)).stream()
+            .collect(Collectors.groupingBy(InventoryStockItem::getInventoryItemId));
+        for(var vo:rows) {
+            var item=vo.getInventoryItemId()==null?null:items.get(vo.getInventoryItemId());
+            if(item!=null) {
+                vo.setItemType(item.getItemType());vo.setItemTypeName("PRODUCT".equals(item.getItemType())?"产品":"材料");
+                vo.setSourceId(item.getSourceId());vo.setSpecification(item.getSpecification());vo.setUnit(item.getUnit());
+            }
+            var location=vo.getLocationId()==null?null:locations.get(vo.getLocationId());
+            if(location!=null){vo.setLocationCode(location.getLocationCode());vo.setLocationName(location.getLocationName());}
+            var material=vo.getMaterialId()==null?null:materials.get(vo.getMaterialId());
+            if(material!=null) {
+                vo.setSpecification(material.getSpecification());
+                // 库存物品单位是历史记账口径，不能被当前档案单位覆盖。
+                if(vo.getUnit()==null)vo.setUnit(material.getUnit());
+                vo.setSafeStock(material.getSafeStock());vo.setMaxStock(material.getMaxStock());
+                if(material.getSafeStock()!=null && vo.getTotalQuantity()!=null)vo.setLowStock(vo.getTotalQuantity().compareTo(material.getSafeStock())<0);
+            }
+            InventoryStockMeasurement.enrich(vo,material,vo.getInventoryItemId()==null?java.util.List.of():batches.getOrDefault(vo.getInventoryItemId(),java.util.List.of()));
+        }
     }
 
     /**

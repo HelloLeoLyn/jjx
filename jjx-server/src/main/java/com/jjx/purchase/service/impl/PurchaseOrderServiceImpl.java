@@ -1078,9 +1078,45 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         String base = material == null ? item.getUnit() : StringUtils.defaultIfBlank(material.getUnit(), item.getUnit());
         if (StringUtils.isBlank(base)) return;
         item.setUnit(normalizeUnit(base));
-        item.setPurchaseUnit(normalizeUnit(StringUtils.defaultIfBlank(item.getPurchaseUnit(), base)));
-        item.setPriceUnit(normalizeUnit(StringUtils.defaultIfBlank(item.getPriceUnit(), base)));
-        if (material != null) {
+        var old = item.getItemId()==null?null:orderItemMapper.selectById(item.getItemId());
+        var frozen = old!=null && Objects.equals(old.getOrderId(),item.getOrderId()) && Objects.equals(old.getMaterialId(),item.getMaterialId())
+            ? com.jjx.inventory.service.impl.InventoryMeasurementSnapshotService.read(old.getMeasurementSnapshot()):null;
+        var policy = frozen!=null?frozen.policy():material==null?null:com.jjx.inventory.measurement.MeasurementPolicy.parse(material.getMeasurementPolicyJson());
+        item.setMeasurementSnapshot(null); // 不信任客户端注入的历史策略。
+        item.setPurchaseUnit(normalizeUnit(StringUtils.defaultIfBlank(item.getPurchaseUnit(), policy==null?base:policy.physicalUnit())));
+        item.setPriceUnit(normalizeUnit(StringUtils.defaultIfBlank(item.getPriceUnit(), policy==null?base:policy.priceUnit())));
+        if(policy!=null && (!java.util.List.of(policy.physicalUnit(),policy.priceUnit()).contains(item.getPurchaseUnit())
+                || !java.util.List.of(policy.physicalUnit(),policy.priceUnit()).contains(item.getPriceUnit()))) {
+            com.jjx.purchase.domain.model.PurchaseQuantityPricing.validateCombination(base,item.getPurchaseUnit(),item.getPriceUnit());
+            policy=null; // 显式供应商旧约定优先，仍走原有已支持路径。
+        }
+        if(policy!=null && (item.getProcessingPlan()==null || item.getProcessingPlan().isBlank())) {
+            policy.validateLedgerUnit(base);
+            var extra=item.getMeasurementActual();
+            var actual=new com.jjx.inventory.measurement.MeasurementInput(
+                extra==null?null:extra.physicalQuantity(),
+                item.getRollWidthMm()!=null?item.getRollWidthMm():item.getPieceWidthMm(),item.getPieceLengthMm(),item.getRollLengthM(),
+                extra==null?null:extra.unitWeightG(),extra==null?null:extra.grammage(),extra==null?null:extra.actualWeightKg());
+            if(frozen!=null) {
+                var prior=frozen.result().actual();
+                actual=new com.jjx.inventory.measurement.MeasurementInput(actual.physicalQuantity(),
+                    actual.widthMm()==null?prior.widthMm():actual.widthMm(),actual.lengthMm()==null?prior.lengthMm():actual.lengthMm(),
+                    actual.rollLengthM()==null?prior.rollLengthM():actual.rollLengthM(),actual.unitWeightG()==null?prior.unitWeightG():actual.unitWeightG(),
+                    actual.grammage()==null?prior.grammage():actual.grammage(),actual.actualWeightKg());
+            } else actual=com.jjx.inventory.measurement.MaterialMeasurementService.defaults(actual,material);
+            var result=com.jjx.inventory.measurement.MeasurementCalculator.convertLedger(policy,actual,item.getPurchaseUnit(),
+                item.getPurchaseQuantity()!=null?item.getPurchaseQuantity():item.getQuantity());
+            item.setMeasurementSnapshot(com.jjx.inventory.service.impl.InventoryMeasurementSnapshotService.freeze(policy,result));
+            item.setMeasurementActual(result.actual());
+            if (com.jjx.common.util.UnitCodes.ROLL.equals(policy.physicalUnit())) {
+                item.setRollWidthMm(result.actual().widthMm());
+                item.setRollLengthM(result.actual().rollLengthM());
+            } else {
+                item.setPieceWidthMm(result.actual().widthMm());
+                item.setPieceLengthMm(result.actual().lengthMm());
+            }
+        }
+        if (material != null && policy==null) {
             if (item.getRollWidthMm() == null) item.setRollWidthMm(material.getWidthMm());
             if (item.getPieceWidthMm() == null) item.setPieceWidthMm(material.getWidthMm());
             if (item.getPieceLengthMm() == null) item.setPieceLengthMm(material.getLengthMm());
@@ -1192,7 +1228,6 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         }
         for (int i = 0; i < itemDTOs.size(); i++) {
             PurchaseOrderItemDTO itemDTO = itemDTOs.get(i);
-            normalizePurchaseUnits(itemDTO);
             if (itemDTO.getPurchaseRemark() != null && itemDTO.getPurchaseRemark().length() > 2000)
                 throw new BusinessException("采购说明不能超过2000字符");
             PurchaseOrderItem item = purchaseConverter.toEntity(itemDTO);
@@ -1435,6 +1470,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             } else {
                 if(itemDTO.getProcessingGroups()!=null&&!itemDTO.getProcessingGroups().isEmpty())
                     throw new BusinessException("普通采购行不能提交加工交付");
+                if(item.getMeasurementSnapshot()!=null) {
+                    receiptLines.addAll(measurementReceipt(item,itemDTO));
+                } else {
                 if(itemDTO.getReceivedQuantity()==null || itemDTO.getReceivedQuantity().signum()<=0)
                     throw new BusinessException("收货数量必须大于0");
                 boolean rollPlanned = item.getRollCount()!=null && item.getRollCount()>0
@@ -1477,6 +1515,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                     receipt.setAmount(item.getAmount().multiply(itemDTO.getReceivedQuantity()).divide(item.getQuantity(),2,RoundingMode.HALF_UP));
                     receiptLines.add(receipt);
                 }
+                }
             }
             // 更新收货数量
             BigDecimal newReceivedQuantity = item.getReceivedQuantity() != null ?
@@ -1511,7 +1550,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // 失败不吞异常：与收货同一事务，保证“收了货必有入库单”的一致性
         boolean hasRolls = receiptLines.stream().anyMatch(i -> i.getRollWidthMm()!=null && i.getRollLengthM()!=null);
         dto.setDisposalOnly(hasProcessing&&receiptLines.isEmpty()&&!disposalFacts.isEmpty());
-        Long receiptInboundId = dto.isDisposalOnly()?null:(hasProcessing||hasRolls)
+        Long receiptInboundId = dto.isDisposalOnly()?null:(hasProcessing||hasRolls||receiptLines.stream().anyMatch(i -> i.getMeasurementSnapshot()!=null))
             ? inboundService.createInboundRecordFromPurchase(dto.getOrderId(),receiptLines)
             : inboundService.createInboundRecordFromPurchase(dto.getOrderId());
         receiptAttachments.recordDisposals(dto,receiptInboundId,disposalFacts);
@@ -1533,6 +1572,47 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         publishEventAfterCommit("purchase.received", payload);
 
         return totalCount;
+    }
+
+    /** 收货只读取采购单冻结策略，所有数值来自本次实际交付。 */
+    private List<com.jjx.inventory.domain.InventoryInboundItem> measurementReceipt(PurchaseOrderItem item,PurchaseOrderReceiveDTO.ReceiveItemDTO input) {
+        var frozen=com.jjx.inventory.service.impl.InventoryMeasurementSnapshotService.read(item.getMeasurementSnapshot());
+        var policy=frozen.policy();var prior=frozen.result().actual();
+        var facts=new java.util.ArrayList<com.jjx.inventory.measurement.MeasurementInput>();
+        boolean roll=com.jjx.common.util.UnitCodes.ROLL.equals(policy.physicalUnit());
+        if(roll) {
+            if(input.getRolls()==null || input.getRolls().isEmpty())throw new BusinessException("该采购行按卷采购，请录入每卷实际卷宽、卷长和适用的净重");
+            for(var entry:input.getRolls()) {
+                if(entry==null || entry.getRollWidthMm()==null || entry.getRollLengthM()==null) throw new BusinessException("每卷实际宽度与长度不能为空");
+                facts.add(new com.jjx.inventory.measurement.MeasurementInput(BigDecimal.ONE,entry.getRollWidthMm(),null,entry.getRollLengthM(),prior.unitWeightG(),prior.grammage(),entry.getActualWeightKg()));
+            }
+        } else {
+            if(input.getRolls()!=null&&!input.getRolls().isEmpty())throw new BusinessException("非卷材不能提交卷号明细");
+            var actual=input.getMeasurementActual();
+            actual=actual==null?new com.jjx.inventory.measurement.MeasurementInput(null,prior.widthMm(),prior.lengthMm(),prior.rollLengthM(),prior.unitWeightG(),prior.grammage(),null):actual;
+            var result=com.jjx.inventory.measurement.MeasurementCalculator.convertLedger(policy,actual,item.getUnit(),input.getReceivedQuantity());
+            facts.add(result.actual());
+        }
+        var result=new java.util.ArrayList<com.jjx.inventory.domain.InventoryInboundItem>();
+        BigDecimal total=BigDecimal.ZERO;
+        for(int n=0;n<facts.size();n++) {
+            var measured=com.jjx.inventory.measurement.MeasurementCalculator.calculate(policy,facts.get(n));
+            String snapshot=com.jjx.inventory.service.impl.InventoryMeasurementSnapshotService.freeze(policy,measured);
+            BigDecimal quantity=com.jjx.inventory.measurement.MeasurementCalculator.ledgerQuantity(item.getUnit(),measured).setScale(4,RoundingMode.HALF_UP);
+            if(quantity.signum()<=0)throw new BusinessException("本次收货换算数量必须大于0");
+            var line=new com.jjx.inventory.domain.InventoryInboundItem();
+            line.setSourcePurchaseItemId(item.getItemId());line.setMaterialId(item.getMaterialId());line.setMaterialCode(item.getMaterialCode());
+            line.setMaterialName(item.getMaterialName());line.setSpecification(item.getMaterialSpec());line.setUnit(item.getUnit());line.setQuantity(quantity);
+            BigDecimal pricingQty=com.jjx.inventory.measurement.MeasurementCalculator.ledgerQuantity(item.getPriceUnit(),measured);
+            BigDecimal originalPriceQty=com.jjx.inventory.measurement.MeasurementCalculator.ledgerQuantity(item.getPriceUnit(),frozen.result());
+            BigDecimal amount=item.getAmount().multiply(pricingQty).divide(originalPriceQty,2,RoundingMode.HALF_UP);
+            line.setAmount(amount);line.setUnitPrice(amount.divide(quantity,4,RoundingMode.HALF_UP));line.setMeasurementSnapshot(snapshot);
+            if(roll) {var entry=input.getRolls().get(n);line.setRollNo(entry.getRollNo());line.setRollWidthMm(entry.getRollWidthMm());line.setRollLengthM(entry.getRollLengthM());}
+            result.add(line);total=total.add(quantity);
+        }
+        if(input.getReceivedQuantity()!=null && input.getReceivedQuantity().setScale(4,RoundingMode.HALF_UP).compareTo(total)!=0)
+            throw new BusinessException("实际明细换算合计与本次收货数量不一致");
+        input.setReceivedQuantity(total);return result;
     }
 
     /**

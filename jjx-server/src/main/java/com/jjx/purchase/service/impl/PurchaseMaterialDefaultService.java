@@ -40,10 +40,13 @@ public class PurchaseMaterialDefaultService {
         var stored=parse(defaults.read(supplierId)).get(String.valueOf(materialId));
         var r=new LinkedHashMap<String,Object>();
         r.put("configured",stored!=null); r.put("unit",base);
-        r.put("allowedUnits",PurchaseQuantityPricing.availableUnits(base));
-        r.put("purchaseUnit",stored==null?base:UnitCodes.requireDictUnit(stored.path("purchaseUnit").asText(),"默认采购单位"));
-        r.put("priceUnit",stored==null?base:UnitCodes.requireDictUnit(stored.path("priceUnit").asText(),"默认报价单位"));
-        PurchaseQuantityPricing.validateCombination(base,(String)r.get("purchaseUnit"),(String)r.get("priceUnit"));
+        var policy=com.jjx.inventory.measurement.MeasurementPolicy.parse(m.getMeasurementPolicyJson());
+        var allowed=new LinkedHashSet<>(PurchaseQuantityPricing.availableUnits(base));
+        if(policy!=null){policy.validateLedgerUnit(base);allowed.add(policy.physicalUnit());allowed.add(policy.priceUnit());}
+        r.put("allowedUnits",allowed);r.put("measurementPolicy",policy);
+        r.put("purchaseUnit",stored==null?(policy==null?base:policy.physicalUnit()):UnitCodes.requireDictUnit(stored.path("purchaseUnit").asText(),"默认采购单位"));
+        r.put("priceUnit",stored==null?(policy==null?base:policy.priceUnit()):UnitCodes.requireDictUnit(stored.path("priceUnit").asText(),"默认报价单位"));
+        validate(base,(String)r.get("purchaseUnit"),(String)r.get("priceUnit"),policy);
         r.put("rollWidthMm",m.getWidthMm());
         r.put("rollLengthM",m.getLengthMm()==null?null:m.getLengthMm().divide(BigDecimal.valueOf(1000)));
         r.put("pieceWidthMm",m.getWidthMm()); r.put("pieceLengthMm",m.getLengthMm());
@@ -55,13 +58,22 @@ public class PurchaseMaterialDefaultService {
         String base=UnitCodes.requireDictUnit(m.getUnit(),"物料基本单位");
         String purchase=UnitCodes.requireDictUnit(dto.getPurchaseUnit(),"默认采购单位");
         String price=UnitCodes.requireDictUnit(dto.getPriceUnit(),"默认报价单位");
-        PurchaseQuantityPricing.validateCombination(base,purchase,price);
+        validate(base,purchase,price,com.jjx.inventory.measurement.MeasurementPolicy.parse(m.getMeasurementPolicyJson()));
         // 锁住供应商行后再合并，两个客户端配置不同物料不会相互覆盖。
         ObjectNode all=parse(defaults.readForUpdate(dto.getSupplierId()));
         ObjectNode pair=json.createObjectNode(); pair.put("purchaseUnit",purchase);pair.put("priceUnit",price);
         all.set(String.valueOf(dto.getMaterialId()),pair);
         if (defaults.write(dto.getSupplierId(),all.toString(),operator)!=1)
             throw new BusinessException("供应商采购约定保存失败，请刷新后重试");
+    }
+    private void validate(String base,String purchase,String price,com.jjx.inventory.measurement.MeasurementPolicy policy) {
+        if(policy==null) {PurchaseQuantityPricing.validateCombination(base,purchase,price);return;}
+        policy.validateLedgerUnit(base);
+        var supported=new HashSet<>(List.of(policy.physicalUnit(),policy.priceUnit()));
+        if(!supported.contains(purchase)||!supported.contains(price)) {
+            // 显式供应商既有约定继续保留已有受支持换算。
+            PurchaseQuantityPricing.validateCombination(base,purchase,price);
+        }
     }
     private com.jjx.inventory.domain.InventoryMaterial material(Long supplierId,Long materialId) {
         if (supplierId==null || supplierId<=0 || defaults.supplierExists(supplierId)!=1) throw new BusinessException("请选择有效供应商");

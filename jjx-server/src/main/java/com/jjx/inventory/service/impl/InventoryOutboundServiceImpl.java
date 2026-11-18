@@ -71,6 +71,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final InventoryWarehouseMapper outboundWarehouseMapper;
     private final InventoryMaterialMapper materialMapper;
     private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
+    private final MaterialStockAllocationService materialAllocations;
     /** dev-20260924-002：报废补产在同一事务里生成补产任务（挂工单末道工序） */
     private final com.jjx.production.service.ProductionTaskService productionTaskService;
     private final JdbcTemplate jdbcTemplate;
@@ -557,7 +558,10 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             }
 
             // 生产/打样领料确认出库：先释放本单预占，后续 FIFO 才能扣到已预占的库存。
-            if (hasPickReservation(order)) {
+            Map<Long,BigDecimal> consumedAllocations=java.util.Collections.emptyMap();
+            if (materialAllocations.hasAllocation(order,item.getMaterialId())) {
+                consumedAllocations=materialAllocations.consume(order,item);
+            } else if (hasPickReservation(order)) {
                 releasePickStock(item.getMaterialId(), item.getQuantity());
             }
 
@@ -569,6 +573,15 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 continue;
             }
             BigDecimal remaining = item.getQuantity();
+            // 先实发刚消费的自有分配批次；不得释放A批预留却由FIFO发B批。
+            for(var allocation:consumedAllocations.entrySet()) {
+                InventoryStockItem owned=stockItemMapper.selectByIdForUpdate(allocation.getKey());
+                if(owned==null || !Objects.equals(owned.getWarehouseId(),order.getWarehouseId())
+                    || (item.getLocationId()!=null && !Objects.equals(item.getLocationId(),owned.getLocationId())))
+                    throw new BusinessException("自有预留批次与本单仓库/库位不符，请按预留位置领料");
+                applyOutboundDelta(owned,allocation.getValue(),order,item,operatorId,operatorName);
+                remaining=remaining.subtract(allocation.getValue());
+            }
             // DEV-693：明细指定了库位 → 先按该库位 FIFO 扣减，不足再从全局 FIFO 补齐
             if (item.getLocationId() != null) {
                 List<InventoryStockItem> locItems = stockItemMapper.selectFIFOAvailableByInventoryItemAndLocation(item.getInventoryItemId(), item.getLocationId());
@@ -1637,7 +1650,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
                 break;
             }
-            BigDecimal releaseQty = remaining.min(si.getReservedQuantity());
+            BigDecimal releaseQty = remaining.min(si.getReservedQuantity().subtract(materialAllocations.protectedQuantity(si.getItemId())).max(BigDecimal.ZERO));
             if (releaseQty.compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }
@@ -1654,16 +1667,18 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     /** 单据级预占（按明细逐料） */
     private void reservePickItems(Long outboundId) {
         List<InventoryOutboundItem> items = outboundItemMapper.selectByOutboundId(outboundId);
+        InventoryOutboundOrder order=outboundOrderMapper.selectById(outboundId);
         for (InventoryOutboundItem it : items) {
-            reservePickStock(it.getMaterialId(), it.getQuantity());
+            if(!materialAllocations.hasAllocation(order,it.getMaterialId())) reservePickStock(it.getMaterialId(), it.getQuantity());
         }
     }
 
     /** 单据级释放预占（按明细逐料） */
     private void releasePickItems(Long outboundId) {
         List<InventoryOutboundItem> items = outboundItemMapper.selectByOutboundId(outboundId);
+        InventoryOutboundOrder order=outboundOrderMapper.selectById(outboundId);
         for (InventoryOutboundItem it : items) {
-            releasePickStock(it.getMaterialId(), it.getQuantity());
+            if(!materialAllocations.hasAllocation(order,it.getMaterialId())) releasePickStock(it.getMaterialId(), it.getQuantity());
         }
     }
 

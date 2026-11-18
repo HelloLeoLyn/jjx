@@ -1,9 +1,11 @@
+import type { MeasurementInput, MeasurementPolicy } from '@/types/inventory/measurement'
 import request from '@/utils/request'
 import { PurchaseProcessingOperationEnum, PurchaseProcessingDeliveryEnum } from '@/enums/purchase/processing'
 export type ProcessingDelivery = typeof PurchaseProcessingDeliveryEnum.INBOUND.value | typeof PurchaseProcessingDeliveryEnum.SCRAP.value
 
 export interface PurchaseUnitOption { value: string; label: string }
 export interface PurchaseMaterialDefault {
+  measurementPolicy?: MeasurementPolicy | null
   configured: boolean
   unit: string
   purchaseUnit: string
@@ -15,6 +17,9 @@ export interface PurchaseMaterialDefault {
   allowedUnits?: string[]
 }
 export interface PurchaseEntryItem {
+  measurementSnapshot?: string | null
+  measurementActual?: Partial<MeasurementInput>
+  measurementPolicy?: MeasurementPolicy | null
   itemId?: string | number
   materialId?: number
   materialCode: string

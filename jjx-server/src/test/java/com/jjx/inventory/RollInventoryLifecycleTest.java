@@ -211,7 +211,7 @@ abstract class RollFixture {
         var seq=mock(RedisSequenceService.class);
         when(seq.generateBusinessNumberByType(anyString(),anyString(),anyString(),anyInt())).thenAnswer(c -> c.getArgument(1)+"-"+numbers.incrementAndGet());
         mutation=proxy(new InventoryStockMutationServiceImpl(stocks,summaries,txs),InventoryStockMutationService.class);
-        rolls=proxy(new InventoryRollServiceImpl(stocks,txs,ins,inItems,outs,outItems,inventoryItems,materials,locations,warehouses,mutation,seq),InventoryRollService.class);
+        rolls=proxy(new InventoryRollServiceImpl(stocks,txs,ins,inItems,outs,outItems,inventoryItems,materials,locations,warehouses,mutation,seq,org.mockito.Mockito.mock(com.jjx.inventory.service.impl.MaterialStockAllocationService.class)),InventoryRollService.class);
         var in=construct(InventoryInboundServiceImpl.class); inboundTarget=in;
         qualityLots=mock(com.jjx.quality.mapper.QualityLotMapper.class);
         qualityService=mock(com.jjx.quality.service.QualityLotService.class);

@@ -60,7 +60,7 @@ export const rollApi = {
   flow(rollNo: string) {
     return request.get<R<RollFlow[]>>('/inventory/roll/flow', { params: { rollNo } })
   },
-  returnRoll(data: { sourceOutboundItemId: string; rollNo: string; returnedLengthM: number;
+  returnRoll(data: { sourceOutboundItemId: string; rollNo: string; returnedLengthM: number; actualWeightKg?: number;
     warehouseId: string; locationId?: string; reason: string }) {
     return request.post<R<string>>('/inventory/roll/return', data)
   },

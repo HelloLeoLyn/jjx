@@ -17,6 +17,9 @@ import java.time.LocalDate;
 @EqualsAndHashCode(callSuper = false)
 @TableName("purchase_order_item")
 public class PurchaseOrderItem {
+    /** 服务端冻结的策略及本单实际参数。 */
+    private String measurementSnapshot;
+
 
     /**
      * 明细ID

@@ -38,6 +38,14 @@ class MeasurementCalculatorTest {
         eq("500",MeasurementCalculator.calculate(policy("PCS","PCS",MeasurementPolicy.Mode.SAME),input("500",null,null,null,null,null,null)).priceQuantity());
         eq("0",MeasurementCalculator.calculate(policy("PCS","㎡",MeasurementPolicy.Mode.PIECE_AREA),input("0","285","315",null,null,null,null)).priceQuantity());
     }
+    @Test void rollAndSheetKilogramsUseFrozenGeometryAndGrammageIncludingActualRemainder() {
+        var roll=policy("ROLL","KG",MeasurementPolicy.Mode.ROLL_WEIGHT);
+        eq("24.4",MeasurementCalculator.calculate(roll,input("1","1220",null,"100",null,"200",null)).priceQuantity());
+        var remaining=MeasurementCalculator.calculate(roll,input("1","1220",null,"40",null,"200",null));
+        eq("9.76",remaining.priceQuantity());eq("48.8",MeasurementCalculator.inventoryArea(remaining));
+        eq("17.66772",MeasurementCalculator.calculate(policy("PCS","KG",MeasurementPolicy.Mode.PIECE_AREA_WEIGHT),input("984","285","315",null,null,"200",null)).priceQuantity());
+        assertThrows(BusinessException.class,()->MeasurementCalculator.calculate(roll,input("1","1220",null,"40",null,null,null)));
+    }
     @Test void missingParametersInvalidUnitsNegativeAndFractionalCountsFailClosed() {
         var roll=policy("ROLL","㎡",MeasurementPolicy.Mode.ROLL_AREA);
         assertThrows(BusinessException.class,()->MeasurementCalculator.calculate(roll,input("0.5","1220",null,"100",null,null,null)));
@@ -64,5 +72,33 @@ class MeasurementCalculatorTest {
         var schema=MaterialAttributeSchema.parse("{\"version\":1,\"meta_options\":[],\"fields\":[],\"measurement_defaults\":"+p.toJson()+"}",new ObjectMapper());
         assertEquals(p,schema.measurementDefaults());
         assertNull(MaterialAttributeSchema.parse("{\"version\":1,\"meta_options\":[],\"fields\":[]}",new ObjectMapper()).measurementDefaults());
+    }
+    @Test void reverseConversionUsesExactSharedFormulaAndRejectsFractionalRolls() {
+        var roll=policy("ROLL","㎡",MeasurementPolicy.Mode.ROLL_AREA);
+        var r=MeasurementCalculator.convertLedger(roll,input("3","1220",null,"100",null,null,null),"㎡",n("366"));
+        eq("3",r.physicalQuantity());eq("366",r.priceQuantity());
+        eq("984",MeasurementCalculator.convertLedger(policy("PCS","㎡",MeasurementPolicy.Mode.PIECE_AREA),
+                new MeasurementInput(null,n("285"),n("315"),null,null,null,null),"㎡",n("88.3386")).physicalQuantity());
+        assertThrows(BusinessException.class,()->MeasurementCalculator.convertLedger(roll,input("1","1220",null,"100",null,null,null),"㎡",n("50")));
+        assertThrows(BusinessException.class,()->MeasurementCalculator.convertLedger(roll,input("1","1220",null,"100",null,null,null),"KG",n("122")));
+    }
+    @Test void measuredWeightCannotGuessPhysicalCountAndMissingAreaRemainsNull() {
+        var weight=policy("ROLL","KG",MeasurementPolicy.Mode.MEASURED_WEIGHT);
+        assertThrows(BusinessException.class,()->MeasurementCalculator.convertLedger(weight,
+                new MeasurementInput(null,n("1220"),null,n("40"),null,null,n("8")),"KG",n("8")));
+        var result=MeasurementCalculator.convertLedger(weight,input("1","1220",null,"40",null,null,"8"),"KG",n("8"));
+        eq("48.8",MeasurementCalculator.inventoryArea(result));
+        assertNull(MeasurementCalculator.inventoryArea(MeasurementCalculator.calculate(weight,input("1",null,null,null,null,null,"8"))));
+        assertThrows(BusinessException.class,()->MeasurementCalculator.convertLedger(weight,input("1",null,null,null,null,null,"8"),"KG",n("4")));
+        eq("88.3386",MeasurementCalculator.inventoryArea(MeasurementCalculator.calculate(policy("PCS","㎡",MeasurementPolicy.Mode.PIECE_AREA),input("984","285","315",null,null,null,null))));
+    }
+    @Test void draftPreviewUsesExplicitDraftLengthBeforeStoredNominalLength() {
+        var p=policy("ROLL","㎡",MeasurementPolicy.Mode.ROLL_AREA);
+        var mapper=mock(InventoryMaterialMapper.class);var service=new MaterialMeasurementService(mapper);
+        eq("122",service.preview(new MaterialMeasurementService.PreviewRequest(null,p,input("1","1220","100000",null,null,null,null))).priceQuantity());
+        var material=new InventoryMaterial();material.setWidthMm(n("1220"));material.setLengthMm(n("100000"));material.setMeasurementPolicyJson(p.toJson());
+        when(mapper.selectById(1L)).thenReturn(material);
+        eq("48.8",service.preview(new MaterialMeasurementService.PreviewRequest(1L,p,input("1","1220","40000",null,null,null,null))).priceQuantity());
+        assertThrows(BusinessException.class,()->MaterialMeasurementService.actual(material,input("1","1220","40000",null,null,null,null),false));
     }
 }

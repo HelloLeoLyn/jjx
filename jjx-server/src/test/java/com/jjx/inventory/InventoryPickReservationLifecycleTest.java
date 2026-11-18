@@ -17,6 +17,7 @@ import com.jjx.inventory.service.InventoryAlertService;
 import com.jjx.inventory.service.InventoryStockMutationService;
 import com.jjx.inventory.service.impl.InventoryOutboundServiceImpl;
 import com.jjx.inventory.service.impl.InventoryStockMutationServiceImpl;
+import com.jjx.inventory.service.impl.MaterialStockAllocationService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -48,6 +49,7 @@ class InventoryPickReservationLifecycleTest {
     @Mock InventoryStockMutationService stockMutationService;
     @Mock InventoryAlertService alertService;
     @Mock EventPublisher eventPublisher;
+    @Mock MaterialStockAllocationService materialAllocations;
     @InjectMocks InventoryOutboundServiceImpl service;
 
     private InventoryOutboundOrder order;
@@ -210,12 +212,15 @@ class InventoryPickReservationLifecycleTest {
         batch.setUnitCost(new BigDecimal("3.50"));
         batch.setQuantity(quantity);
         batch.setReservedQuantity(reserved);
+        when(outboundOrderMapper.selectById(1L)).thenReturn(order);
         when(outboundOrderMapper.selectByIdForUpdate(1L)).thenReturn(order);
         when(outboundOrderMapper.updateById(order)).thenReturn(1);
         when(outboundItemMapper.selectByOutboundId(1L)).thenReturn(List.of(item));
     }
 
     private void stubRelease() {
+        // 本夹具覆盖旧领料单占用：没有销售订单绑定分配，因此受保护占用为0。
+        when(materialAllocations.protectedQuantity(21L)).thenReturn(BigDecimal.ZERO);
         when(stockItemMapper.selectFIFOReservedForUpdate(11L)).thenReturn(List.of(batch));
         when(stockItemMapper.releaseReserved(21L, PICK_QUANTITY)).thenAnswer(invocation -> {
             batch.setReservedQuantity(batch.getReservedQuantity().subtract(invocation.getArgument(1)));

@@ -27,6 +27,13 @@ export interface StockVO {
   materialName: string
   specification: string
   unit: string
+  physicalQuantity?: number | null
+  physicalUnit?: string | null
+  reservedPhysicalQuantity?: number | null
+  availablePhysicalQuantity?: number | null
+  priceQuantity?: number | null
+  priceUnit?: string | null
+  inventoryArea?: number | null
   totalQuantity: number
   totalReserved: number
   availableQuantity: number

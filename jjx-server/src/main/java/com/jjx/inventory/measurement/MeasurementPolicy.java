@@ -10,7 +10,7 @@ import java.util.Set;
 /** 物料/品类统一计量策略；原始尺寸仍在档案，单据保存当次实际参数。 */
 public record MeasurementPolicy(String physicalUnit, String priceUnit, Mode mode, BigDecimal unitWeightG) {
     private static final ObjectMapper JSON = new ObjectMapper();
-    public enum Mode { SAME, PIECE_AREA, LENGTH_AREA, ROLL_AREA, PIECE_WEIGHT, AREA_WEIGHT, MEASURED_WEIGHT }
+    public enum Mode { SAME, PIECE_AREA, LENGTH_AREA, ROLL_AREA, PIECE_WEIGHT, AREA_WEIGHT, ROLL_WEIGHT, PIECE_AREA_WEIGHT, MEASURED_WEIGHT }
     public MeasurementPolicy normalized() {
         String physical = UnitCodes.requireDictUnit(physicalUnit, "实物单位");
         String price = UnitCodes.requireDictUnit(priceUnit, "计价单位");
@@ -23,6 +23,8 @@ public record MeasurementPolicy(String physicalUnit, String priceUnit, Mode mode
             case ROLL_AREA -> UnitCodes.ROLL.equals(physical) && UnitCodes.SQM.equals(price);
             case PIECE_WEIGHT -> pieces && UnitCodes.KG.equals(price);
             case AREA_WEIGHT -> UnitCodes.SQM.equals(physical) && UnitCodes.KG.equals(price);
+            case ROLL_WEIGHT -> UnitCodes.ROLL.equals(physical) && UnitCodes.KG.equals(price);
+            case PIECE_AREA_WEIGHT -> Set.of(UnitCodes.PCS,UnitCodes.SHEET).contains(physical) && UnitCodes.KG.equals(price);
             case MEASURED_WEIGHT -> !UnitCodes.KG.equals(physical) && UnitCodes.KG.equals(price);
         };
         if (!valid) throw new BusinessException("实物单位、计价单位与换算方式不匹配");

@@ -43,15 +43,28 @@
                     <el-input-number v-model="roll.rollLengthM" :min="0.0001" :precision="4" :controls="false" @change="syncRollQuantity(parent)" />
                   </template>
                 </el-table-column>
+                <el-table-column v-if="parent.measurement?.policy.mode === MeasurementModeEnum.MEASURED_WEIGHT.value" label="实际净重(KG)" width="170">
+                  <template #default="{ row: roll }"><el-input-number v-model="roll.actualWeightKg" :min="0.0001" :precision="4" :controls="false" @change="syncRollQuantity(parent)" /></template>
+                </el-table-column>
                 <el-table-column label="面积(㎡)">
                   <template #default="{ row: roll }">{{ rollArea(roll.rollWidthMm, roll.rollLengthM) }}</template>
                 </el-table-column>
               </el-table>
               <div class="doc-tip">
+                <span v-if="parent.previewError" class="qty-err">{{ parent.previewError }}</span>
+                <el-button link type="primary" @click="parent.rolls?.push({rollWidthMm:parent.rollWidthMm,rollLengthM:parent.rollLengthM});syncRollQuantity(parent)">增加一卷</el-button>
+                <el-button link @click="parent.rolls?.pop();syncRollQuantity(parent)">移除末卷</el-button>
                 按采购行 {{ parent.rollCount }} 卷 / {{ parent.rollWidthMm }}mm × {{ parent.rollLengthM }}m 生成；卷号提交后自动生成，卷宽/卷长可按实际修改。
               </div>
             </div>
-            <span v-else>普通采购行，按本次实际收货数量登记。</span>
+            <div v-else>
+              <span>普通采购行，按本次实际收货数量登记。</span>
+              <template v-if="parent.measurement?.policy.mode === MeasurementModeEnum.MEASURED_WEIGHT.value">
+                <span>本次实物数量（{{ parent.measurement.policy.physicalUnit }}）</span>
+                <el-input-number v-model="parent.measurementActual.physicalQuantity" :min="0" :precision="0" />
+                <span>本次实际净重(KG)</span><el-input-number v-model="parent.measurementActual.actualWeightKg" :min="0" :precision="4" />
+              </template>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="物料编码" prop="materialCode" width="160" />
@@ -78,7 +91,7 @@
                 v-model="row.receiveQuantity"
                 :disabled="isRollPlanned(row)"
                 :min="0"
-                :precision="2"
+                :precision="row.measurement ? 4 : 2"
                 :step="1"
                 controls-position="right"
                 size="small"
@@ -204,7 +217,14 @@ import {
  *  ④ 顶部「全部填满 / 全部清空」；⑤ 行内「填满 / 清零」；
  *  ⑥ 提交按钮带合计 + 二次确认；⑦ 回车跳下一行；⑧ 出现超量时自动把该行滚入视野。
  */
+import { materialMeasurementApi } from '@/api/inventory/measurement'
+import type { MeasurementPolicy, MeasurementResult, MeasurementInput } from '@/types/inventory/measurement'
+import { MeasurementModeEnum } from '@/enums/inventory/MeasurementEnum'
 interface ReceiveItem {
+  measurement?: { policy: MeasurementPolicy; result: MeasurementResult }
+  measurementActual?: Partial<MeasurementInput>
+  previewVersion?: number
+  previewError?: string
   itemId: number
   materialCode: string
   materialName: string
@@ -224,6 +244,7 @@ interface ReceiveItem {
 }
 
 interface RollRow {
+  actualWeightKg?: number
   rollNo?: string
   rollWidthMm: number
   rollLengthM: number
@@ -276,21 +297,21 @@ const title = computed(() => `收货 - ${props.orderNo}`)
 function fmt(v?: number | string | null): string {
   const n = Number(v ?? 0)
   if (!Number.isFinite(n)) return '0'
-  return String(Math.round(n * 100) / 100)
+  return String(Math.round(n * 10000) / 10000)
 }
 
 function remainOf(row: ReceiveItem): number {
-  return Math.round((Number(row.quantity || 0) - Number(row.receivedQuantity || 0)) * 100) / 100
+  return Number((Number(row.quantity || 0) - Number(row.receivedQuantity || 0)).toFixed(row.measurement ? 4 : 2))
 }
 
 /** 超出量（>0 即超收） */
 function overOf(row: ReceiveItem): number {
-  return Math.round((Number(row.receiveQuantity || 0) - remainOf(row)) * 100) / 100
+  return Number((Number(row.receiveQuantity || 0) - remainOf(row)).toFixed(row.measurement ? 4 : 2))
 }
 
-const totalRemain = computed(() => round2(form.items.filter(it=>!it.processingPlan).reduce((s, it) => s + Math.max(0, remainOf(it)), 0)))
-const totalInput = computed(() => round2(form.items.filter(it=>!it.processingPlan).reduce((s, it) => s + Number(it.receiveQuantity || 0), 0)))
-const totalOver = computed(() => round2(form.items.reduce((s, it) => s + Math.max(0, overOf(it)), 0)))
+const totalRemain = computed(() => Number(form.items.filter(it=>!it.processingPlan).reduce((s, it) => s + Math.max(0, remainOf(it)), 0).toFixed(4)))
+const totalInput = computed(() => Number(form.items.filter(it=>!it.processingPlan).reduce((s, it) => s + Number(it.receiveQuantity || 0), 0).toFixed(4)))
+const totalOver = computed(() => Number(form.items.reduce((s, it) => s + Math.max(0, overOf(it)), 0).toFixed(4)))
 const hasOver = computed(() => totalOver.value > 0)
 const filledCount = computed(() => form.items.filter((it) => it.processingPlan ? processingFilled(it) : Number(it.receiveQuantity || 0) > 0).length)
 const canSubmit = computed(() => !busy.value && !loading.value && filledCount.value > 0 && !hasOver.value)
@@ -313,7 +334,7 @@ function round2(v: number): number {
 
 /** 按卷采购行：采购行带卷数、卷宽、卷长 */
 function isRollPlanned(row: ReceiveItem): boolean {
-  return Number(row.rollCount || 0) > 0 && !!row.rollWidthMm && !!row.rollLengthM
+  return row.measurement?.policy.physicalUnit === 'ROLL' || (Number(row.rollCount || 0) > 0 && !!row.rollWidthMm && !!row.rollLengthM)
 }
 
 /** 面积口径与后端一致：卷宽(mm) × 卷长(m) ÷ 1000 */
@@ -325,6 +346,11 @@ function rollArea(width?: number, length?: number): number {
 /** 按未收数量生成卷明细；最后一卷按差额收口 */
 function rebuildRolls(row: ReceiveItem, fill = true) {
   if (!isRollPlanned(row)) { row.rolls = []; return }
+  if(row.measurement) {
+    const count=fill?Number(row.rollCount||0):0
+    row.rolls=Array.from({length:count},()=>({rollWidthMm:Number(row.rollWidthMm),rollLengthM:Number(row.rollLengthM)}))
+    void syncRollQuantity(row);return
+  }
   const width = Number(row.rollWidthMm)
   const per = rollArea(width, Number(row.rollLengthM))
   const target = fill ? Math.max(0, remainOf(row)) : 0
@@ -343,8 +369,24 @@ function rebuildRolls(row: ReceiveItem, fill = true) {
 }
 
 /** 卷明细面积合计回写本次收货数量 */
-function syncRollQuantity(row: ReceiveItem) {
-  if (!row.rolls?.length) return
+async function syncRollQuantity(row: ReceiveItem) {
+  const version=(row.previewVersion||0)+1;row.previewVersion=version
+  if (!row.rolls?.length) {row.receiveQuantity=0;return}
+  if(row.measurement) {
+    row.previewError=''
+    try {
+      const quantities=await Promise.all(row.rolls.map(async roll=>{
+        const result=(await materialMeasurementApi.preview({policy:row.measurement!.policy,actual:{
+          ...row.measurement!.result.actual,physicalQuantity:1,widthMm:roll.rollWidthMm,rollLengthM:roll.rollLengthM,
+          actualWeightKg:roll.actualWeightKg,
+        }})).data
+        if (!result) throw new Error('计量预览未返回结果')
+        return row.unit===result.physicalUnit?result.physicalQuantity:result.priceQuantity
+      }))
+      if(row.previewVersion===version)row.receiveQuantity=Number(quantities.reduce((a,b)=>a+Number(b),0).toFixed(4))
+    } catch(error:any) {if(row.previewVersion===version){row.receiveQuantity=undefined;row.previewError=error?.message||'请补齐每卷实际计量参数'}}
+    return
+  }
   row.receiveQuantity = round2(row.rolls.reduce((sum, roll) => sum + rollArea(roll.rollWidthMm, roll.rollLengthM), 0))
 }
 
@@ -386,8 +428,10 @@ const loadItems = async () => {
     form.items = items.map((item: any) => {
       const quantity = Number(item.quantity || 0)
       const receivedQuantity = Number(item.receivedQuantity || 0)
-      const remain = Math.round((quantity - receivedQuantity) * 100) / 100
+        const remain = Number((quantity - receivedQuantity).toFixed(item.measurementSnapshot ? 4 : 2))
       return {
+        measurement: item.measurementSnapshot ? JSON.parse(item.measurementSnapshot) : undefined,
+        measurementActual: item.measurementSnapshot ? { ...JSON.parse(item.measurementSnapshot).result.actual, physicalQuantity:undefined,actualWeightKg:undefined } : undefined,
         itemId: Number(item.itemId),
         processingPlan: item.processingPlan, processingGroups: [],
         materialCode: item.materialCode,
@@ -445,7 +489,7 @@ const handleSubmit = async () => {
   if (!props.orderId || !canSubmit.value) return
   preparing.value=true
   try {
-    const receiveItems: {itemId:number;receivedQuantity?:number;processingGroups?:ProcessingReceiptGroup[];rolls?:{rollWidthMm:number;rollLengthM:number}[]}[]=[]
+    const receiveItems: {itemId:number;receivedQuantity?:number;measurementActual?:Partial<MeasurementInput>;processingGroups?:ProcessingReceiptGroup[];rolls?:{rollWidthMm:number;rollLengthM:number;actualWeightKg?:number}[]}[]=[]
     let hasInbound = false
     for(const item of form.items){
       if(item.processingPlan){
@@ -459,14 +503,14 @@ const handleSubmit = async () => {
       }else if(isRollPlanned(item)){
         const rolls=(item.rolls||[]).filter(r=>Number(r.rollWidthMm)>0 && Number(r.rollLengthM)>0)
         if(!rolls.length){ElMessage.warning(`请为按卷采购行 ${item.materialCode} 生成卷明细`);return}
-        syncRollQuantity(item)
+        await syncRollQuantity(item)
         if(!(Number(item.receiveQuantity)>0)){ElMessage.warning(`按卷采购行 ${item.materialCode} 的卷面积合计必须大于0`);return}
         hasInbound = true
-        receiveItems.push({itemId:Number(item.itemId),receivedQuantity:Math.round(Number(item.receiveQuantity)*100)/100,
-          rolls:rolls.map(r=>({rollWidthMm:Number(r.rollWidthMm),rollLengthM:Number(r.rollLengthM)}))})
+        receiveItems.push({itemId:Number(item.itemId),receivedQuantity:item.measurement ? undefined : Number(Number(item.receiveQuantity).toFixed(4)),
+          rolls:rolls.map(r=>({rollWidthMm:Number(r.rollWidthMm),rollLengthM:Number(r.rollLengthM),actualWeightKg:r.actualWeightKg}))})
       }else if(Number(item.receiveQuantity)>0){
         hasInbound = true
-        receiveItems.push({itemId:Number(item.itemId),receivedQuantity:Math.round(Number(item.receiveQuantity)*100)/100})
+        receiveItems.push({itemId:Number(item.itemId),measurementActual:item.measurementActual,receivedQuantity:Number(Number(item.receiveQuantity).toFixed(4))})
       }
     }
     if (!receiveItems.length) {ElMessage.warning('请至少输入一个物料的收货数量');return}

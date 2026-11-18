@@ -371,6 +371,7 @@ async function initForm() {
         form.items = data.items?.length
           ? data.items.map((item: any) => ({
               itemId: item.itemId,
+              measurementSnapshot: item.measurementSnapshot, measurementActual: item.measurementActual,
               materialId: item.materialId,
               materialCode: item.materialCode,
               materialName: item.materialName,
@@ -546,6 +547,7 @@ async function loadDefaults(row: OrderItem, apply: boolean): Promise<void> {
     const data = response.data
     row.defaultError = false
     row.defaultConfigured = data.configured
+    row.measurementPolicy = data.measurementPolicy
     row.allowedUnits = data.allowedUnits
     if (props.planSeed && !apply && !row.priceUnit) row.priceUnit = data.priceUnit
     row.archiveWidthMm = data.pieceWidthMm
@@ -609,10 +611,10 @@ async function calculateRowTotal(index: number, showInputError = false): Promise
   }
   const current = () => !disposed && !closed && epoch === formEpoch && form.items.includes(item) && pricingVersions.get(item) === version
   try {
-    const response = await previewOrderPricing({ items: [{ ...item }] })
+    const response = await previewOrderPricing({ items: [{ ...item, orderId: props.orderId }] })
     if (!current()) return false
     const priced = response.data.items[0]
-    Object.assign(item, { quantity: Number(priced.quantity), amount: Number(priced.amount), quotedAmount: priced.quotedAmount, processingPlan: priced.processingPlan ?? item.processingPlan,
+    Object.assign(item, { measurementSnapshot: priced.measurementSnapshot, quantity: Number(priced.quantity), amount: Number(priced.amount), quotedAmount: priced.quotedAmount, processingPlan: priced.processingPlan ?? item.processingPlan,
       purchaseUnit: priced.purchaseUnit || item.purchaseUnit, priceUnit: priced.priceUnit || item.priceUnit,
       purchaseQuantity: priced.purchaseQuantity ?? item.purchaseQuantity,
       priceQuantity: priced.priceQuantity ?? null, rollCount: priced.rollCount,
@@ -701,6 +703,7 @@ const handleSubmit = async () => {
       ...form, supplierId: form.supplierId ? Number(form.supplierId) : undefined,
       orderAmount: totalAmount.value, orderTax: totalTax.value, orderTotalAmount: totalWithTax.value,
       items: form.items.map(item => ({
+        measurementActual: item.measurementActual, measurementSnapshot: item.measurementSnapshot,
         itemId: item.itemId ? Number(item.itemId) : undefined, materialId: item.materialId,
         materialCode: item.materialCode, materialName: item.materialName, supplierMaterialName: item.supplierMaterialName,
         materialSpec: item.materialSpec, unit: item.unit, purchaseUnit: item.purchaseUnit, priceUnit: item.priceUnit,

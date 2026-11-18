@@ -1,5 +1,7 @@
 package com.jjx.inventory.service.impl;
 
+import com.jjx.inventory.enums.MaterialReserveStatusEnum;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.inventory.domain.OrderMaterialReserve;
@@ -35,6 +37,7 @@ import java.util.Map;
 public class OrderMaterialReserveServiceImpl implements OrderMaterialReserveService {
 
     private final OrderMaterialReserveMapper reserveMapper;
+    private final MaterialStockAllocationService allocations;
     private final OrderMapper orderMapper;
     private final SalesOrderProductMapper orderProductMapper;
     private final EngineeringBomMapper bomMapper;
@@ -43,7 +46,7 @@ public class OrderMaterialReserveServiceImpl implements OrderMaterialReserveServ
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> reserveForOrder(Long orderId, Integer days) {
-        SalesOrder order = orderMapper.selectById(orderId);
+        SalesOrder order = orderMapper.selectByIdForUpdate(orderId);
         if (order == null) {
             throw new BusinessException("订单不存在: " + orderId);
         }
@@ -83,9 +86,20 @@ public class OrderMaterialReserveServiceImpl implements OrderMaterialReserveServ
             throw new BusinessException("订单无BOM可预占（产品需有已审批BOM）");
         }
 
+        // 已领用覆盖的需求不能在重新预留时再次占库。整卷占用可大于需求，按原需求比例扣除。
+        for (var previous : reserveMapper.selectAllocations(orderId)) {
+            BigDecimal occupied = previous.getReserveQuantity();
+            BigDecimal consumed = previous.getConsumedQuantity();
+            if (occupied == null || occupied.signum() <= 0 || consumed == null || consumed.signum() <= 0) continue;
+            BigDecimal originalDemand = previous.getDemandQuantity() == null ? occupied : previous.getDemandQuantity();
+            BigDecimal covered = originalDemand.multiply(consumed).divide(occupied, 12, java.math.RoundingMode.HALF_UP);
+            materialDemand.computeIfPresent(previous.getMaterialId(), (id, required) -> required.subtract(covered).max(BigDecimal.ZERO));
+        }
+
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime expire = now.plusDays(days);
         for (Map.Entry<Long, BigDecimal> e : materialDemand.entrySet()) {
+            if (e.getValue().signum() <= 0) continue;
             OrderMaterialReserve r = new OrderMaterialReserve();
             r.setOrderId(orderId);
             r.setOrderNo(order.getOrderNo());
@@ -93,12 +107,12 @@ public class OrderMaterialReserveServiceImpl implements OrderMaterialReserveServ
             r.setMaterialCode(codeMap.get(e.getKey()));
             r.setMaterialName(nameMap.get(e.getKey()));
             r.setReserveQuantity(e.getValue());
-            r.setStatus(0);
+            r.setStatus(MaterialReserveStatusEnum.ACTIVE.getValue());
             r.setReserveDays(days);
             r.setReserveTime(now);
             r.setExpireTime(expire);
             r.setCreateBy(com.jjx.system.utils.SecurityUtils.getUsername());
-            reserveMapper.insert(r);
+            allocations.allocate(r,e.getValue());
         }
 
         // 订单标记已预占
@@ -125,7 +139,7 @@ public class OrderMaterialReserveServiceImpl implements OrderMaterialReserveServ
             throw new BusinessException("订单无占用中的预占记录，无法延迟");
         }
         LocalDateTime now = LocalDateTime.now();
-        SalesOrder order = orderMapper.selectById(orderId);
+        SalesOrder order = orderMapper.selectByIdForUpdate(orderId);
         for (OrderMaterialReserve r : list) {
             // 每次+3天
             LocalDateTime newExpire = (r.getExpireTime() != null && r.getExpireTime().isAfter(now))
@@ -144,7 +158,7 @@ public class OrderMaterialReserveServiceImpl implements OrderMaterialReserveServ
     @Override
     @Transactional(propagation = Propagation.NESTED, rollbackFor = Exception.class)
     public void confirmReserve(Long orderId) {
-        SalesOrder order = orderMapper.selectById(orderId);
+        SalesOrder order = orderMapper.selectByIdForUpdate(orderId);
         if (order == null) {
             return;
         }
@@ -185,8 +199,10 @@ public class OrderMaterialReserveServiceImpl implements OrderMaterialReserveServ
     @Transactional(rollbackFor = Exception.class)
     public void releaseByOrder(Long orderId, String reason) {
         String operator = com.jjx.system.utils.SecurityUtils.getUsername();
+        orderMapper.selectByIdForUpdate(orderId);
+        for (var row : reserveMapper.selectActiveByOrder(orderId)) allocations.release(row);
         int rows = reserveMapper.releaseByOrder(orderId, reason != null ? reason : "手动释放", operator);
-        SalesOrder order = orderMapper.selectById(orderId);
+        SalesOrder order = orderMapper.selectByIdForUpdate(orderId);
         if (order != null) {
             order.setMaterialReserveFlag(0);
             order.setMaterialReserveExpire(null);
@@ -200,11 +216,13 @@ public class OrderMaterialReserveServiceImpl implements OrderMaterialReserveServ
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void releaseByOrderAndMaterial(Long orderId, Long materialId, String reason) {
+        orderMapper.selectByIdForUpdate(orderId);
         List<OrderMaterialReserve> list = reserveMapper.selectActiveByOrder(orderId);
         if (list != null) {
             for (OrderMaterialReserve r : list) {
                 if (r.getMaterialId().equals(materialId)) {
-                    r.setStatus(1);
+                    allocations.release(r);
+                    r.setStatus(MaterialReserveStatusEnum.RELEASED.getValue());
                     r.setReleaseReason(reason);
                     r.setReleaseBy(com.jjx.system.utils.SecurityUtils.getUsername());
                     r.setReleaseTime(LocalDateTime.now());
@@ -248,12 +266,12 @@ public class OrderMaterialReserveServiceImpl implements OrderMaterialReserveServ
             List<OrderMaterialReserve> expired = reserveMapper.selectExpired();
             if (!expired.isEmpty()) {
                 for (OrderMaterialReserve r : expired) {
-                    reserveMapper.releaseByOrder(r.getOrderId(), "预占到期自动释放", "system");
+                    releaseByOrder(r.getOrderId(), "预占到期自动释放");
                     log.info("订单{}材料预占到期自动释放，物料{}", r.getOrderNo(), r.getMaterialCode());
                 }
             }
         } catch (Exception e) {
-            log.warn("预占到期自动释放失败: {}", e.getMessage());
+            throw new BusinessException("预占到期自动释放失败：" + e.getMessage());
         }
     }
 
@@ -285,7 +303,7 @@ public class OrderMaterialReserveServiceImpl implements OrderMaterialReserveServ
     @Override
     public Map<String, Object> getOrderReserveInfo(Long orderId) {
         Map<String, Object> result = new HashMap<>();
-        SalesOrder order = orderMapper.selectById(orderId);
+        SalesOrder order = orderMapper.selectByIdForUpdate(orderId);
         if (order == null) {
             return result;
         }
