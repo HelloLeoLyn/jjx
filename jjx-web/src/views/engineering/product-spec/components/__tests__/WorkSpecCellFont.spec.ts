@@ -192,7 +192,7 @@ describe('预览默认模板', () => {
     const wrapper = mount(ProductSpecPreview, { props: { productId: 42, initialSections: ['spec'], initialTemplate: 'A' }, global: { stubs: { ProductSpecSheets: SheetsStub } } })
     wrappers.push(wrapper); await flushPromises()
     const sheets = wrapper.findComponent(SheetsStub)
-    expect(sheets.props('pages')[0].rows[0]).toMatchObject({ materialName: 'PET原料', specification: '205mm*440mm', moduleQty: 6, baseQty: 1 })
+    expect(sheets.props('pages')[0].rows[0]).toMatchObject({ materialName: '裁好PET', specification: '205mm宽切66mm*185mm', moduleQty: 1, baseQty: 1, workSpecCombinedSpec: '205mm宽切66mm*185mm=1PCS' })
     const mode = wrapper.findAllComponents({ name: 'ElSelect' }).find(node => node.props('ariaLabel') === '项目材料模式')!
     expect(mode).toBeTruthy()
     await mode.vm.$emit('update:modelValue', 'original'); await flushPromises()
@@ -203,7 +203,7 @@ describe('预览默认模板', () => {
     expect(open).toHaveBeenCalledTimes(1)
     expect(new URL(String(open.mock.calls[0][0]), 'http://localhost').searchParams.get('materialMode')).toBe('original')
     await mode.vm.$emit('update:modelValue', 'scheme'); await flushPromises()
-    expect(sheets.props('pages')[0].rows[0].moduleQty).toBe(6)
+    expect(sheets.props('pages')[0].rows[0].moduleQty).toBe(1)
     expect(source.bom.items[0].materialName).toBe('裁好PET')
   })
 

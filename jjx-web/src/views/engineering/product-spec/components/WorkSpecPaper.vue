@@ -482,7 +482,7 @@ const materialColumns = computed(() =>
 )
 /** 规格列的选格标签：B 版叫「规格」，A 版仍是「规格及模数」。 */
 const specLabel = computed(() => (props.specTemplate === 'B' ? '规格' : '规格及模数'))
-/** 规格列文字：B 版拆列后只放规格本身，A 版保持原「规格及模数」组合口径。 */
+/** B版只放规格；A版使用模板专属的规格及模数文本。 */
 function specCell(row?: Record<string, any> | null) {
   return props.specTemplate === 'B' ? specCellText(row) : materialSpec(row)
 }
@@ -492,6 +492,8 @@ const materialCapacity = computed(() =>
     : 14
 )
 function materialSpec(row?: Record<string, any> | null) {
+  if (props.specTemplate === 'A' && row?.workSpecCombinedSpec != null)
+    return String(row.workSpecCombinedSpec)
   return props.specTemplate === 'B' && row?.params ? row.params : workSpecMaterialSpec(row)
 }
 /** B 版「规格」列：手填 params 优先；否则尺寸（宽*长mm 或规格文本）+ 跳距。 */

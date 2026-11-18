@@ -45,11 +45,11 @@ describe('B版材料按Excel只转换规格（dev-20261118-002）', () => {
     expect(projectMaterialPrintRows(data, 'B').map(spec)).toEqual(expectedScheme)
     expect(projectMaterialPrintRows(data, 'B').map(row => row.dieLocation)).toEqual(data.bom.items.map((row: any) => row.dieLocation))
   })
-  it('A版保留现有原料展开及规格，B版不污染A版输入', () => {
+  it('B版转换不污染A版输入，两版材料身份保持上层', () => {
     const data = fixture(), before = makePages(data, ['spec'], [], {}, {}, 'A')
     workSpecFlowSource(data)
     expect(makePages(data, ['spec'], [], {}, {}, 'A')).toEqual(before)
-    expect(before[0].rows![3]).toMatchObject({ materialName: 'PET保护膜 T4901', params: '205mm跳440mm' })
+    expect(before[0].rows![3]).toMatchObject({ materialName: 'PET保护膜 PFPET-T4901', params: '205mm宽切205mm*440mm', workSpecCombinedSpec: '205mm宽切205mm*440mm=6PCS' })
   })
   it('多投入、缺尺寸或无效来源不猜规格、不增加材料行；原模式人工文本优先', () => {
     const data = fixture(), row = data.bom.items[3]

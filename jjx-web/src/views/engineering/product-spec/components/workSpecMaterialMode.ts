@@ -1,4 +1,5 @@
 /** 模式只影响展示/打印；原始项目材料和人工规格永远保留。 */
+import { composeMaterialSpec } from '@/utils/materialSpec'
 export type WorkSpecMaterialMode = 'scheme' | 'original'
 export const MATERIAL_MODE_SCHEME: WorkSpecMaterialMode = 'scheme'
 export const MATERIAL_MODE_ORIGINAL: WorkSpecMaterialMode = 'original'
@@ -47,8 +48,8 @@ function sourceFor(row: Record<string, any>, sources?: MaterialSchemeSources): M
     ?? sources?.byMaterial?.[row.materialId]
 }
 
-/** B版只组合规格，材料身份、用量和分组始终沿用产品BOM/项目材料。 */
-function materialModeRowsB<T extends Record<string, any>>(rows: T[], data: MaterialModeData): T[] {
+/** 只组合规格，材料身份、用量和分组始终沿用产品BOM/项目材料。 */
+function materialDisplayRows<T extends Record<string, any>>(rows: T[], data: MaterialModeData): T[] {
   const mode = effectiveMaterialMode(data)
   return rows.map(row => {
     if (mode === MATERIAL_MODE_ORIGINAL && text(row.params)) return row
@@ -70,30 +71,26 @@ function materialModeRowsB<T extends Record<string, any>>(rows: T[], data: Mater
   })
 }
 
-/** 只展开一层制造投入，沿用原行项目/刀模/分组身份，不把原始材料写成投入原料。 */
+/** A版在B版同源规格上合并成品件数；此显示文本不进入BOM保存或全局BOM打印。 */
 export function materialModeRows<T extends Record<string, any>>(rows: T[], data: MaterialModeData, template: 'A' | 'B' = 'A'): T[] {
-  if (template === 'B') return materialModeRowsB(rows, data)
-  if (effectiveMaterialMode(data) === MATERIAL_MODE_ORIGINAL) return rows
-  return rows.flatMap(row => {
-    const scheme = sourceFor(row, data.materialSchemes)
-    if (scheme?.warning || !scheme?.items?.length) return [row]
-    return scheme.items.map(input => ({
-      ...row,
-      materialId: input.materialId,
-      materialCode: input.materialCode,
-      materialName: input.materialName,
-      specification: manufacturingMaterialSpec(input),
-      params: manufacturingMaterialSpec(input),
-      // 规格已经按方案整理成一份文本，防止原尺寸/旧跳距再次参与拼接。
-      widthMm: null,
-      lengthMm: null,
-      split: '',
-      moduleQty: input.moduleQty,
-      baseQty: input.baseQty,
-      quantity: input.quantity,
-      unit: input.unit,
-      manufacturingBomId: scheme.bomId,
-    })) as T[]
+  const displayed = materialDisplayRows(rows, data)
+  if (template === 'B') return displayed
+  return displayed.map((row, index) => {
+    const generated = row !== rows[index]
+    let combined: string
+    if (!generated && text(row.params)) combined = String(row.params)
+    else {
+      const dimensions = positive(row.widthMm) && positive(row.lengthMm)
+        ? `${decimal(row.widthMm)}*${decimal(row.lengthMm)}mm` : text(row.specification)
+      const specification = generated ? String(row.params)
+        : dimensions + (text(row.split) ? `跳${text(row.split)}` : '')
+      const module = Number(row.moduleQty), base = Number(row.baseQty)
+      combined = specification && positive(module) && positive(base)
+        ? base === 1 ? `${specification}=${decimal(module)}PCS`
+          : `${specification}（${decimal(base)}${text(row.unit) || '份'}材料供${decimal(module)}PCS成品）`
+        : composeMaterialSpec(row)
+    }
+    return { ...row, workSpecCombinedSpec: combined }
   })
 }
 export function materialModeWarnings(data: MaterialModeData): string[] {
