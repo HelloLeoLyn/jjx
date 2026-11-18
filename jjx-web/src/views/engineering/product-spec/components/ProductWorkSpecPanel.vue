@@ -683,7 +683,7 @@ const projectMaterialRows = computed(
     projectMaterialDraft.value ??
     materialModeRows((data.value?.workSpec.projectMaterials
       ? flattenProjectMaterials(data.value.workSpec.projectMaterials)
-      : bomRows.value), { ...data.value, materialMode: materialMode.value })
+      : bomRows.value), { ...data.value, materialMode: materialMode.value }, 'B')
 )
 const projectMaterialGroups = computed(() =>
   projectMaterialDraft.value !== null || data.value?.workSpec.projectMaterials !== undefined

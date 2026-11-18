@@ -268,18 +268,18 @@ export function groupProjectMaterials(rows: Record<string, any>[]): Record<strin
   )
 }
 /** 先按原行取刀模，再展开制造投入，保证一行变多行后刀模仍与来源对应。 */
-function bomMaterialPrintRows(data: DocsetData): Record<string, any>[] {
+function bomMaterialPrintRows(data: DocsetData, template: 'A' | 'B' = 'A'): Record<string, any>[] {
   const original = flatten(data.bom.items || [])
   const positions = dieLocationRows(data.workSpec.dieLocation, data.bom.items, data.workSpec.dieLocationText)
-  return materialModeRows(original.map((row, index) => ({ ...row, dieLocation: positions[index] || row.dieLocation || '' })), data)
+  return materialModeRows(original.map((row, index) => ({ ...row, dieLocation: positions[index] || row.dieLocation || '' })), data, template)
 }
-export function projectMaterialPrintRows(data: DocsetData): Record<string, any>[] {
-  const bom = bomMaterialPrintRows(data)
+export function projectMaterialPrintRows(data: DocsetData, template: 'A' | 'B' = 'A'): Record<string, any>[] {
+  const bom = bomMaterialPrintRows(data, template)
   if (data.workSpec.projectMaterials === undefined)
     return data.published ? groupProjectMaterials(bom) : groupBomMaterials(bom)
   return numberProjectGroups(
     data.workSpec.projectMaterials.flatMap((group) => {
-      const rows = materialModeRows(group.materials, data)
+      const rows = materialModeRows(group.materials, data, template)
       return rows.map((row, index) => ({
         ...row,
         processId: group.processId,
@@ -684,7 +684,7 @@ export async function buildDocsetFromLegacyRefs(
 /** B的测量源：所有材料/备注在前，全部流程随后连续排列。 */
 export function workSpecFlowSource(data: DocsetData): DocPage {
   const text = specText(data)
-  const materials = projectMaterialPrintRows(data)
+  const materials = projectMaterialPrintRows(data, 'B')
   const diePositions = materials.map((row) => row.dieLocation || '')
   return {
     key: 'spec-b-source',

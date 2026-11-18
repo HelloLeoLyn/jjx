@@ -47,8 +47,32 @@ function sourceFor(row: Record<string, any>, sources?: MaterialSchemeSources): M
     ?? sources?.byMaterial?.[row.materialId]
 }
 
+/** B版只组合规格，材料身份、用量和分组始终沿用产品BOM/项目材料。 */
+function materialModeRowsB<T extends Record<string, any>>(rows: T[], data: MaterialModeData): T[] {
+  const mode = effectiveMaterialMode(data)
+  return rows.map(row => {
+    if (mode === MATERIAL_MODE_ORIGINAL && text(row.params)) return row
+    const scheme = sourceFor(row, data.materialSchemes)
+    // 多投入无法唯一对应备料宽度，保留原规格，不猜第一条，也不增加材料行。
+    if (scheme?.warning || scheme?.items?.length !== 1) return row
+    const size = /^\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[×*xX]\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*$/.exec(text(row.specification))
+    const width = positive(row.widthMm) ? Number(row.widthMm) : Number(size?.[1])
+    const length = positive(row.lengthMm) ? Number(row.lengthMm) : Number(size?.[2])
+    const input = scheme.items[0]
+    const inputWidth = positive(input.widthMm) ? Number(input.widthMm)
+      : Number(/^\s*(\d+(?:\.\d+)?)\s*(?:mm|[×*xX])/i.exec(text(input.specification))?.[1])
+    if (!positive(width) || !positive(length) || !positive(inputWidth)) return row
+    if (mode === MATERIAL_MODE_ORIGINAL && !positive(input.pitchMm)) return row
+    const specification = mode === MATERIAL_MODE_SCHEME
+      ? `${decimal(inputWidth)}mm宽切${decimal(width)}mm*${decimal(length)}mm`
+      : `${decimal(width)}mm宽跳${decimal(input.pitchMm)}mm`
+    return { ...row, specification, params: specification, manufacturingBomId: scheme.bomId }
+  })
+}
+
 /** 只展开一层制造投入，沿用原行项目/刀模/分组身份，不把原始材料写成投入原料。 */
-export function materialModeRows<T extends Record<string, any>>(rows: T[], data: MaterialModeData): T[] {
+export function materialModeRows<T extends Record<string, any>>(rows: T[], data: MaterialModeData, template: 'A' | 'B' = 'A'): T[] {
+  if (template === 'B') return materialModeRowsB(rows, data)
   if (effectiveMaterialMode(data) === MATERIAL_MODE_ORIGINAL) return rows
   return rows.flatMap(row => {
     const scheme = sourceFor(row, data.materialSchemes)

@@ -53,20 +53,20 @@ describe('项目材料方案/原模式', () => {
     expect(rows.map(row => row.projectSpan)).toEqual([2, 0])
     expect(rows.map(row => row.projectNo)).toEqual([1, 1])
   })
-  it('A版、B版材料行与页面共用同一方案转换；原模式仍保留原规格', () => {
+  it('A版仍展开原料，B版只组合规格并保留上层材料与比例', () => {
     const source = data()
     expect(makePages(source, ['spec'], [], {})[0].rows![0].materialName).toBe('3M 9080')
-    expect(workSpecFlowSource(source).rows![0].params).toBe('195mm跳80mm')
+    expect(workSpecFlowSource(source).rows![0]).toMatchObject({ materialName: '3M 9080-W195-L80', params: '195mm宽切195mm*80mm', moduleQty: 1, baseQty: 1 })
     source.materialMode = 'original'
     expect(makePages(source, ['spec'], [], {})[0].rows![0].materialName).toBe('3M 9080-W195-L80')
-    expect(workSpecFlowSource(source).rows![0].specification).toBe('195mm*80mm')
+    expect(workSpecFlowSource(source).rows![0].params).toBe('195mm宽跳80mm')
   })
   it('BOM回退材料一行展开多个投入时，A/B打印刀模位置跟随来源行且后续行不串位', () => {
     const source = data()
     source.bom.items[0].children = [{ itemId: 29, materialId: 999, materialName: '其他材料', materialCode: 'OTHER', processName: '保护膜' }]
     source.workSpec.dieLocationText = '刀模甲\n刀模乙'
     source.materialSchemes!.byMaterial[351].items!.push({ materialName: '辅助投入', specification: '50mm' })
-    expect(workSpecFlowSource(source).diePositionRows).toEqual(['刀模甲', '刀模甲', '刀模乙'])
+    expect(workSpecFlowSource(source).diePositionRows).toEqual(['刀模甲', '刀模乙'])
     expect(makePages(source, ['spec'], [], {})[0].diePositionRows).toEqual(['刀模甲', '刀模甲', '刀模乙'])
     source.materialMode = 'original'
     expect(workSpecFlowSource(source).diePositionRows).toEqual(['刀模甲', '刀模乙'])

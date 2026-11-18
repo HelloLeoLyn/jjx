@@ -160,11 +160,11 @@ const specInput = (wrapper: any) => rowCells(wrapper)[3].find('input')
 const cellText = (wrapper: any, index: number) => rowCells(wrapper)[index].text()
 
 describe('项目材料规格/模数/基数三列（dev-20261102-001）', () => {
-  it('默认方案模式显示制造原料和6/1，切回原模式不写库，编辑时保留原始材料', async () => {
+  it('B版缺少明确裁片尺寸时保留原材料和比例，切模式不写库，编辑保持原始内容', async () => {
     const wrapper = await mountEditing(true)
-    expect(cellText(wrapper, 2)).toContain('PET原料')
-    expect(cellText(wrapper, 3)).toContain('205mm*440mm')
-    expect(cellText(wrapper, 4)).toBe('6')
+    expect(cellText(wrapper, 2)).toContain(bomRow.materialName)
+    expect(cellText(wrapper, 3)).toContain(bomRow.specification)
+    expect(cellText(wrapper, 4)).toBe('1')
     expect(cellText(wrapper, 5)).toBe('1')
     expect(materialSection(wrapper).text()).not.toContain('BOM 已移除')
     const mode = wrapper.findAllComponents({ name: 'ElSelect' }).find(node => node.props('ariaLabel') === '项目材料模式')!
@@ -172,7 +172,7 @@ describe('项目材料规格/模数/基数三列（dev-20261102-001）', () => {
     expect(cellText(wrapper, 2)).toContain(bomRow.materialName)
     expect(cellText(wrapper, 4)).toBe('1')
     await mode.vm.$emit('update:modelValue', 'scheme'); await flushPromises()
-    expect(cellText(wrapper, 2)).toContain('PET原料')
+    expect(cellText(wrapper, 2)).toContain(bomRow.materialName)
     await materialSection(wrapper).findAll('.section-heading button').find((node: any) => node.text() === '编辑')!.trigger('click')
     await flushPromises()
     expect(mode.props('modelValue')).toBe('original')
