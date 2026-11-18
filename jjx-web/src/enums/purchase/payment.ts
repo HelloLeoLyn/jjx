@@ -28,6 +28,27 @@ export const PaymentApprovalStatusEnum = createEnum({
   defaultTag: { type: 'info' },
 })
 
+/** 页面阶段仅由现有审批/付款状态派生，不新增持久化状态。 */
+export const PaymentStageEnum = createNamedEnum({
+  PENDING_APPROVAL: { value: 'PENDING_APPROVAL', label: '待审批', tagProps: { type: 'warning' } },
+  WAITING_PAYMENT: { value: 'WAITING_PAYMENT', label: '待付款', tagProps: { type: 'info' } },
+  PARTIALLY_PAID: { value: 'PARTIALLY_PAID', label: '部分付款', tagProps: { type: 'warning' } },
+  PAID: { value: 'PAID', label: '已付款', tagProps: { type: 'success' } },
+  REJECTED: { value: 'REJECTED', label: '已驳回', tagProps: { type: 'danger' } },
+  UNKNOWN: { value: 'UNKNOWN', label: '状态未知', tagProps: { type: 'info' } },
+}, { type: 'info' })
+
+export function paymentStageOf(payment: { paymentStatus?: number; approvalStatus?: string }): string {
+  if (payment.approvalStatus === PaymentApprovalStatus.REJECTED) return PaymentStageEnum.REJECTED.value
+  if (payment.paymentStatus === PaymentStatusEnum.COMPLETED.value) return PaymentStageEnum.PAID.value
+  if (payment.approvalStatus === PaymentApprovalStatus.PENDING) return PaymentStageEnum.PENDING_APPROVAL.value
+  if (payment.approvalStatus === PaymentApprovalStatus.APPROVED) {
+    if (payment.paymentStatus === PaymentStatusEnum.PARTIALLY_PAID.value) return PaymentStageEnum.PARTIALLY_PAID.value
+    if (payment.paymentStatus === PaymentStatusEnum.PENDING.value) return PaymentStageEnum.WAITING_PAYMENT.value
+  }
+  return PaymentStageEnum.UNKNOWN.value
+}
+
 /**
  * 付款方式枚举
  */

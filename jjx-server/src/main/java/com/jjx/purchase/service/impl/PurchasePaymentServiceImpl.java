@@ -10,6 +10,11 @@ import com.jjx.common.enums.ApproveStatusEnum;
 import com.jjx.system.utils.SecurityUtils;
 import com.jjx.purchase.domain.vo.PurchasePaymentSummaryVO;
 import com.jjx.purchase.domain.dto.PurchasePaymentDTO;
+import com.jjx.purchase.domain.dto.PurchasePaymentApprovalDTO;
+import com.jjx.purchase.domain.enums.PaymentMethod;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import com.jjx.purchase.domain.entity.PurchaseOrder;
 import com.jjx.purchase.domain.entity.PurchasePayment;
 import com.jjx.purchase.domain.enums.PurchasePaymentStatusEnum;
@@ -66,12 +71,17 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
         LambdaQueryWrapper<PurchasePayment> wrapper = buildPaymentQuery(query);
         Page<PurchasePayment> page = new Page<>(query.getPageNum(), query.getPageSize());
         Page<PurchasePayment> result = paymentMapper.selectPage(page, wrapper);
-        List<Long> orderIds = result.getRecords().stream().map(PurchasePayment::getOrderId)
+        enrichPaymentSources(result.getRecords());
+        return PageResult.of(result, result.getRecords());
+    }
+
+    private void enrichPaymentSources(List<PurchasePayment> payments) {
+        List<Long> orderIds = payments.stream().map(PurchasePayment::getOrderId)
                 .filter(Objects::nonNull).distinct().toList();
         if (!orderIds.isEmpty()) {
             Map<Long, PurchaseOrder> sourceOrders = orderMapper.selectBatchIds(orderIds).stream()
                     .collect(java.util.stream.Collectors.toMap(PurchaseOrder::getOrderId, order -> order));
-            for (PurchasePayment payment : result.getRecords()) {
+            for (PurchasePayment payment : payments) {
                 PurchaseOrder order = sourceOrders.get(payment.getOrderId());
                 if (order != null) {
                     payment.setOrderNo(order.getOrderNo());
@@ -79,7 +89,6 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
                 }
             }
         }
-        return PageResult.of(result, result.getRecords());
     }
 
     private LambdaQueryWrapper<PurchasePayment> buildPaymentQuery(PurchasePaymentDTO dto) {
@@ -241,6 +250,8 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
         if (approverId == null || StringUtils.isBlank(approverName)) {
             throw new BusinessException("无法获取当前登录审批人，请重新登录");
         }
+        PurchasePaymentApprovalStatusEnum decision = requireApprovalDecision(approvalStatus, approvalComment);
+        if (paymentId == null || paymentId <= 0) throw new BusinessException("付款ID不能为空或无效");
         PurchasePayment payment = paymentMapper.selectById(paymentId);
         if (payment == null) {
             throw new BusinessException("付款记录不存在");
@@ -249,19 +260,17 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
         if (!PurchasePaymentApprovalStatusEnum.PENDING.getCode().equals(payment.getApprovalStatus())) {
             throw new BusinessException("只有待审批的付款单可以审批");
         }
-        PurchasePaymentApprovalStatusEnum decision = PurchasePaymentApprovalStatusEnum.fromCode(approvalStatus);
-        if (decision != PurchasePaymentApprovalStatusEnum.APPROVED
-                && decision != PurchasePaymentApprovalStatusEnum.REJECTED) {
-            throw new BusinessException("审批结果必须为已批准或已拒绝");
-        }
 
         payment.setApprovalStatus(decision.getCode());
         payment.setApproverName(approverName);
-        payment.setApprovalComment(approvalComment);
+        payment.setApprovalComment(StringUtils.trimToNull(approvalComment));
         payment.setApprovalTime(LocalDateTime.now());
         payment.setUpdateTime(LocalDateTime.now());
 
-        int result = paymentMapper.updateById(payment);
+        int result = paymentMapper.update(payment, Wrappers.<PurchasePayment>lambdaUpdate()
+                .eq(PurchasePayment::getPaymentId, paymentId)
+                .eq(PurchasePayment::getApprovalStatus, PurchasePaymentApprovalStatusEnum.PENDING.getCode()));
+        if (result != 1) throw new BusinessException("付款审批状态已变化或写入失败，请刷新后重试");
 
         if (payment.getOrderId() != null) updateOrderPaymentInfo(payment.getOrderId());
 
@@ -269,6 +278,33 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
             publishPaymentEvent("purchase.payment.approved", payment.getPaymentId(), payment.getPaymentNo());
         }
         return result;
+    }
+
+    private PurchasePaymentApprovalStatusEnum requireApprovalDecision(String status, String comment) {
+        var decision = PurchasePaymentApprovalStatusEnum.fromCode(status);
+        if (decision != PurchasePaymentApprovalStatusEnum.APPROVED && decision != PurchasePaymentApprovalStatusEnum.REJECTED)
+            throw new BusinessException("审批结果必须为已批准或已拒绝");
+        if (decision == PurchasePaymentApprovalStatusEnum.REJECTED && StringUtils.isBlank(comment))
+            throw new BusinessException("驳回意见不能为空");
+        if (comment != null && comment.length() > 500) throw new BusinessException("审批意见不能超过500字");
+        return decision;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int batchApprovePayments(List<PurchasePaymentApprovalDTO> decisions) {
+        if (decisions == null || decisions.isEmpty()) throw new BusinessException("请选择需要审批的付款单");
+        var ids = new java.util.HashSet<Long>();
+        for (var decision : decisions) {
+            if (decision == null || decision.paymentId() == null || decision.paymentId() <= 0)
+                throw new BusinessException("付款ID不能为空或无效");
+            if (!ids.add(decision.paymentId())) throw new BusinessException("批量审批包含重复付款单");
+            requireApprovalDecision(decision.approvalStatus(), decision.approvalComment());
+        }
+        int changed = 0;
+        for (var decision : decisions)
+            changed += approvePayment(decision.paymentId(), decision.approvalStatus(), decision.approvalComment());
+        return changed;
     }
 
     @Override
@@ -426,18 +462,38 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
     }
 
     @Override
-    public String exportPaymentList(PurchasePaymentDTO dto) {
+    public byte[] exportPaymentList(PurchasePaymentDTO dto) {
         List<PurchasePayment> list = paymentMapper.selectList(buildPaymentQuery(dto == null ? new PurchasePaymentDTO() : dto));
         if (list.isEmpty()) {
             throw new BusinessException("没有可导出的数据");
         }
 
-        String fileName = "采购付款列表_" + LocalDate.now().toString();
-        String filePath = System.getProperty("java.io.tmpdir") + "/purchase_export/" + fileName + "_" + System.currentTimeMillis() + ".xlsx";
-
-        // TODO: 使用POI生成Excel文件
-        log.info("导出采购付款列表成功，文件路径: {}", filePath);
-        return filePath;
+        enrichPaymentSources(list);
+        try (var workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
+            var sheet = workbook.createSheet("采购付款");
+            String[] headers = {"付款单号", "采购订单号", "供应商", "计划付款日", "申请金额", "付款方式", "审批结果", "实际付款日", "转账流水号", "审批人", "审批意见"};
+            var head = sheet.createRow(0);
+            for (int index = 0; index < headers.length; index++) head.createCell(index).setCellValue(headers[index]);
+            int rowIndex = 1;
+            for (var payment : list) {
+                var method = PaymentMethod.getByCode(payment.getPaymentMethod());
+                var approval = PurchasePaymentApprovalStatusEnum.fromCode(payment.getApprovalStatus());
+                Object[] values = {payment.getPaymentNo(), payment.getOrderNo(),
+                        payment.getSupplierName(), payment.getPaymentDate(), payment.getPaymentAmount(),
+                        method == null ? payment.getPaymentMethod() : method.getLabel(), approval == null ? payment.getApprovalStatus() : approval.getLabel(),
+                        payment.getActualPaymentDate(), payment.getVoucherNo(), payment.getApproverName(), payment.getApprovalComment()};
+                var row = sheet.createRow(rowIndex++);
+                for (int index = 0; index < values.length; index++) {
+                    var cell = row.createCell(index);
+                    if (values[index] instanceof BigDecimal amount) cell.setCellValue(amount.toPlainString());
+                    else cell.setCellValue(values[index] == null ? "" : values[index].toString());
+                }
+            }
+            workbook.write(output);
+            return output.toByteArray();
+        } catch (IOException error) {
+            throw new BusinessException("生成付款导出文件失败，请重试");
+        }
     }
 
     /**

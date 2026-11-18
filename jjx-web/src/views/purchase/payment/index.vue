@@ -82,6 +82,8 @@
           @click="openCreate"
           >新增申请</el-button
         >
+        <el-button v-if="userStore.hasPermission('purchase:payment:approve')" :disabled="!selectedPayments.length || submitting || loading" @click="openBatchApprove">批量审批（{{ selectedPayments.length }}）</el-button>
+        <el-button v-if="userStore.hasPermission('purchase:payment:export')" :loading="exporting" :disabled="loading" @click="handleExport">导出当前筛选</el-button>
       </div>
 
       <el-tabs v-model="activeTab" class="payment-tabs" @tab-change="handleTabChange">
@@ -92,13 +94,16 @@
       </el-tabs>
 
       <el-table
+        ref="paymentTable"
         v-loading="loading"
         :data="rows"
         border
         :row-class-name="rowClassName"
         show-summary
         :summary-method="summaryMethod"
+        @selection-change="selectedPayments = $event"
       >
+        <el-table-column v-if="userStore.hasPermission('purchase:payment:approve')" type="selection" width="48" :selectable="isPendingPayment" />
         <el-table-column prop="paymentNo" label="付款单号" min-width="150">
           <template #default="{ row }">
             <el-link type="primary" @click="detail(row)">{{ row.paymentNo }}</el-link>
@@ -130,17 +135,10 @@
             PaymentMethodEnum.getLabel(row.paymentMethod)
           }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="90">
+        <el-table-column label="阶段" width="100">
           <template #default="{ row }"
-            ><el-tag :type="PaymentStatusEnum.getTagProps(row.paymentStatus).type">{{
-              PaymentStatusEnum.getLabel(row.paymentStatus)
-            }}</el-tag></template
-          >
-        </el-table-column>
-        <el-table-column label="审批状态" width="100">
-          <template #default="{ row }"
-            ><el-tag :type="PaymentApprovalStatusEnum.getTagProps(row.approvalStatus).type">{{
-              PaymentApprovalStatusEnum.getLabel(row.approvalStatus)
+            ><el-tag :type="PaymentStageEnum.getTagProps(paymentStageOf(row)).type">{{
+              PaymentStageEnum.getLabel(paymentStageOf(row))
             }}</el-tag></template
           >
         </el-table-column>
@@ -246,17 +244,25 @@
       >
     </el-dialog>
 
-    <el-dialog v-model="approveVisible" title="付款审批" width="480px">
+    <el-dialog v-model="approveVisible" :title="approveTargets.length > 1 ? '批量付款审批' : '付款审批'" width="800px" :close-on-click-modal="false" :close-on-press-escape="!submitting" :show-close="!submitting">
+      <el-table :data="approveTargets" size="small" border max-height="300">
+        <el-table-column prop="paymentNo" label="付款单号" min-width="140" />
+        <el-table-column prop="supplierName" label="供应商" min-width="150" />
+        <el-table-column prop="orderNo" label="采购订单号" min-width="140" />
+        <el-table-column label="申请金额" width="120"><template #default="{ row }">{{ money(row.paymentAmount) }}</template></el-table-column>
+        <el-table-column prop="paymentDate" label="计划付款日" width="110" />
+      </el-table>
+      <p v-if="approveTargets.length > 1">本次选择 {{ approveTargets.length }} 笔，使用相同审批决定和意见；任一笔失败整批不保存。</p>
       <el-form :model="approveForm" label-width="90px">
         <el-form-item label="审批人"
           ><el-input :model-value="approverName" readonly
         /></el-form-item>
-        <el-form-item label="备注"
-          ><el-input v-model="approveForm.approvalComment" type="textarea" :rows="3"
+        <el-form-item label="审批意见"
+          ><el-input v-model="approveForm.approvalComment" type="textarea" :rows="3" maxlength="500" show-word-limit :disabled="submitting" placeholder="驳回时必须填写意见"
         /></el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="approveVisible = false">取消</el-button>
+        <el-button :disabled="submitting" @click="approveVisible = false">取消</el-button>
         <el-button
           type="danger"
           :loading="submitting"
@@ -379,14 +385,9 @@
 
         <div class="detail-section-title">审批与状态</div>
         <el-descriptions :column="3" border>
-          <el-descriptions-item label="付款状态">
-            <el-tag :type="PaymentStatusEnum.getTagProps(current.paymentStatus).type">{{
-              PaymentStatusEnum.getLabel(current.paymentStatus)
-            }}</el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="审批状态">
-            <el-tag :type="PaymentApprovalStatusEnum.getTagProps(current.approvalStatus).type">{{
-              PaymentApprovalStatusEnum.getLabel(current.approvalStatus)
+          <el-descriptions-item label="阶段">
+            <el-tag :type="PaymentStageEnum.getTagProps(paymentStageOf(current)).type">{{
+              PaymentStageEnum.getLabel(paymentStageOf(current))
             }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="审批人">{{
@@ -442,6 +443,8 @@ import {
   confirmPayment,
   getPendingPaymentOrders,
   generatePaymentNo,
+  batchApprove,
+  exportPayment,
 } from '@/api/purchase/payment'
 import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import {
@@ -449,6 +452,8 @@ import {
   PaymentApprovalStatus,
   PaymentApprovalStatusEnum,
   PaymentMethodEnum,
+  PaymentStageEnum,
+  paymentStageOf,
 } from '@/enums/purchase/payment'
 import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
 import PaymentAmountSummary from '@/views/purchase/components/PaymentAmountSummary.vue'
@@ -483,6 +488,11 @@ const approveVisible = ref(false)
 const confirmVisible = ref(false)
 const current = ref<any>()
 const approveTarget = ref<any>()
+const approveTargets = ref<any[]>([])
+const selectedPayments = ref<any[]>([])
+const paymentTable = ref<any>()
+const batchApproval = ref(false)
+const exporting = ref(false)
 const confirmTarget = ref<any>()
 const formRef = ref<FormInstance>()
 
@@ -574,9 +584,9 @@ function rowClassName({ row }: { row: any }) {
 /** 本页合计：前端派生值，不新增后端接口。 */
 function summaryMethod({ columns }: { columns: any[] }) {
   const totalAmount = rows.value.reduce((sum, row) => sum + Number(row.paymentAmount || 0), 0)
-  return columns.map((_column, index) => {
+  return columns.map((column, index) => {
     if (index === 0) return `本页合计（${rows.value.length} 笔）`
-    if (index === 4) return money(totalAmount)
+    if (column.property === 'paymentAmount') return money(totalAmount)
     return ''
   })
 }
@@ -637,6 +647,8 @@ function today() {
 }
 
 async function load() {
+  selectedPayments.value = []
+  paymentTable.value?.clearSelection?.()
   loading.value = true
   try {
     const res: any = await listPayment({ ...query })
@@ -741,15 +753,36 @@ async function submitForm() {
 }
 
 function openApprove(row: any) {
+  if (submitting.value || !userStore.hasPermission('purchase:payment:approve')) return
+  batchApproval.value = false
   approveTarget.value = row
+  approveTargets.value = [row]
   Object.assign(approveForm, { approvalComment: '' })
   approveVisible.value = true
 }
+function openBatchApprove() {
+  if (submitting.value || !userStore.hasPermission('purchase:payment:approve') || !selectedPayments.value.length) return
+  if (selectedPayments.value.some((row) => !isPendingPayment(row))) {
+    ElMessage.warning('批量审批只能选择待审批且未付款的付款单')
+    return
+  }
+  batchApproval.value = true
+  approveTarget.value = undefined
+  approveTargets.value = [...selectedPayments.value]
+  approveForm.approvalComment = ''
+  approveVisible.value = true
+}
 async function submitApprove(decision: string) {
-  if (!approveTarget.value) return
+  if (submitting.value || !approveTargets.value.length || !userStore.hasPermission('purchase:payment:approve')) return
+  if (decision === PaymentApprovalStatus.REJECTED && !approveForm.approvalComment.trim()) {
+    ElMessage.warning('驳回意见不能为空')
+    return
+  }
   submitting.value = true
   try {
-    await approvePayment(approveTarget.value.paymentId, decision, approveForm.approvalComment)
+    const comment = approveForm.approvalComment.trim()
+    if (batchApproval.value) await batchApprove(approveTargets.value.map((row) => ({ paymentId: row.paymentId, approvalStatus: decision, approvalComment: comment })))
+    else await approvePayment(approveTarget.value.paymentId, decision, comment)
     ElMessage.success(decision === PaymentApprovalStatus.APPROVED ? '审批通过' : '已驳回')
     approveVisible.value = false
     load()
@@ -757,6 +790,30 @@ async function submitApprove(decision: string) {
     ElMessage.error(e?.message || '审批失败')
   } finally {
     submitting.value = false
+  }
+}
+
+async function handleExport() {
+  if (exporting.value || !userStore.hasPermission('purchase:payment:export')) return
+  exporting.value = true
+  try {
+    const { pageNum: _page, pageSize: _size, ...filters } = query
+    const blob: any = await exportPayment(filters)
+    if (!(blob instanceof Blob)) throw new Error('导出响应无效，请重试')
+    if (blob.type.includes('json')) {
+      const error = JSON.parse(await blob.text())
+      throw new Error(error.msg || '导出失败')
+    }
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `采购付款_${today()}.xlsx`
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (cause: any) {
+    ElMessage.error(cause?.message || '导出失败')
+  } finally {
+    exporting.value = false
   }
 }
 

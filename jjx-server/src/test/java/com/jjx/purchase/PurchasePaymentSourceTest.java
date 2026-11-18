@@ -77,4 +77,35 @@ class PurchasePaymentSourceTest {
         wrapper = ReflectionTestUtils.invokeMethod(service, "buildPaymentQuery", query);
         assertTrue(wrapper.getSqlSegment().contains("1 = 0"));
     }
+
+    @Test void exportCreatesActualWorkbookAndUsesAllCurrentFiltersWithoutPagination() throws Exception {
+        PurchaseOrder order = new PurchaseOrder(); order.setOrderId(1L); order.setOrderNo("PO-1"); order.setSupplierName("供应商甲");
+        when(orders.selectList(any())).thenReturn(List.of(order));
+        when(orders.selectBatchIds(any())).thenReturn(List.of(order));
+        PurchasePayment payment = new PurchasePayment(); payment.setOrderId(1L); payment.setPaymentNo("PAY-1");
+        payment.setPaymentAmount(new java.math.BigDecimal("123456789012345.67"));
+        payment.setApprovalStatus(com.jjx.purchase.domain.enums.PurchasePaymentApprovalStatusEnum.REJECTED.getCode());
+        when(payments.selectList(any())).thenReturn(List.of(payment));
+        var query = new PurchasePaymentDTO(); query.setPaymentNo("PAY"); query.setOrderNo("PO-1");
+        query.setPaymentStatus(com.jjx.purchase.domain.enums.PurchasePaymentStatusEnum.PENDING.getValue());
+        query.setApprovalStatus(com.jjx.purchase.domain.enums.PurchasePaymentApprovalStatusEnum.REJECTED.getCode());
+        query.setPaymentMethod("bank"); query.setPageNum(9); query.setPageSize(1);
+        byte[] bytes = service.exportPaymentList(query);
+        try (var book = org.apache.poi.ss.usermodel.WorkbookFactory.create(new java.io.ByteArrayInputStream(bytes))) {
+            var row = book.getSheetAt(0).getRow(1);
+            assertEquals("PAY-1", row.getCell(0).getStringCellValue());
+            assertEquals("PO-1", row.getCell(1).getStringCellValue());
+            assertEquals("供应商甲", row.getCell(2).getStringCellValue());
+            assertEquals("123456789012345.67", row.getCell(4).getStringCellValue());
+            assertEquals("已拒绝", row.getCell(6).getStringCellValue());
+        }
+        var captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(payments).selectList(captor.capture());
+        var wrapper = captor.getValue();
+        assertFalse(wrapper.getSqlSegment().toUpperCase().contains("LIMIT"));
+        var values = wrapper.getParamNameValuePairs().values();
+        assertTrue(values.contains("%PAY%")); assertTrue(values.contains(1L));
+        assertTrue(values.contains(query.getApprovalStatus())); assertTrue(values.contains(query.getPaymentStatus()));
+        assertTrue(values.contains("bank"));
+    }
 }

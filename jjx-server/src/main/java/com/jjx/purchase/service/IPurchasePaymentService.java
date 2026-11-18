@@ -46,6 +46,9 @@ public interface IPurchasePaymentService {
      */
     int approvePayment(Long paymentId, String approvalStatus, String approvalComment);
 
+    /** 整批同一事务；任一审批失败时全部回滚。 */
+    int batchApprovePayments(List<com.jjx.purchase.domain.dto.PurchasePaymentApprovalDTO> decisions);
+
     /**
      * 确认付款
      */
@@ -106,7 +109,7 @@ public interface IPurchasePaymentService {
     /**
      * 导出付款列表
      */
-    String exportPaymentList(PurchasePaymentDTO dto);
+    byte[] exportPaymentList(PurchasePaymentDTO dto);
 
     /**
      * 批量校验付款导入数据（DEV-726：不落库，逐行返回校验结果）

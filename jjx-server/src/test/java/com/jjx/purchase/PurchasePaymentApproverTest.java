@@ -2,6 +2,7 @@ package com.jjx.purchase;
 
 import com.jjx.common.exception.BusinessException;
 import com.jjx.purchase.controller.PurchasePaymentController;
+import com.jjx.purchase.domain.dto.PurchasePaymentApprovalDTO;
 import com.jjx.purchase.domain.entity.PurchasePayment;
 import com.jjx.purchase.domain.enums.PurchasePaymentApprovalStatusEnum;
 import com.jjx.purchase.mapper.PurchaseOrderMapper;
@@ -36,6 +37,7 @@ class PurchasePaymentApproverTest {
     @InjectMocks private PurchasePaymentServiceImpl service;
 
     @Test void approvalUsesLoggedInActorForBothDecisions() {
+        when(payments.update(any(PurchasePayment.class), any())).thenReturn(1);
         try (var identity = mockStatic(SecurityUtils.class)) {
             identity.when(SecurityUtils::getUserId).thenReturn(31L);
             identity.when(SecurityUtils::getDisplayName).thenReturn("当前审批员");
@@ -50,7 +52,7 @@ class PurchasePaymentApproverTest {
                 assertEquals(decision.getCode(), payment.getApprovalStatus());
                 assertNotNull(payment.getApprovalTime());
             }
-            verify(payments, times(2)).updateById(any(PurchasePayment.class));
+            verify(payments, times(2)).update(any(PurchasePayment.class), any());
         }
     }
 
@@ -77,11 +79,23 @@ class PurchasePaymentApproverTest {
         var controller = new PurchasePaymentController(apiService, mock(IPurchaseOrderService.class), mock(ISysAttachmentService.class));
         String decision = PurchasePaymentApprovalStatusEnum.APPROVED.getCode();
         controller.approve(1L, decision, "单笔意见");
-        controller.batchApprove(List.of(Map.of("paymentId", 2L, "approvalStatus", decision,
-                "approverName", "冒填姓名", "approvalComment", "批量意见")));
+        var batch = List.of(new PurchasePaymentApprovalDTO(2L, decision, "批量意见"));
+        controller.batchApprove(batch);
         verify(apiService).approvePayment(1L, decision, "单笔意见");
-        verify(apiService).approvePayment(2L, decision, "批量意见");
+        verify(apiService).batchApprovePayments(batch);
         verifyNoMoreInteractions(apiService);
         assertEquals(3, PurchasePaymentController.class.getMethod("approve", Long.class, String.class, String.class).getParameterCount());
+    }
+
+    @Test void exportReturnsFileBytesInsteadOfPlaceholderPath() {
+        var apiService = mock(IPurchasePaymentService.class);
+        var controller = new PurchasePaymentController(apiService, mock(IPurchaseOrderService.class), mock(ISysAttachmentService.class));
+        var query = new com.jjx.purchase.domain.dto.PurchasePaymentDTO();
+        byte[] bytes = new byte[]{80, 75, 3, 4};
+        when(apiService.exportPaymentList(query)).thenReturn(bytes);
+        var response = controller.export(query);
+        assertSame(bytes, response.getBody());
+        assertTrue(response.getHeaders().getContentType().toString().contains("spreadsheetml.sheet"));
+        assertTrue(response.getHeaders().getFirst("Content-Disposition").contains("purchase-payments.xlsx"));
     }
 }

@@ -6,6 +6,10 @@ import cn.dev33.satoken.annotation.SaMode;
 import com.jjx.common.core.result.Result;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.purchase.domain.dto.PurchasePaymentDTO;
+import com.jjx.purchase.domain.dto.PurchasePaymentApprovalDTO;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import com.jjx.purchase.domain.entity.PurchasePayment;
 import com.jjx.purchase.domain.vo.PurchaseOrderVO;
 import com.jjx.purchase.service.IPurchaseOrderService;
@@ -93,8 +97,11 @@ public class PurchasePaymentController extends BaseController {
      */
     @GetMapping("/export")
     @SaCheckPermission("purchase:payment:export")
-    public Result<String> export(PurchasePaymentDTO dto) {
-        return Result.success(paymentService.exportPaymentList(dto));
+    public ResponseEntity<byte[]> export(PurchasePaymentDTO dto) {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=purchase-payments.xlsx")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(paymentService.exportPaymentList(dto));
     }
 
     /**
@@ -239,15 +246,10 @@ public class PurchasePaymentController extends BaseController {
      * 批量审批
      */
     @PostMapping("/batch-approve")
-    @Log(module = "采购付款管理", businessType = BusinessType.APPROVE, bizType = "'purchase_payment'", bizId = "#batchData[0]['paymentId']", action = LogActions.PUR_PAYMENT_BATCH_APPROVE)
+    @Log(module = "采购付款管理", businessType = BusinessType.APPROVE, bizType = "'purchase_payment'", bizId = "#batchData != null && !#batchData.isEmpty() ? #batchData[0].paymentId : null", action = LogActions.PUR_PAYMENT_BATCH_APPROVE)
     @SaCheckPermission("purchase:payment:approve")
-    public Result<Void> batchApprove(@RequestBody List<Map<String, Object>> batchData) {
-        for (Map<String, Object> data : batchData) {
-            Long paymentId = Long.valueOf(data.get("paymentId").toString());
-            String approvalStatus = (String) data.get("approvalStatus");
-            String approvalComment = (String) data.get("approvalComment");
-            paymentService.approvePayment(paymentId, approvalStatus, approvalComment);
-        }
+    public Result<Void> batchApprove(@RequestBody List<PurchasePaymentApprovalDTO> batchData) {
+        paymentService.batchApprovePayments(batchData);
         return Result.success();
     }
 
