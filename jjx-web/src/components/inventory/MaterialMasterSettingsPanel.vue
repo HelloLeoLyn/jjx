@@ -336,15 +336,24 @@
                 >
                   <span class="naming-order-no">{{ index + 1 }}</span>
                   <span class="naming-order-label">{{ namingLabel(field) }}</span>
-                  <el-popover placement="bottom" :width="280" trigger="click">
-                    <template #reference><el-button link type="primary">前后缀{{ namePattern.prefixes?.[field] || namePattern.suffixes?.[field] ? '（已配）' : '' }}</el-button></template>
-                    <el-form label-width="50px"><el-form-item label="前缀"><el-input :model-value="namePattern.prefixes?.[field] || ''" maxlength="50" @update:model-value="value => setAffix('name_pattern', field, 'prefixes', value)" /></el-form-item>
-                    <el-form-item label="后缀"><el-input :model-value="namePattern.suffixes?.[field] || ''" maxlength="50" @update:model-value="value => setAffix('name_pattern', field, 'suffixes', value)" /></el-form-item></el-form>
-                  </el-popover>
+                  <label class="naming-affix-field">
+                    <span>前缀</span>
+                    <el-input :model-value="namePattern.prefixes?.[field] || ''" maxlength="50"
+                      :aria-label="`名称${namingLabel(field)}前缀`" placeholder="留空不添加"
+                      @update:model-value="value => setAffix('name_pattern', field, 'prefixes', value)" />
+                  </label>
+                  <label class="naming-affix-field">
+                    <span>后缀</span>
+                    <el-input :model-value="namePattern.suffixes?.[field] || ''" maxlength="50"
+                      :aria-label="`名称${namingLabel(field)}后缀`" placeholder="留空不添加"
+                      @update:model-value="value => setAffix('name_pattern', field, 'suffixes', value)" />
+                  </label>
+                  <span>分隔符</span>
                   <el-input
                     :model-value="fieldSeparator(field)"
                     class="naming-sep-input"
-                    placeholder="分隔"
+                    placeholder="分隔符"
+                    :aria-label="`名称${namingLabel(field)}分隔符`"
                     title="该字段前的分隔符，允许 1–3 个字符；留空=紧贴上一个字段"
                     @update:model-value="(value: any) => setNameSeparator(field, value)"
                   />
@@ -426,13 +435,22 @@
                 @drop="dropAt('model', index)" @dragend="endDrag">
                 <span class="naming-order-no">{{ index + 1 }}</span>
                 <span class="naming-order-label">{{ namingLabel(field) }}</span>
-                <el-popover placement="bottom" :width="280" trigger="click">
-                  <template #reference><el-button link type="primary">前后缀{{ modelPattern.prefixes?.[field] || modelPattern.suffixes?.[field] ? '（已配）' : '' }}</el-button></template>
-                  <el-form label-width="50px"><el-form-item label="前缀"><el-input :model-value="modelPattern.prefixes?.[field] || ''" maxlength="50" @update:model-value="value => setAffix('model_pattern', field, 'prefixes', value)" /></el-form-item>
-                  <el-form-item label="后缀"><el-input :model-value="modelPattern.suffixes?.[field] || ''" maxlength="50" @update:model-value="value => setAffix('model_pattern', field, 'suffixes', value)" /></el-form-item></el-form>
-                </el-popover>
+                <label class="naming-affix-field">
+                  <span>前缀</span>
+                  <el-input :model-value="modelPattern.prefixes?.[field] || ''" maxlength="50"
+                    :aria-label="`型号${namingLabel(field)}前缀`" placeholder="留空不添加"
+                    @update:model-value="value => setAffix('model_pattern', field, 'prefixes', value)" />
+                </label>
+                <label class="naming-affix-field">
+                  <span>后缀</span>
+                  <el-input :model-value="modelPattern.suffixes?.[field] || ''" maxlength="50"
+                    :aria-label="`型号${namingLabel(field)}后缀`" placeholder="留空不添加"
+                    @update:model-value="value => setAffix('model_pattern', field, 'suffixes', value)" />
+                </label>
+                <span>分隔符</span>
                 <el-input :model-value="modelPattern.separators?.[field] ?? modelPattern.separator"
-                  class="naming-sep-input" placeholder="分隔" title="字段前分隔符，允许 1–3 个字符；空串表示紧贴"
+                  class="naming-sep-input" placeholder="分隔符" :aria-label="`型号${namingLabel(field)}分隔符`"
+                  title="字段前分隔符，允许 1–3 个字符；空串表示紧贴"
                   @update:model-value="value => setModelSeparator(field, value)" />
                 <el-select v-if="isDimensionField(field)" :model-value="modelPattern.units?.[field] || 'mm'"
                   :aria-label="`${namingLabel(field)}型号单位`" style="width: 100px" @update:model-value="value => setModelUnit(field, value)">
@@ -490,16 +508,20 @@
                 >
                   <span class="naming-order-no">{{ index + 1 }}</span>
                   <span class="naming-order-label">{{ specLabel(item.key) }}</span>
-                  <el-popover placement="bottom" :width="280" trigger="click">
-                    <template #reference><el-button link type="primary">前后缀{{ item.prefix || item.suffix ? '（已配）' : '' }}</el-button></template>
-                    <el-form label-width="50px"><el-form-item label="前缀"><el-input v-model="item.prefix" maxlength="50" /></el-form-item>
-                    <el-form-item label="后缀"><el-input v-model="item.suffix" maxlength="50" /></el-form-item></el-form>
-                    <span class="naming-message">缺值不输出前后缀；单位可继续用原单位配置。</span>
-                  </el-popover>
+                  <label class="naming-affix-field">
+                    <span>前缀</span>
+                    <el-input v-model="item.prefix" maxlength="50" :aria-label="`规格${specLabel(item.key)}前缀`" placeholder="留空不添加" />
+                  </label>
+                  <label class="naming-affix-field">
+                    <span>后缀</span>
+                    <el-input v-model="item.suffix" maxlength="50" :aria-label="`规格${specLabel(item.key)}后缀`" placeholder="留空不添加" />
+                  </label>
+                  <span>分隔符</span>
                   <el-input
                     :model-value="item.sep"
                     class="naming-sep-input"
-                    placeholder="分隔"
+                    placeholder="分隔符"
+                    :aria-label="`规格${specLabel(item.key)}分隔符`"
                     title="该字段前的分隔符，允许 1–3 个字符；留空=紧贴上一个字段"
                     @update:model-value="(value: any) => setSpecSep(index, value)"
                   />
@@ -1288,9 +1310,11 @@ async function removeTemplate() {
 .naming-rule { margin-top: 8px; }
 .naming-tokens { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 8px; }
 .naming-order { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
-.naming-order-row { display: flex; align-items: center; gap: 4px; }
+.naming-order-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding: 4px 0; }
 .naming-order-label { min-width: 90px; color: var(--el-text-color-regular); }
-.naming-sep-input { width: 90px; }
+.naming-affix-field { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; cursor: default; }
+.naming-affix-field .el-input { width: 130px; }
+.naming-sep-input { width: 90px; flex-shrink: 0; }
 .naming-actions { display: flex; gap: 8px; margin: -4px 0 8px; }
 .naming-order-no { min-width: 18px; text-align: right; color: var(--el-text-color-placeholder); font-size: 12px; }
 .naming-order-row { cursor: grab; }

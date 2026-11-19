@@ -31,24 +31,39 @@ describe('属性模板界面保存', () => {
     api.fieldOptions.mockResolvedValue({ data: [] })
     api.specPreview.mockResolvedValue({ data: { samples: [] } })
   })
-  it('逐字段前后缀进入对应规则保存载荷，不覆盖其它块草稿', async () => {
+  it('三套规则直接显示独立前缀、后缀和分隔符输入，真实输入分别保存且保留其它块草稿', async () => {
     const wrapper = mount(MaterialMasterSettingsPanel, { global: { stubs: {
-      ...stubs, ElButton: Button, ElTableColumn: true, ElInput: true, ElInputNumber: true, ElSwitch: true, ElCheckbox: true, ElAlert: true, ElPopover: true,
+      ...stubs, ElButton: Button, ElTableColumn: true, ElInputNumber: true, ElSwitch: true, ElCheckbox: true, ElAlert: true,
     } } })
     await flushPromises()
     const state = wrapper.vm as any
     state.templateCategoryId = 2; await state.loadTemplate(2); await flushPromises()
     state.namePattern.fields = ['model']
-    state.setAffix('name_pattern', 'model', 'prefixes', '型号[')
-    state.setAffix('name_pattern', 'model', 'suffixes', ']')
     state.modelPattern.fields = ['color']
-    state.setAffix('model_pattern', 'color', 'suffixes', '-S')
+    state.specPattern.fields = [{ key: 'width', sep: '*', prefix: '', suffix: '' }]
+    await flushPromises()
+    for (const field of ['名称型号', '型号颜色', '规格宽']) {
+      expect(wrapper.get(`input[aria-label="${field}前缀"]`).isVisible()).toBe(true)
+      expect(wrapper.get(`input[aria-label="${field}后缀"]`).isVisible()).toBe(true)
+      expect(wrapper.get(`input[aria-label="${field}分隔符"]`).isVisible()).toBe(true)
+    }
+    expect(wrapper.findAll('button').some(button => button.text().startsWith('前后缀'))).toBe(false)
+    await wrapper.get('input[aria-label="名称型号前缀"]').setValue('型号[')
+    await wrapper.get('input[aria-label="名称型号后缀"]').setValue(']')
+    await wrapper.get('input[aria-label="名称型号分隔符"]').setValue('-')
+    await wrapper.get('input[aria-label="型号颜色前缀"]').setValue('C-')
+    await wrapper.get('input[aria-label="型号颜色后缀"]').setValue('-S')
     await state.savePattern('name_pattern')
-    expect(api.savePattern).toHaveBeenLastCalledWith(expect.objectContaining({ block: 'name_pattern', pattern: expect.objectContaining({ prefixes: { model: '型号[' }, suffixes: { model: ']' } }) }))
+    expect(api.savePattern).toHaveBeenLastCalledWith(expect.objectContaining({ block: 'name_pattern', pattern: expect.objectContaining({ prefixes: { model: '型号[' }, suffixes: { model: ']' }, separators: { model: '-' } }) }))
+    expect(state.modelPattern.prefixes.color).toBe('C-')
     expect(state.modelPattern.suffixes.color).toBe('-S')
-    state.specPattern.fields = [{ key: 'width', sep: '*', prefix: '宽', suffix: 'mm' }]
+    await wrapper.get('input[aria-label="规格宽前缀"]').setValue('宽')
+    await wrapper.get('input[aria-label="规格宽后缀"]').setValue('mm')
     await state.savePattern('spec_pattern')
     expect(api.savePattern).toHaveBeenLastCalledWith(expect.objectContaining({ block: 'spec_pattern', pattern: expect.objectContaining({ fields: [{ key: 'width', sep: '*', prefix: '宽', suffix: 'mm' }] }) }))
+    await wrapper.get('input[aria-label="型号颜色后缀"]').setValue('')
+    await state.savePattern('model_pattern')
+    expect(api.savePattern).toHaveBeenLastCalledWith(expect.objectContaining({ block: 'model_pattern', pattern: expect.objectContaining({ prefixes: { color: 'C-' }, suffixes: { color: '' } }) }))
     wrapper.unmount()
   })
   it('用户补常用属性并配置显示设置后，真实保存方法提交完整模板元数据', async () => {
