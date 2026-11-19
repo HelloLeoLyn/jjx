@@ -31,6 +31,26 @@ describe('属性模板界面保存', () => {
     api.fieldOptions.mockResolvedValue({ data: [] })
     api.specPreview.mockResolvedValue({ data: { samples: [] } })
   })
+  it('逐字段前后缀进入对应规则保存载荷，不覆盖其它块草稿', async () => {
+    const wrapper = mount(MaterialMasterSettingsPanel, { global: { stubs: {
+      ...stubs, ElButton: Button, ElTableColumn: true, ElInput: true, ElInputNumber: true, ElSwitch: true, ElCheckbox: true, ElAlert: true, ElPopover: true,
+    } } })
+    await flushPromises()
+    const state = wrapper.vm as any
+    state.templateCategoryId = 2; await state.loadTemplate(2); await flushPromises()
+    state.namePattern.fields = ['model']
+    state.setAffix('name_pattern', 'model', 'prefixes', '型号[')
+    state.setAffix('name_pattern', 'model', 'suffixes', ']')
+    state.modelPattern.fields = ['color']
+    state.setAffix('model_pattern', 'color', 'suffixes', '-S')
+    await state.savePattern('name_pattern')
+    expect(api.savePattern).toHaveBeenLastCalledWith(expect.objectContaining({ block: 'name_pattern', pattern: expect.objectContaining({ prefixes: { model: '型号[' }, suffixes: { model: ']' } }) }))
+    expect(state.modelPattern.suffixes.color).toBe('-S')
+    state.specPattern.fields = [{ key: 'width', sep: '*', prefix: '宽', suffix: 'mm' }]
+    await state.savePattern('spec_pattern')
+    expect(api.savePattern).toHaveBeenLastCalledWith(expect.objectContaining({ block: 'spec_pattern', pattern: expect.objectContaining({ fields: [{ key: 'width', sep: '*', prefix: '宽', suffix: 'mm' }] }) }))
+    wrapper.unmount()
+  })
   it('用户补常用属性并配置显示设置后，真实保存方法提交完整模板元数据', async () => {
     const wrapper = mount(MaterialMasterSettingsPanel, { global: { stubs: {
       ...stubs, ElButton: Button, ElTableColumn: true, ElInput: true, ElInputNumber: true, ElSwitch: true, ElCheckbox: true, ElAlert: true,
@@ -86,7 +106,7 @@ describe('属性模板界面保存', () => {
     api.specPreview.mockClear().mockResolvedValue({ data: { samples: [{ materialId: 1, materialCode: 'RM001', oldSpec: '旧规格', newSpec: '254μm*315mm*1000m' }] } })
     await state.savePattern('spec_pattern')
     expect(api.savePattern).toHaveBeenCalledWith({ categoryId: 2, block: 'spec_pattern', pattern: expect.objectContaining({ fields: expect.arrayContaining([expect.objectContaining({ key: 'thickness_mm', unit: 'μm', scale: 1 })]) }) })
-    expect(api.specPreview).toHaveBeenCalledWith(2)
+    expect(api.specPreview).toHaveBeenCalledWith(2, expect.objectContaining({ fields: state.specPattern.fields }))
     expect(state.specSamples[0]).toMatchObject({ oldSpec: '旧规格', newSpec: '254μm*315mm*1000m' })
     wrapper.unmount()
   })

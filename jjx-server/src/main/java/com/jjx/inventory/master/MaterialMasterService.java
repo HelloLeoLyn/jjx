@@ -435,6 +435,17 @@ public class MaterialMasterService {
         }
         SpecificationPreview preview = specificationPreview(candidate);
         String specification = preview.specification(); // patch.specification 故意忽略，只允许模型渲染结果。
+        candidate.setMaterialName(name);
+        candidate.setSpecification(specification);
+        return saveRuleCandidate(existing, candidate, reason, operator, preview);
+    }
+
+    /** 可信后端候选值持久化；调用者须在同一事务内锁定资料。 */
+    NamingResult saveRuleCandidate(InventoryMaterial existing, InventoryMaterial candidate, String reason,
+                                   String operator, SpecificationPreview preview) {
+        Long id = existing.getMaterialId();
+        String name = candidate.getMaterialName();
+        String specification = candidate.getSpecification();
         List<String> changes = new ArrayList<>();
         if (!Objects.equals(existing.getMaterialName(), name))
             changes.add("名称：" + Objects.toString(existing.getMaterialName(), "空") + " → " + name);
@@ -774,6 +785,8 @@ public class MaterialMasterService {
     }
 
     /** 手工新增/编辑用：同名候选里若判重键完全一致则拦；排除自身。 */
+    void validateRuleCandidate(InventoryMaterial candidate) { requireNoDuplicate(candidate); }
+
     private void requireNoDuplicate(InventoryMaterial material) {
         if (material.getMaterialName() == null || material.getMaterialName().isBlank()) return;
         var query = new LambdaQueryWrapper<InventoryMaterial>()

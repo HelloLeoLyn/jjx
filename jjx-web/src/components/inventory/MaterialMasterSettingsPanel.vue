@@ -336,6 +336,11 @@
                 >
                   <span class="naming-order-no">{{ index + 1 }}</span>
                   <span class="naming-order-label">{{ namingLabel(field) }}</span>
+                  <el-popover placement="bottom" :width="280" trigger="click">
+                    <template #reference><el-button link type="primary">前后缀{{ namePattern.prefixes?.[field] || namePattern.suffixes?.[field] ? '（已配）' : '' }}</el-button></template>
+                    <el-form label-width="50px"><el-form-item label="前缀"><el-input :model-value="namePattern.prefixes?.[field] || ''" maxlength="50" @update:model-value="value => setAffix('name_pattern', field, 'prefixes', value)" /></el-form-item>
+                    <el-form-item label="后缀"><el-input :model-value="namePattern.suffixes?.[field] || ''" maxlength="50" @update:model-value="value => setAffix('name_pattern', field, 'suffixes', value)" /></el-form-item></el-form>
+                  </el-popover>
                   <el-input
                     :model-value="fieldSeparator(field)"
                     class="naming-sep-input"
@@ -398,37 +403,13 @@
                 <el-table-column label="按规则生成" prop="newName" />
               </el-table>
               <el-divider />
-              <div class="naming-message">保存规则不会自动修改存量物料名称；请保存后预览差异，再使用「按规则批量改名」。</div>
-              <el-button :loading="renameLoading" @click="previewRename">预览改名差异</el-button>
-              <el-button
-                type="danger"
-                plain
-                :disabled="!renameReport || !renameReport.changeable"
-                @click="applyRename"
-                >按规则批量改名（{{ renameReport?.changeable ?? 0 }} 条）</el-button
-              >
-              <span v-if="renameReport" class="naming-message">{{ renameReport.message }}</span>
-              <el-table
-                v-if="renameReport?.samples.length"
-                :data="renameReport.samples"
-                border
-                size="small"
-                max-height="260"
-                style="margin-top: 8px"
-              >
-                <el-table-column label="物料编码" prop="materialCode" width="150" />
-                <el-table-column label="当前名称" prop="oldName" />
-                <el-table-column label="按规则生成" prop="newName" />
-                <el-table-column label="说明" width="120">
-                  <template #default="{ row }">{{ skipText(row.skipReason) }}</template>
-                </el-table-column>
-              </el-table>
+              <div class="naming-message">保存规则不会自动批量修改现有物料；保存后可预览差异并勾选应用。</div>
             </div>
             <el-button type="primary" :loading="busy" :disabled="!templateExists || templateLoading" @click="savePattern('name_pattern')">保存本块</el-button>
           </el-tab-pane>
           <el-tab-pane v-if="focusSection !== 'template'" :label="blockTitle('model_pattern', '型号规则')" name="model_pattern">
             <div class="naming-rule" data-test="model-pattern">
-              <div class="naming-message">仅新建物料自动带出，可手改；未勾选字段时人工填写。编辑与批量重算不改变型号。</div>
+              <div class="naming-message">新建物料自动带出，可手改；现有物料仅在应用弹窗明确勾选“同时更新型号”时更新。</div>
               <div class="naming-tokens">
                 <el-checkbox v-for="token in modelTokens" :key="token.key"
                   :model-value="modelPattern.fields.includes(token.key)"
@@ -445,6 +426,11 @@
                 @drop="dropAt('model', index)" @dragend="endDrag">
                 <span class="naming-order-no">{{ index + 1 }}</span>
                 <span class="naming-order-label">{{ namingLabel(field) }}</span>
+                <el-popover placement="bottom" :width="280" trigger="click">
+                  <template #reference><el-button link type="primary">前后缀{{ modelPattern.prefixes?.[field] || modelPattern.suffixes?.[field] ? '（已配）' : '' }}</el-button></template>
+                  <el-form label-width="50px"><el-form-item label="前缀"><el-input :model-value="modelPattern.prefixes?.[field] || ''" maxlength="50" @update:model-value="value => setAffix('model_pattern', field, 'prefixes', value)" /></el-form-item>
+                  <el-form-item label="后缀"><el-input :model-value="modelPattern.suffixes?.[field] || ''" maxlength="50" @update:model-value="value => setAffix('model_pattern', field, 'suffixes', value)" /></el-form-item></el-form>
+                </el-popover>
                 <el-input :model-value="modelPattern.separators?.[field] ?? modelPattern.separator"
                   class="naming-sep-input" placeholder="分隔" title="字段前分隔符，允许 1–3 个字符；空串表示紧贴"
                   @update:model-value="value => setModelSeparator(field, value)" />
@@ -504,6 +490,12 @@
                 >
                   <span class="naming-order-no">{{ index + 1 }}</span>
                   <span class="naming-order-label">{{ specLabel(item.key) }}</span>
+                  <el-popover placement="bottom" :width="280" trigger="click">
+                    <template #reference><el-button link type="primary">前后缀{{ item.prefix || item.suffix ? '（已配）' : '' }}</el-button></template>
+                    <el-form label-width="50px"><el-form-item label="前缀"><el-input v-model="item.prefix" maxlength="50" /></el-form-item>
+                    <el-form-item label="后缀"><el-input v-model="item.suffix" maxlength="50" /></el-form-item></el-form>
+                    <span class="naming-message">缺值不输出前后缀；单位可继续用原单位配置。</span>
+                  </el-popover>
                   <el-input
                     :model-value="item.sep"
                     class="naming-sep-input"
@@ -569,11 +561,16 @@
             <el-button type="primary" :loading="busy" :disabled="!templateExists || templateLoading" @click="savePattern('spec_pattern')">保存本块</el-button>
           </el-tab-pane>
           </el-tabs>
+          <div v-if="focusSection !== 'template'" style="margin-top: 12px">
+            <el-button type="primary" plain :disabled="!templateExists || templateLoading || busy" @click="openRuleApplication">应用到现有物料</el-button>
+            <span class="naming-message">先保存规则，再预览并勾选要立即更新的物料。</span>
+          </div>
           <el-alert v-if="!templateExists && focusSection !== 'template'" title="请先在属性字段入口建立模板，再保存规则。" type="info" :closable="false" />
           </template>
         </el-form>
       </el-tab-pane>
     </el-tabs>
+    <MaterialRuleApplicationDialog v-if="applicationVisible && templateCategoryId" v-model="applicationVisible" :category-id="templateCategoryId" @applied="emit('success')" />
   </div>
 </template>
 
@@ -587,6 +584,7 @@ import { MaterialAttributeTypeEnum } from '@/enums/inventory/MaterialAttributeEn
 import { materialMasterApi } from '@/api/inventory/materialMaster'
 import { isCommonAttribute } from './materialMasterModel'
 import { displayDimensionOf } from './materialSize'
+import MaterialRuleApplicationDialog from './MaterialRuleApplicationDialog.vue'
 import { addRecommendedAttributes } from './materialAttributePresets'
 import { participatesInSpecification } from '../bomSpecification'
 import type {
@@ -598,7 +596,6 @@ import type {
   MaterialAttributeSchema,
   MaterialNamingPattern,
   MaterialNamingPreview,
-  MaterialRenameReport,
   MaterialDictionaries,
   MaterialMasterCategory,
 } from '@/types/inventory/materialMaster'
@@ -649,16 +646,19 @@ const specPattern = ref<{
 const specSamples = ref<{ materialId: number; materialCode: string; oldSpec: string | null; newSpec: string | null }[]>([])
 const specLoading = ref(false)
 let specTimer: ReturnType<typeof setTimeout> | undefined
+let specPreviewRequest = 0
 async function previewSpecification(quiet = false) {
   if (!templateCategoryId.value) return
+  const request = ++specPreviewRequest
   specLoading.value = true
   try {
-    const response = await materialMasterApi.specPreview(templateCategoryId.value)
+    const response = await materialMasterApi.specPreview(templateCategoryId.value, clone(specPattern.value))
+    if (request !== specPreviewRequest) return
     specSamples.value = response.data?.samples || []
   } catch (e) {
-    if (!quiet) ElMessage.error(e instanceof Error ? e.message : '规格预览失败')
+    if (request === specPreviewRequest && !quiet) ElMessage.error(e instanceof Error ? e.message : '规格预览失败')
   } finally {
-    specLoading.value = false
+    if (request === specPreviewRequest) specLoading.value = false
   }
 }
 watch(
@@ -726,6 +726,10 @@ async function loadFieldOptions(categoryId?: number) {
 }
 
 /** 命名规则：勾选字段 + 顺序 + 分隔符 + 缺值处理，保存进 attribute_schema.name_pattern。 */
+function setAffix(block: 'name_pattern' | 'model_pattern', field: string, side: 'prefixes' | 'suffixes', value: string | number) {
+  const target = block === 'name_pattern' ? namePattern.value : modelPattern.value
+  target[side] = { ...target[side], [field]: String(value ?? '') }
+}
 const namePattern = ref<MaterialNamingPattern>({ fields: [], separator: ' ', empty: 'skip' })
 const modelPattern = ref<MaterialNamingPattern>({ fields: [], separator: '', empty: 'skip' })
 type TemplateBlock = 'fields' | MaterialPatternBlock
@@ -1002,9 +1006,7 @@ let previewTimer: ReturnType<typeof setTimeout> | undefined
 watch(
   () => [
     templateCategoryId.value,
-    namePattern.value.fields.join(','),
-    namePattern.value.separator,
-    namePattern.value.empty,
+    JSON.stringify(namePattern.value),
   ],
   () => {
     if (!templateCategoryId.value) return
@@ -1019,43 +1021,10 @@ onBeforeUnmount(() => {
   if (previewTimer) clearTimeout(previewTimer)
   if (modelPreviewTimer) clearTimeout(modelPreviewTimer)
 })
-const renameLoading = ref(false)
-const renameReport = ref<MaterialRenameReport>()
-const skipText = (reason: string | null) =>
-  reason === 'blank' ? '规则为空，跳过' : reason === 'same' ? '已一致' : '将改名'
-async function previewRename() {
-  if (!templateCategoryId.value) return
-  renameLoading.value = true
-  try {
-    const response = await materialMasterApi.renameChanges(templateCategoryId.value)
-    renameReport.value = response.data ?? undefined
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '改名预演失败')
-  } finally {
-    renameLoading.value = false
-  }
-}
-async function applyRename() {
-  if (!templateCategoryId.value || !renameReport.value?.changeable) return
-  try {
-    await ElMessageBox.confirm(
-      `将按当前命名规则改 ${renameReport.value.changeable} 条物料名称，逐条留痕，是否继续？`,
-      '批量改名'
-    )
-  } catch {
-    return
-  }
-  renameLoading.value = true
-  try {
-    const response = await materialMasterApi.applyRename(templateCategoryId.value)
-    ElMessage.success(`已改名 ${response.data ?? 0} 条`)
-    emit('success')
-    renameLoading.value = false
-    await previewRename()
-  } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '批量改名失败')
-    renameLoading.value = false
-  }
+const applicationVisible = ref(false)
+async function openRuleApplication() {
+  if (hasUnsaved.value) { ElMessage.warning('请先保存各块规则，再应用到现有物料'); return }
+  applicationVisible.value = true
 }
 const editableCategories = computed(() => categories.value.filter((c) => c.categoryLevel > 1))
 // 仅用于表单提示与提交预检；保存规则由后端统一校验。
@@ -1133,7 +1102,6 @@ async function loadTemplate(id: number) {
   specPattern.value = { fields: [], show_label: false, with_unit: true, unit_position: 'end' }
   namingSamples.value = []
   namingMessage.value = ''
-  renameReport.value = undefined
   templateCode.value = ''
   templateName.value = ''
   const category = categories.value.find((c) => c.categoryId === id)
@@ -1276,7 +1244,6 @@ async function savePattern(block: MaterialPatternBlock) {
     else schema.value[block] = saved as MaterialNamingPattern | null
     baselines[block] = JSON.stringify(pattern)
     if (block === 'spec_pattern') await previewSpecification()
-    if (block === 'name_pattern') renameReport.value = undefined
     ElMessage.success('本块已保存')
     emit('success')
   } catch (e) {

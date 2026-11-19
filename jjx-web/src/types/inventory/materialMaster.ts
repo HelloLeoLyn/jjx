@@ -51,6 +51,8 @@ export interface MaterialNamingPattern {
   separator: string
   /** 每个字段自己的分隔符：1 个字符，空串=紧贴上一个字段（dev-20261029-024） */
   separators?: Record<string, string>
+  prefixes?: Record<string, string>
+  suffixes?: Record<string, string>
   /** 尺寸输出单位；由后端模板引擎换算。 */
   units?: Record<string, MaterialDimensionUnit>
   /** 缺值处理：skip 跳过 / placeholder 占位 — */
@@ -69,6 +71,8 @@ export type MaterialDimensionUnit = 'mm' | 'cm' | 'm' | 'μm'
 export interface MaterialSpecField {
   key: string
   sep: string
+  prefix?: string
+  suffix?: string
   /** 仅 width / length / thickness_mm；未配置沿用原单位和原数值 */
   unit?: MaterialDimensionUnit | null
   scale?: number | null
@@ -185,4 +189,37 @@ export type MaterialDictionaries = Record<string, DictionaryOption[]>
 export interface MaterialImportResult {
   successCount: number
   errors: string[]
+}
+
+export interface MaterialRuleOptions {
+  categoryId: number
+  applyName: boolean
+  applySpecification: boolean
+  applyModel: boolean
+}
+export interface MaterialRuleChange {
+  materialId: number
+  materialCode: string
+  oldName: string | null
+  newName: string | null
+  oldModel: string | null
+  newModel: string | null
+  oldSpecification: string | null
+  newSpecification: string | null
+  selectable: boolean
+  message: string
+  previewToken: string | null
+}
+export interface MaterialRulePreview {
+  total: number
+  pageNum: number
+  pageSize: number
+  records: MaterialRuleChange[]
+}
+export interface MaterialRuleSelection { materialId: number; previewToken: string }
+export interface MaterialRuleApplied {
+  success: number
+  skipped: number
+  failed: number
+  records: { materialId: number; materialCode: string | null; success: boolean; skipped: boolean; message: string }[]
 }

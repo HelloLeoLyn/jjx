@@ -54,7 +54,8 @@ public record MaterialAttributeSchema(
                               @JsonProperty("with_unit") boolean withUnit,
                               @JsonProperty("unit_position") String unitPosition) {
         public record SpecField(String key, String sep, String unit,
-                                @JsonDeserialize(using = ScaleDeserializer.class) Integer scale) {
+                                @JsonDeserialize(using = ScaleDeserializer.class) Integer scale, String prefix, String suffix) {
+            public SpecField(String key, String sep, String unit, Integer scale) { this(key, sep, unit, scale, null, null); }
             public SpecField(String key, String sep) { this(key, sep, null, null); }
         }
 
@@ -111,6 +112,8 @@ public record MaterialAttributeSchema(
             for (SpecPattern.SpecField item : specPattern.fields()) {
                 if (item == null || item.key() == null || item.key().isBlank()) continue;
                 MaterialNamingPattern.validatedSeparator(item.sep());
+                MaterialNamingPattern.validatedAffix(item.prefix());
+                MaterialNamingPattern.validatedAffix(item.suffix());
                 if (!specKeys.contains(item.key().trim())) fail("规格模板含未知字段：" + item.key());
                 if ((item.unit() != null || item.scale() != null) && !DIMENSION_KEYS.contains(item.key().trim()))
                     fail("只有宽、长、厚允许配置显示单位和小数位：" + item.key());
@@ -264,8 +267,12 @@ public record MaterialAttributeSchema(
             } else display = MaterialNamingPattern.tokenValue(material, this, values, spec, key, categoryName);
             if (display == null || display.isBlank()) continue;
             if (specPattern.showLabel()) display = specLabel(key) + ":" + display;
-            if ("each".equals(position)) display += unit;
-            lastUnit = unit;
+            String suffix = MaterialNamingPattern.validatedAffix(item.suffix());
+            // 同一单位已经作为后缀填写时只输出一次。
+            boolean suffixIsUnit = !unit.isEmpty() && suffix.strip().equals(unit);
+            if ("each".equals(position) && !suffixIsUnit) display += unit;
+            display = MaterialNamingPattern.validatedAffix(item.prefix()) + display + suffix;
+            lastUnit = suffixIsUnit ? "" : unit;
             String sep = item.sep() == null ? "；" : MaterialNamingPattern.validatedSeparator(item.sep());
             if (!first) text.append(sep);
             text.append(display);

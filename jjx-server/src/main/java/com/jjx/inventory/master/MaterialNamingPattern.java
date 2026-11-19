@@ -20,7 +20,12 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
                                     /** 每个字段自己的分隔符（1–3 个字符，空=紧贴上一个）；缺省回落到 separator（dev-20261029-024）。 */
                                     Map<String, String> separators,
                                     /** 尺寸字段的输出单位；不配置保持原值，不输出单位文字。 */
-                                    Map<String, String> units) {
+                                    Map<String, String> units,
+                                    Map<String, String> prefixes, Map<String, String> suffixes) {
+
+    public MaterialNamingPattern(List<String> fields, String separator, String empty, Map<String, String> separators, Map<String, String> units) {
+        this(fields, separator, empty, separators, units, Map.of(), Map.of());
+    }
 
     public MaterialNamingPattern(List<String> fields, String separator, String empty, Map<String, String> separators) {
         this(fields, separator, empty, separators, Map.of());
@@ -79,7 +84,22 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
             }
         }
         return new MaterialNamingPattern(List.copyOf(keys), sep, emptyMode, Map.copyOf(perField),
-                units == null ? Map.of() : Map.copyOf(units));
+                units == null ? Map.of() : Map.copyOf(units), normalizedAffixes(prefixes, keys), normalizedAffixes(suffixes, keys));
+    }
+
+    private static Map<String, String> normalizedAffixes(Map<String, String> source, Set<String> keys) {
+        var result = new LinkedHashMap<String, String>();
+        if (source != null) for (String key : keys) {
+            if (source.get(key) != null) result.put(key, validatedAffix(source.get(key)));
+        }
+        return Map.copyOf(result);
+    }
+
+    public static String validatedAffix(String value) {
+        if (value == null) return "";
+        if (value.codePointCount(0, value.length()) > 50 || value.codePoints().anyMatch(Character::isISOControl))
+            throw new com.jjx.common.exception.BusinessException("前缀/后缀最多50个字符，不能包含换行或控制字符");
+        return value;
     }
 
     /** 分隔符保真；由保存、预览与生成共用校验。 */
@@ -112,7 +132,7 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
         Map<String, String> perField = new LinkedHashMap<>();
         if ("".equals(separator)) normalized().fields().forEach(key -> perField.put(key, ""));
         if (separators != null) perField.putAll(separators);
-        return new MaterialNamingPattern(fields, separator, "skip", perField, units);
+        return new MaterialNamingPattern(fields, separator, "skip", perField, units, prefixes, suffixes);
     }
 
     /** 型号与命名共用字段白名单，型号不允许引用自身。 */
@@ -187,7 +207,10 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
                     : value.trim();
             if (part == null) continue;
             if (!first) text.append(pattern.separators().getOrDefault(field, pattern.separator()));
+            boolean present = value != null && !value.isBlank();
+            text.append(present ? pattern.prefixes().getOrDefault(field, "") : "");
             text.append(part);
+            text.append(present ? pattern.suffixes().getOrDefault(field, "") : "");
             first = false;
         }
         return text.isEmpty() ? null : text.toString();

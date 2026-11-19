@@ -15,6 +15,11 @@ import type {
   MaterialRequiredFields,
   MaterialPatternSave,
   MaterialTemplateDetail,
+  MaterialRuleOptions,
+  MaterialRulePreview,
+  MaterialRuleApplied,
+  MaterialRuleSelection,
+  MaterialSpecPattern,
 } from '@/types/inventory/materialMaster'
 
 const base = '/inventory/material/master'
@@ -25,6 +30,10 @@ type DictionaryMutation =
   | { action: 'STATUS'; itemId: number; isActive: number }
 
 export const materialMasterApi = {
+  ruleChanges: (params: MaterialRuleOptions & { pageNum: number; pageSize: number; keyword?: string }) =>
+    request.get<R<MaterialRulePreview>>(`${base}/rules/changes`, { params }),
+  applyRules: (options: MaterialRuleOptions, selections: MaterialRuleSelection[]) =>
+    request.post<R<MaterialRuleApplied>>(`${base}/rules/apply`, { options, selections }),
   dictionaryItems: (dictCode: MaterialDictionaryCode) =>
     request.get<R<SysDictItem[]>>(`${base}/dictionaries/${dictCode}/items`),
   mutateDictionaryItem: (dictCode: MaterialDictionaryCode, data: DictionaryMutation) =>
@@ -88,10 +97,10 @@ export const materialMasterApi = {
       params: { categoryId },
     }),
   /** 规格模板预览：按品类取最近 5 条物料对照当前规格与模板生成规格 */
-  specPreview: (categoryId: number) =>
+  specPreview: (categoryId: number, pattern?: MaterialSpecPattern) =>
     request.post<R<{ samples: { materialId: number; materialCode: string; oldSpec: string | null; newSpec: string | null }[]; message: string }>>(
-      `${base}/spec/preview`,
-      { categoryId }
+      pattern ? `${base}/rules/spec-preview` : `${base}/spec/preview`,
+      pattern ? { categoryId, pattern } : { categoryId }
     ),
   /** 规格模板渲染：用当前表单值按已保存模板生成规格文本（不写库） */
   renderSpec: (categoryId: number, material: unknown) =>
