@@ -17,4 +17,7 @@ public interface InventoryStockMutationService {
      * @param transaction 流水业务上下文，数量及变动前后由本服务统一填写
      */
     InventoryStockItem applyDelta(InventoryStockItem stock, BigDecimal delta, InventoryTransaction transaction);
+
+    /** 初始化已确认的零库存；没有数量变动，不生成虚假数量流水。 */
+    InventoryStockItem initializeZero(InventoryStockItem stock);
 }

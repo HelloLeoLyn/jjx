@@ -10,6 +10,11 @@ import java.math.BigDecimal;
 @Data
 public class StockSummaryVO {
 
+    /** 派生信息：有正结存但成本未知的批次数；不是持久化业务字段。 */
+    private Integer missingCostBatches;
+    /** 跨物料数量按历史记账单位分别聚合，禁止把米、片、针混作同一种数量。 */
+    private java.util.Map<String,BigDecimal> quantityByUnit;
+
     /**
      * 总库存数量
      */

@@ -11,6 +11,7 @@ export const TransactionTypeEnum = createEnum({
     { value: 'transfer_in', label: '调拨入库', tagProps: { type: 'info' } },
     { value: 'transfer_out', label: '调拨出库', tagProps: { type: 'info' } },
     { value: 'adjust', label: '盘盈盘亏', tagProps: { type: 'danger' } },
+    { value: 'migration_cost', label: '迁移成本调整', tagProps: { type: 'info' } },
   ],
   defaultTag: { type: 'info' },
 })
@@ -25,6 +26,8 @@ export const SourceTypeEnum = createEnum({
     { value: 'production', label: '生产工单', tagProps: { type: 'warning' } },
     { value: 'sales', label: '销售订单', tagProps: { type: 'success' } },
     { value: 'stocktake', label: '盘点单', tagProps: { type: 'info' } },
+    { value: 'inv_migration', label: '库存迁移', tagProps: { type: 'info' } },
+    { value: 'migration_cost', label: '迁移成本维护', tagProps: { type: 'info' } },
     { value: 'transfer', label: '调拨单', tagProps: { type: 'info' } },
   ],
   defaultTag: { type: 'info' },

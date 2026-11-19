@@ -45,8 +45,9 @@
               <el-icon><Box /></el-icon>
             </div>
             <div class="stat-info">
-              <div class="stat-value">{{ summaryData.totalQuantity || 0 }}</div>
-              <div class="stat-label">总库存数量</div>
+              <div v-if="quantitySummary.length" class="stat-unit-quantities"><div v-for="[unit, quantity] in quantitySummary" :key="unit">{{ quantity }} {{ unit }}</div></div>
+              <div v-else class="stat-value">{{ summaryData.totalQuantity || 0 }}</div>
+              <div class="stat-label">{{ quantitySummary.length > 1 ? '库存数量（分单位）' : '总库存数量' }}</div>
             </div>
           </div>
         </el-card>
@@ -59,7 +60,7 @@
             </div>
             <div class="stat-info">
               <div class="stat-value">¥ {{ formatCurrency(summaryData.totalCost || 0) }}</div>
-              <div class="stat-label">总库存金额</div>
+              <div class="stat-label">{{ summaryData.missingCostBatches ? `已知库存金额（${summaryData.missingCostBatches}批成本待补）` : '总库存金额' }}</div>
             </div>
           </div>
         </el-card>
@@ -119,6 +120,9 @@
           <el-button @click="handleRefresh">
             <el-icon><Refresh /></el-icon>刷新
           </el-button>
+        </el-col>
+        <el-col :span="1.5">
+          <el-button v-hasPermi="['inventory:stock:view']" @click="migrationVisible = true">库存迁移数据维护</el-button>
         </el-col>
         <el-col :span="1.5">
           <el-button @click="showFilter = !showFilter">
@@ -266,6 +270,7 @@
     />
 
     <!-- 批次库存对话框 -->
+    <InventoryMigrationDialog v-model="migrationVisible" @changed="handleRefresh" />
     <StockDetailDialog
       v-model:visible="detailDialogVisible"
       :stock-id="currentStockId"
@@ -279,7 +284,7 @@ defineOptions({
   name: 'StockList',
 })
 
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -300,6 +305,9 @@ import { InventoryItemTypeEnum } from '@/enums/inventory'
 import StockImportDialog from '@/components/inventory/StockImportDialog.vue'
 import StockBatchImportDialog from '@/components/inventory/StockBatchImportDialog.vue'
 import StockDetailDialog from '@/components/inventory/StockDetailDialog.vue'
+import InventoryMigrationDialog from '@/components/inventory/InventoryMigrationDialog.vue'
+
+const migrationVisible = ref(false)
 
 const router = useRouter()
 
@@ -330,6 +338,7 @@ const summaryData = ref<StockSummaryVO>({
   totalCost: 0,
   materialCount: 0,
 })
+const quantitySummary = computed(() => Object.entries(summaryData.value.quantityByUnit || {}))
 const alertInfo = ref({
   lowStockCount: 0,
   expiringStockCount: 0,
@@ -488,6 +497,8 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.stat-unit-quantities { font-size: 16px; font-weight: 600; line-height: 1.45; }
+
 .stock-list {
   padding: 20px;
 }

@@ -125,6 +125,8 @@ export interface BatchFlowSummaryVO {
 
 // 库存汇总VO
 export interface StockSummaryVO {
+  missingCostBatches?: number
+  quantityByUnit?: Record<string, number>
   totalQuantity: number
   totalReservedQuantity: number
   totalAvailableQuantity: number

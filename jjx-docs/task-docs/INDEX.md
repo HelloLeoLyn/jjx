@@ -77,3 +77,7 @@
 | dev-20261113-005 | dev-20261113-005-completion.md | completion | 采购计划数量单位换算、原始需求隔离与订单核对接入 |
 
 | dev-20261114-011 | dev-20261114-011-completion.md | completion | BOM产品侧批量整套审核与材料BOM独立维护 |
+
+| dev-20261119-001 | dev-20261119-001-plan.md | plan | 库存迁移已定口径、期初导入及迁移数据维护实施 |
+
+| dev-20261119-001 | dev-20261119-001-completion.md | completion | 库存迁移1633条/1615物料、迁移成本维护及自查证据 |

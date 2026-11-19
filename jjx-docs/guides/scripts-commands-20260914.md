@@ -292,3 +292,17 @@
 验证：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-task-update.py` 为纯输入单元测试；加 `--mysql` 运行真实MySQL会话临时表事务回归。测试在自己的连接创建同名 TEMPORARY sys_task 遮蔽业务表，断连即消失，不持久建表、不写真实任务行、不启服务。覆盖多行误刷/零行/错目标行/写后异常回滚、原备注保留、溢出转 description、领取CAS及完成归属。工具与测试均退出0表示成功，非0为拒绝或失败；不跳过错误，不自动重试。
 
 物料迁移期收尾（dev-20261024-015）：迁移309删除302旧规格双表，`db-clean-test-data.sh` 与 `00_clean_test_data.sql` 同步移除两表保留名单；未执行清库，脚本危险等级/用法/手工备份前置不变。表数基线仅收缩两张退役表。
+
+
+## 库存迁移数据准备（dev-20261119-001）
+
+脚本：`python3 scripts/inventory-migration.py --help`。🟢默认只读预览，🟡`--write`写新JSON和核对XLSX，不覆盖客户原文件、不写库、不启停服务。前置Python3、openpyxl、mysql与只读账号。
+
+```bash
+python3 scripts/inventory-migration.py --source /path/库存导入数据_客户确认版_20261119.xlsx
+python3 scripts/inventory-migration.py --source /path/库存导入数据_客户确认版_20261119.xlsx --output /path/库存迁移数据_20261117.json --write
+```
+
+规则真源：[任务计划](../task-docs/dev-20261119-001-plan.md)。`--reference`可用只读参考JSON离线核查；生产资料不提交公开仓库。JSON由“即时库存→库存迁移数据维护”预检并导入；只有对应迁移权限可导入、补成本。
+
+无服务一次性Java入口：`com.jjx.inventory.migration.InventoryMigrationCommand --help`；🟢`preview <JSON>`使用只读账号，🔴`import <JSON> --execute <准确在制任务码>`走同一正式服务和事务，不启动Spring应用或调度器。使用编译classes与Maven运行依赖classpath；连接环境变量`JJX_MIGRATION_URL/USER/PASS`，不要把口令写入命令或报告。执行前复核目标库、授权和手工备份条件。

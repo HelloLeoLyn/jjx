@@ -14,7 +14,8 @@ public enum TransactionTypeEnum {
     OUTBOUND("outbound", "出库"),
     TRANSFER_IN("transfer_in", "调拨入库"),
     TRANSFER_OUT("transfer_out", "调拨出库"),
-    ADJUST("adjust", "盘盈盘亏");
+    ADJUST("adjust", "盘盈盘亏"),
+    MIGRATION_COST("migration_cost", "迁移成本调整");
 
     private final String code;
     private final String label;

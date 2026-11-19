@@ -525,12 +525,29 @@ public class MaterialMasterService {
 
     /** 同时供保存和导入预检使用，不写库、不生成业务编号。 */
     public Prepared prepare(MaterialMasterDTO dto) {
+        return prepare(dto, false);
+    }
+
+    /** 仅迁移服务使用：未知公共字段保留空，来源及后续维护由迁移凭证追溯。 */
+    public Prepared prepareMigration(MaterialMasterDTO dto) {
+        return prepare(dto, true);
+    }
+
+    private Prepared prepare(MaterialMasterDTO dto, boolean migration) {
         if (dto == null) throw new BusinessException("物料不能为空");
         InventoryMaterial old = dto.getMaterialId() == null ? null : materialMapper.selectById(dto.getMaterialId());
         if (dto.getMaterialId() != null && old == null) throw new BusinessException("待更新物料不存在");
         MaterialMasterCatalog.Configuration config = catalog.optionalConfiguration(dto.getCategoryId());
         MaterialAttributeSchema schema = config == null
                 ? new MaterialAttributeSchema(1, List.of(), false, null, null, "PCS", List.of(), null) : config.schema();
+        if (migration) {
+            // 期初来源允许缺资料，已提供的值仍执行类型/选项/范围校验；普通表单不受影响。
+            var tree = objectMapper.valueToTree(schema);
+            ((com.fasterxml.jackson.databind.node.ObjectNode) tree).put("meta_required", false);
+            for (var field : tree.path("fields")) ((com.fasterxml.jackson.databind.node.ObjectNode) field).put("required", false);
+            try { schema = objectMapper.treeToValue(tree, MaterialAttributeSchema.class); }
+            catch (Exception e) { throw new BusinessException("迁移属性校验配置无效：" + e.getMessage()); }
+        }
         String name = text(dto.getMaterialName(), "物料名称", 200, true);
         String meta = old == null ? resolveMaterialMeta(dto.getMaterialMeta(), schema) : dto.getMaterialMeta();
         if (old == null && meta == null && schema.metaOptions().size() == 1) meta = schema.metaOptions().get(0);
@@ -593,7 +610,7 @@ public class MaterialMasterService {
             material.setSupplierName(supplier.getSupplierName());
         } else material.setSupplierName(text(dto.getSupplierName(), "供应商", 200, false));
         material.setSupplierMaterialName(text(dto.getSupplierMaterialName(), "供应商品名", 200, false));
-        if (old == null && material.getModel() == null && schema.modelPattern() != null) {
+        if (!migration && old == null && material.getModel() == null && schema.modelPattern() != null) {
             schema.modelPattern().validateModel(schema);
             if (!schema.modelPattern().normalized().fields().isEmpty()) MaterialNamingPattern.requireCategoryPrefix(config.category().modelPrefix());
             material.setModel(text(schema.modelPattern().forModel().compose(material, schema,
@@ -613,7 +630,7 @@ public class MaterialMasterService {
                     .stream().map(SysTag::getTagId).toList());
             if (!allowed.containsAll(tags)) throw new BusinessException("物料标签不存在或已停用");
         }
-        validateRequiredColumns(material, config, dto.getMaterialId() == null, Boolean.TRUE.equals(dto.getFromBom()));
+        if (!migration) validateRequiredColumns(material, config, dto.getMaterialId() == null, Boolean.TRUE.equals(dto.getFromBom()));
         return new Prepared(material, tags);
     }
 
@@ -649,13 +666,24 @@ public class MaterialMasterService {
 
     @Transactional(rollbackFor = Exception.class)
     public InventoryMaterial save(MaterialMasterDTO dto, String operator, com.jjx.inventory.classify.MaterialClassSource source) {
+        return save(dto, operator, source, false, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public InventoryMaterial saveMigration(MaterialMasterDTO dto, String operator, Long newMaterialId) {
+        if (dto == null || dto.getMaterialId() != null || newMaterialId == null || newMaterialId <= 0) throw new BusinessException("迁移建档只能使用新来源ID新增，不能覆盖现有物料");
+        return save(dto, operator, com.jjx.inventory.classify.MaterialClassSource.RULE, true, newMaterialId);
+    }
+
+    private InventoryMaterial save(MaterialMasterDTO dto, String operator,
+                                   com.jjx.inventory.classify.MaterialClassSource source, boolean migration, Long newMaterialId) {
         if (dto == null) throw new BusinessException("物料不能为空");
         // 与模板维护取得相同顺序的锁，防止校验通过后模板被改写。
         if (dto.getCategoryId() != null) {
             if (masterMapper.lockCategory(dto.getCategoryId()) == null) throw new BusinessException("分类不存在");
             masterMapper.lockTemplate(dto.getCategoryId());
         }
-        Prepared prepared = prepare(dto);
+        Prepared prepared = prepare(dto, migration);
         InventoryMaterial material = prepared.material();
         boolean creating = material.getMaterialId() == null;
         InventoryMaterial existing = creating ? null : masterMapper.lockMaterial(material.getMaterialId());
@@ -679,7 +707,11 @@ public class MaterialMasterService {
             material.setStatus(StatusEnum.NORMAL.getCode());
             material.setCreateBy(operator);
             material.setCreateTime(LocalDateTime.now());
+            if (migration) material.setMaterialId(newMaterialId);
             if (materialMapper.insert(material) != 1) throw new BusinessException("物料新增失败");
+            if (migration && dto.getStandardPrice() == null) {
+                materialMapper.update(null, new UpdateWrapper<InventoryMaterial>().eq("material_id", material.getMaterialId()).set("standard_price", null));
+            }
         } else {
             material.setMaterialCode(existing.getMaterialCode());
             UpdateWrapper<InventoryMaterial> update = new UpdateWrapper<>();

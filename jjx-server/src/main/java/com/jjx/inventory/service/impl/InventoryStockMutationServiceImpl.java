@@ -25,6 +25,21 @@ public class InventoryStockMutationServiceImpl implements InventoryStockMutation
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public InventoryStockItem initializeZero(InventoryStockItem stock) {
+        if (stock == null || stock.getItemId() != null || stock.getInventoryItemId() == null
+                || stock.getSourceInboundItemId() == null || stock.getBatchNo() == null
+                || stock.getQuantity() == null || stock.getQuantity().signum() != 0
+                || stock.getReservedQuantity() == null || stock.getReservedQuantity().signum() != 0) {
+            throw new BusinessException("零库存初始化须为带来源凭证的新建0数量批次");
+        }
+        stock.setStatus(StockItemStatusEnum.ACTIVE.getValue());
+        stockItemMapper.insert(stock);
+        stockMapper.refreshSummaryByInventoryItemId(stock.getInventoryItemId());
+        return stock;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public InventoryStockItem applyDelta(InventoryStockItem stock, BigDecimal delta, InventoryTransaction transaction) {
         if (stock == null || stock.getInventoryItemId() == null) {
             throw new BusinessException("库存变动缺少批次或库存物品身份");

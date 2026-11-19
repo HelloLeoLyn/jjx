@@ -15,6 +15,22 @@ import java.util.List;
 @Mapper
 public interface InventoryStockMapper extends BaseMapper<InventoryStock> {
 
+    /** 金额由有效批次的结存×成本聚合；未知成本独立计数，不能伪装为真实零成本。 */
+    @Select({"<script>",
+            "SELECT COALESCE(SUM(quantity*unit_cost),0) AS known_cost,",
+            "COALESCE(SUM(CASE WHEN unit_cost IS NULL AND quantity &gt; 0 THEN 1 ELSE 0 END),0) AS missing_cost_batches",
+            "FROM inventory_stock_item WHERE status=#{activeStatus} AND inventory_item_id IN",
+            "<foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach>",
+            "</script>"})
+    java.util.Map<String,Object> costSummary(@Param("ids") List<Long> ids, @Param("activeStatus") Integer activeStatus);
+
+    @Select({"<script>","SELECT COALESCE(i.unit,'未设单位') AS unit,SUM(s.quantity) AS quantity",
+            "FROM inventory_stock_item s JOIN inventory_item i ON i.inventory_item_id=s.inventory_item_id",
+            "WHERE s.status=#{activeStatus} AND s.inventory_item_id IN",
+            "<foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach>",
+            "GROUP BY i.unit ORDER BY i.unit","</script>"})
+    List<java.util.Map<String,Object>> quantitiesByUnit(@Param("ids") List<Long> ids, @Param("activeStatus") Integer activeStatus);
+
     /**
      * 根据物料ID查询汇总记录
      */

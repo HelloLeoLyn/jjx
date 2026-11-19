@@ -7,6 +7,7 @@ import { createEnum, createNamedEnum } from '../base'
 export const InboundTypeEnum = createEnum({
   items: [
     { value: 'purchase', label: '采购入库', tagProps: { type: 'primary' } },
+    { value: 'migration', label: '期初库存迁移', tagProps: { type: 'info' } },
     { value: 'production', label: '生产入库', tagProps: { type: 'success' } },
     { value: 'return', label: '退货入库', tagProps: { type: 'warning' } },
     { value: 'roll_return', label: '余卷退料入库', tagProps: { type: 'success' } },
@@ -85,6 +86,7 @@ export const InboundSourceTypeEnum = createEnum({
     { value: 'transfer_order', label: '调拨单', tagProps: { type: 'primary' } },
     { value: 'transfer', label: '调拨单', tagProps: { type: 'primary' } },
     { value: 'other', label: '其他', tagProps: { type: 'primary' } },
+    { value: 'inv_migration', label: '库存迁移', tagProps: { type: 'info' } },
   ],
   defaultTag: { type: 'primary' },
 })

@@ -164,6 +164,16 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
             }
         }
 
+        if (!materialIds.isEmpty()) {
+            var costs = stockMapper.costSummary(materialIds, com.jjx.inventory.enums.StockItemStatusEnum.ACTIVE.getValue());
+            totalCost = new BigDecimal(String.valueOf(costs.get("known_cost")));
+            summary.setMissingCostBatches(((Number)costs.get("missing_cost_batches")).intValue());
+            var byUnit = new java.util.LinkedHashMap<String,BigDecimal>();
+            for (var row : stockMapper.quantitiesByUnit(materialIds, com.jjx.inventory.enums.StockItemStatusEnum.ACTIVE.getValue())) {
+                byUnit.put(String.valueOf(row.get("unit")), new BigDecimal(String.valueOf(row.get("quantity"))));
+            }
+            summary.setQuantityByUnit(byUnit);
+        } else summary.setMissingCostBatches(0);
         summary.setTotalQuantity(totalQuantity);
         summary.setTotalReservedQuantity(totalReserved);
         summary.setTotalAvailableQuantity(totalQuantity.subtract(totalReserved));

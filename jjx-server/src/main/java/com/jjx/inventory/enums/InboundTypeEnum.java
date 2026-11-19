@@ -11,6 +11,7 @@ import lombok.Getter;
 public enum InboundTypeEnum {
 
     PURCHASE("purchase", "采购入库"),
+    MIGRATION("migration", "期初库存迁移"),
     PRODUCTION("production", "生产入库"),
     RETURN("return", "退货入库"),
     SAMPLE_RETURN("sample_return", "打样退料入库"),
