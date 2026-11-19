@@ -12,6 +12,10 @@ public class StorageLocationUpdateDTO {
 
     private Long locationId;
     private Long warehouseId;
+    private Long parentId;
+    private Boolean capacityEnabled;
+    private String capacityUnit;
+    private String remark;
     private String locationCode;
     private String locationName;
     private String locationType;

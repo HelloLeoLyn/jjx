@@ -256,6 +256,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     @Override
     public boolean submitApprove(Long transferId) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);
+        com.jjx.inventory.location.LocationHierarchyService.requireMutableTransfer(order);
         if (order == null) {
             log.error("调拨单不存在: transferId={}", transferId);
             return false;
@@ -272,6 +273,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     @Override
     public boolean approve(Long transferId, Long approverId, String approverName, String remark) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);
+        com.jjx.inventory.location.LocationHierarchyService.requireMutableTransfer(order);
         if (order == null) {
             log.error("调拨单不存在: transferId={}", transferId);
             return false;
@@ -297,6 +299,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     @Override
     public boolean reject(Long transferId, Long approverId, String approverName, String remark) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);
+        com.jjx.inventory.location.LocationHierarchyService.requireMutableTransfer(order);
         if (order == null) {
             log.error("调拨单不存在: transferId={}", transferId);
             return false;
@@ -323,6 +326,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     @Transactional(rollbackFor = Exception.class)
     public boolean confirmOut(Long transferId, Long operatorId, String operatorName) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);
+        com.jjx.inventory.location.LocationHierarchyService.requireMutableTransfer(order);
         if (order == null) {
             log.error("调拨单不存在: transferId={}", transferId);
             return false;
@@ -395,6 +399,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     @Transactional(rollbackFor = Exception.class)
     public boolean confirmIn(Long transferId, Long operatorId, String operatorName) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);
+        com.jjx.inventory.location.LocationHierarchyService.requireMutableTransfer(order);
         if (order == null) {
             log.error("调拨单不存在: transferId={}", transferId);
             return false;
@@ -471,6 +476,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     @Transactional(rollbackFor = Exception.class)
     public boolean cancel(Long transferId, String reason) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);
+        com.jjx.inventory.location.LocationHierarchyService.requireMutableTransfer(order);
         if (order == null) {
             log.error("调拨单不存在: transferId={}", transferId);
             return false;
@@ -575,6 +581,7 @@ public class InventoryTransferServiceImpl extends ServiceImpl<InventoryTransferO
     @Override
     public boolean updateStatus(Long transferId, Integer status) {
         InventoryTransferOrder order = transferOrderMapper.selectById(transferId);
+        com.jjx.inventory.location.LocationHierarchyService.requireMutableTransfer(order);
         if (order == null) {
             log.error("调拨单不存在: transferId={}", transferId);
             return false;

@@ -205,6 +205,8 @@ import type { RollFlow } from '@/api/inventory/stockItem'
 import RollReturnDialog from './RollReturnDialog.vue'
 
 import { stockApi } from '@/api/inventory/stock'
+import { warehouseApi } from '@/api/inventory/warehouse'
+import { locationApi } from '@/api/inventory/location'
 import { formatCurrency } from '@/utils/format'
 import { useUserStore } from '@/store/modules/user'
 import { StockItemStatusEnum } from '@/enums/inventory/StockItemEnum'
@@ -266,6 +268,7 @@ watch(
       queryParams.inventoryItemId = props.inventoryItemId
       getMaterialSummary()
       refreshAll()
+      loadWarehouseOptions()
     }
   }
 )
@@ -307,9 +310,21 @@ const flowVisible = ref(false)
 const flowInventoryItemId = ref<string>()
 const flowBatchNo = ref<string>()
 
-// 仓库选项（示例，实际应从API获取）
+// 使用真实仓库与末级库位；仓库切换时清除旧库位条件。
 const warehouseOptions = ref<{ value: string; label: string }[]>([])
 const locationOptions = ref<{ value: string; label: string }[]>([])
+async function loadWarehouseOptions() {
+  warehouseOptions.value = ((await warehouseApi.getOptions()).data || []).map(row => ({ value: String(row.warehouseId), label: row.warehouseName }))
+}
+let locationRequest = 0
+watch(() => queryParams.warehouseId, async value => {
+  const request = ++locationRequest
+  queryParams.locationId = undefined
+  locationOptions.value = []
+  if (!value) return
+  const rows = (await locationApi.getByWarehouse(Number(value))).data || []
+  if (request === locationRequest) locationOptions.value = rows.map(row => ({ value: String(row.locationId), label: row.locationName }))
+})
 
 function fmt(v?: number | string | null): string {
   const n = Number(v ?? 0)

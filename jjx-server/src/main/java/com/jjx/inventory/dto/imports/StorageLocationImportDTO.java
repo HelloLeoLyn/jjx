@@ -9,7 +9,7 @@ import lombok.Data;
 @Data
 public class StorageLocationImportDTO {
 
-    @ExcelColumn(value = "库位编码", order = 1, required = true, comment = "库位编码，如：A-01-01")
+    @ExcelColumn(value = "库位编码", order = 1, comment = "选填，留空自动生成，可自行修改")
     private String locationCode;
 
     @ExcelColumn(value = "库位名称", order = 2, required = true, comment = "库位名称")

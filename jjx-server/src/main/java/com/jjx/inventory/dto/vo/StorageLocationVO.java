@@ -13,6 +13,10 @@ public class StorageLocationVO {
 
     private Long locationId;
     private Long warehouseId;
+    private Long parentId;
+    private Boolean capacityEnabled;
+    private String capacityUnit;
+    private String remark;
     private String warehouseCode;
     private String warehouseName;
     private String locationCode;

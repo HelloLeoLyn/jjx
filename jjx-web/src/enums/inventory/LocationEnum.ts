@@ -1,5 +1,5 @@
 // src/enums/inventory/LocationEnum.ts
-import { createEnum } from '../base'
+import { createEnum, createNamedEnum } from '../base'
 
 /**
  * 库位类型枚举
@@ -17,13 +17,10 @@ export const LocationTypeEnum = createEnum({
 /**
  * 库位状态枚举
  */
-export const LocationStatusEnum = createEnum({
-  items: [
-    { value: '0', label: '正常', tagProps: { type: 'success' } },
-    { value: '1', label: '停用', tagProps: { type: 'danger' } },
-  ],
-  defaultTag: { type: 'info' },
-})
+export const LocationStatusEnum = createNamedEnum({
+  NORMAL: { value: '0', label: '正常', tagProps: { type: 'success' } },
+  DISABLED: { value: '1', label: '停用', tagProps: { type: 'danger' } },
+}, { type: 'info' })
 
 /**
  * 库位相关枚举统一导出

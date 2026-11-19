@@ -34,6 +34,7 @@ public class InventoryStockItemServiceImpl extends ServiceImpl<InventoryStockIte
     private com.jjx.inventory.mapper.InventoryWarehouseMapper warehouseMapper;
     private final InventoryStorageLocationMapper storageLocationMapper;
     private final StockItemConverter stockItemConverter;
+    private final com.jjx.inventory.location.LocationHierarchyPolicy locationPolicy;
 
     @Override
     public IPage<StockItemVO> page(StockItemQueryDTO query) {
@@ -75,9 +76,7 @@ public class InventoryStockItemServiceImpl extends ServiceImpl<InventoryStockIte
         Page<InventoryStockItem> pageResult = stockItemMapper.selectPage(pageParam, wrapper);
 
         // 转换为VO
-        List<StockItemVO> voList = pageResult.getRecords().stream()
-                .map(this::convertToVO)
-                .collect(Collectors.toList());
+        List<StockItemVO> voList = convertRows(pageResult.getRecords());
 
         Page<StockItemVO> voPage = new Page<>(pageResult.getCurrent(), pageResult.getSize(), pageResult.getTotal());
         voPage.setRecords(voList);
@@ -93,19 +92,29 @@ public class InventoryStockItemServiceImpl extends ServiceImpl<InventoryStockIte
     @Override
     public List<StockItemVO> getByMaterialId(Long materialId) {
         List<InventoryStockItem> list = stockItemMapper.selectActiveByMaterialId(materialId);
-        return list.stream().map(this::convertToVO).collect(Collectors.toList());
+        return convertRows(list);
     }
 
     @Override
     public List<StockItemVO> getByMaterialAndWarehouse(Long materialId, Long warehouseId) {
         List<InventoryStockItem> list = stockItemMapper.selectActiveByMaterialAndWarehouse(materialId, warehouseId);
-        return list.stream().map(this::convertToVO).collect(Collectors.toList());
+        return convertRows(list);
     }
 
     /**
      * 将实体转换为VO，并填充关联信息
      */
     private StockItemVO convertToVO(InventoryStockItem entity) {
+        return convertToVO(entity,entity.getWarehouseId()==null?java.util.Map.of():locationPolicy.index(entity.getWarehouseId()));
+    }
+
+    private List<StockItemVO> convertRows(List<InventoryStockItem> rows){
+        var trees=new java.util.HashMap<Long,java.util.Map<Long,InventoryStorageLocation>>();
+        for(var row:rows)if(row.getWarehouseId()!=null)trees.computeIfAbsent(row.getWarehouseId(),locationPolicy::index);
+        return rows.stream().map(row->convertToVO(row,trees.getOrDefault(row.getWarehouseId(),java.util.Map.of()))).toList();
+    }
+
+    private StockItemVO convertToVO(InventoryStockItem entity,java.util.Map<Long,InventoryStorageLocation> locations) {
         StockItemVO vo = stockItemConverter.toVO(entity);
 
         if (entity.getRollNo() != null) {
@@ -138,10 +147,10 @@ public class InventoryStockItemServiceImpl extends ServiceImpl<InventoryStockIte
         }
         // 填充库位名称（DEV-692）
         if (entity.getLocationId() != null) {
-            InventoryStorageLocation loc = storageLocationMapper.selectById(entity.getLocationId());
+            InventoryStorageLocation loc = locations.get(entity.getLocationId());
             if (loc != null) {
                 vo.setLocationCode(loc.getLocationCode());
-                vo.setLocationName(loc.getLocationName());
+                vo.setLocationName(locationPolicy.path(loc,locations));
             }
         }
 

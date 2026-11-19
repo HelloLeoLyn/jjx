@@ -27,6 +27,11 @@ public class InventoryStorageLocation extends BaseEntity {
     /** 所属仓库ID */
     private Long warehouseId;
 
+    /** 上级库位；空值表示仓库下根位置。 */
+    private Long parentId;
+    private Boolean capacityEnabled;
+    private String capacityUnit;
+
     /** 库位编码 */
     private String locationCode;
 

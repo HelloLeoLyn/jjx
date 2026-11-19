@@ -138,6 +138,8 @@ PY
 NUMBERS=(); PATHS=(); HASHES=()
 while IFS=$'\t' read -r n p h; do
   [[ -n $n ]] || continue
+  # Git Bash 调用原生 Windows Python 时，统一 pathlib 输出为 shell 路径。
+  if command -v cygpath >/dev/null && [[ $p == [A-Za-z]:* ]]; then p="$(cygpath -u "$p")"; fi
   NUMBERS+=("$n"); PATHS+=("$p"); HASHES+=("$h")
 done <<< "$INVENTORY"
 STATE_NN=''; STATE_FILE=''; STATE_HASH=''; STATE_STAGE=''
@@ -170,7 +172,9 @@ try:
         json.dump(dict(number=int(n),file=name,sha256=h,stage=stage,task=task),f)
         f.flush(); os.fsync(f.fileno())
     os.replace(tmp,path)
-    d=os.open(os.path.dirname(path),os.O_RDONLY); os.fsync(d); os.close(d)
+    # Windows 不支持目录 fsync；文件本身仍先 fsync，再原子替换。
+    if os.name != 'nt':
+        d=os.open(os.path.dirname(path),os.O_RDONLY); os.fsync(d); os.close(d)
 finally:
     if os.path.exists(tmp): os.unlink(tmp)
 PY

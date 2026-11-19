@@ -22,6 +22,10 @@ public class InventoryStockMutationServiceImpl implements InventoryStockMutation
     private final InventoryStockItemMapper stockItemMapper;
     private final InventoryStockMapper stockMapper;
     private final InventoryTransactionMapper transactionMapper;
+    private com.jjx.inventory.location.LocationHierarchyPolicy locationPolicy;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setLocationPolicy(com.jjx.inventory.location.LocationHierarchyPolicy locationPolicy) { this.locationPolicy=locationPolicy; }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -32,6 +36,7 @@ public class InventoryStockMutationServiceImpl implements InventoryStockMutation
                 || stock.getReservedQuantity() == null || stock.getReservedQuantity().signum() != 0) {
             throw new BusinessException("零库存初始化须为带来源凭证的新建0数量批次");
         }
+        if(locationPolicy!=null){locationPolicy.lockWarehouse(stock.getWarehouseId());locationPolicy.validateIncoming(stock,BigDecimal.ZERO);}
         stock.setStatus(StockItemStatusEnum.ACTIVE.getValue());
         stockItemMapper.insert(stock);
         stockMapper.refreshSummaryByInventoryItemId(stock.getInventoryItemId());
@@ -51,6 +56,7 @@ public class InventoryStockMutationServiceImpl implements InventoryStockMutation
             throw new BusinessException("库存变动必须携带流水业务类型");
         }
 
+        if(locationPolicy!=null)locationPolicy.lockWarehouse(stock.getWarehouseId());
         if (stock.getItemId() != null) {
             Long requestedInventoryItemId = stock.getInventoryItemId();
             InventoryStockItem locked = stockItemMapper.selectByIdForUpdate(stock.getItemId());
@@ -61,6 +67,7 @@ public class InventoryStockMutationServiceImpl implements InventoryStockMutation
             if (locked.getInventoryItemId() == null) locked.setInventoryItemId(requestedInventoryItemId);
             stock = locked;
         }
+        if(locationPolicy!=null)locationPolicy.validateIncoming(stock,delta);
         if (stock.getRollNo() != null) {
             if (transaction.getSourceItemId() == null || stock.getRollWidthMm() == null
                     || stock.getOriginalRollLengthM() == null || stock.getSourceInboundItemId() == null) {

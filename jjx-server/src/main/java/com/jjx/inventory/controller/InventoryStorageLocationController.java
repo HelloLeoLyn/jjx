@@ -49,6 +49,28 @@ public class InventoryStorageLocationController extends BaseController {
 
     private final InventoryWarehouseService warehouseService;
 
+    private final com.jjx.inventory.location.LocationHierarchyService hierarchy;
+
+    @GetMapping("/tree")
+    @SaCheckPermission("inventory:storage-location:view")
+    public Result<List<com.jjx.inventory.location.LocationHierarchyService.Node>> tree(@RequestParam Long warehouseId) {
+        return Result.success(hierarchy.tree(warehouseId));
+    }
+
+    @GetMapping("/{id}/inventory")
+    @SaCheckPermission("inventory:storage-location:view")
+    public Result<List<Map<String,Object>>> inventory(@PathVariable Long id) {
+        return Result.success(hierarchy.inventory(id));
+    }
+
+    @PostMapping("/{id}/subdivide")
+    @SaCheckPermission({"inventory:storage-location:add", "inventory:storage-location:edit", "inventory:transfer:add", "inventory:transfer:edit", "inventory:transfer:approve"})
+    public Result<com.jjx.inventory.location.LocationHierarchyService.SubdivisionResult> subdivide(
+            @PathVariable Long id, @RequestBody com.jjx.inventory.location.LocationHierarchyService.Subdivision request) {
+        return Result.success(hierarchy.subdivide(id,request,com.jjx.system.utils.SecurityUtils.getUsername(),
+                com.jjx.system.utils.SecurityUtils.getUserId(),com.jjx.system.utils.SecurityUtils.getDisplayName()));
+    }
+
     /**
      * 分页查询库位列表
      */
@@ -129,13 +151,13 @@ public class InventoryStorageLocationController extends BaseController {
     }
 
     /**
-     * 库位状态文本（1正常 0停用）
+     * 库位状态文本，沿用库位域枚举（0正常、1停用）。
      */
     private static String locationStatusText(String status) {
         if (status == null || status.isEmpty()) {
             return "";
         }
-        return "1".equals(status) ? "正常" : "0".equals(status) ? "停用" : status;
+        return com.jjx.inventory.enums.StorageLocationStatusEnum.NORMAL.getCode().equals(status) ? "正常" : com.jjx.inventory.enums.StorageLocationStatusEnum.DISABLED.getCode().equals(status) ? "停用" : status;
     }
 
     /**
@@ -184,7 +206,7 @@ public class InventoryStorageLocationController extends BaseController {
         location.setUsedCapacity(new BigDecimal("0"));
 
         // 调用Service创建
-        storageLocationService.save(location);
+        hierarchy.saveNode(location,com.jjx.system.utils.SecurityUtils.getUsername());
         return Result.success();
     }
 
@@ -213,7 +235,7 @@ public class InventoryStorageLocationController extends BaseController {
         location.setUsedCapacity(existingLocation.getUsedCapacity());
 
         // 调用Service更新
-        storageLocationService.updateById(location);
+        hierarchy.saveNode(location,com.jjx.system.utils.SecurityUtils.getUsername());
         return Result.success();
     }
 
@@ -236,7 +258,7 @@ public class InventoryStorageLocationController extends BaseController {
     @SaCheckPermission("inventory:storage-location:edit")
     public Result<Void> updateStatus(@PathVariable Long id, @RequestParam String status) {
         // 验证状态值
-        if (!"0".equals(status) && !"1".equals(status)) {
+        if (!com.jjx.inventory.enums.StorageLocationStatusEnum.NORMAL.getCode().equals(status) && !com.jjx.inventory.enums.StorageLocationStatusEnum.DISABLED.getCode().equals(status)) {
             throw new BusinessException("状态值无效，只能为0（启用）或1（停用）");
         }
 
@@ -253,7 +275,7 @@ public class InventoryStorageLocationController extends BaseController {
     @SaCheckPermission("inventory:storage-location:edit")
     public Result<Void> batchUpdateStatus(@RequestParam List<Long> ids, @RequestParam String status) {
         // 验证状态值
-        if (!"0".equals(status) && !"1".equals(status)) {
+        if (!com.jjx.inventory.enums.StorageLocationStatusEnum.NORMAL.getCode().equals(status) && !com.jjx.inventory.enums.StorageLocationStatusEnum.DISABLED.getCode().equals(status)) {
             throw new BusinessException("状态值无效，只能为0（启用）或1（停用）");
         }
 
@@ -262,9 +284,7 @@ public class InventoryStorageLocationController extends BaseController {
         }
 
         // 批量更新状态
-        for (Long id : ids) {
-            storageLocationService.updateStatus(id, status);
-        }
+        hierarchy.batchStatus(ids,status,com.jjx.system.utils.SecurityUtils.getUsername());
         return Result.success();
     }
 
@@ -322,7 +342,7 @@ public class InventoryStorageLocationController extends BaseController {
     @SaCheckPermission("inventory:storage-location:view")
     public Result<List<StorageLocationVO>> getAllEnabled() {
         LambdaQueryWrapper<InventoryStorageLocation> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(InventoryStorageLocation::getStatus, "0");
+        wrapper.eq(InventoryStorageLocation::getStatus, com.jjx.inventory.enums.StorageLocationStatusEnum.NORMAL.getCode());
         wrapper.orderByAsc(InventoryStorageLocation::getSortOrder);
 
         List<InventoryStorageLocation> locations = storageLocationService.list(wrapper);
@@ -338,7 +358,7 @@ public class InventoryStorageLocationController extends BaseController {
     public Result<List<StorageLocationVO>> getByType(@RequestParam String locationType) {
         LambdaQueryWrapper<InventoryStorageLocation> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(InventoryStorageLocation::getLocationType, locationType);
-        wrapper.eq(InventoryStorageLocation::getStatus, "0");
+        wrapper.eq(InventoryStorageLocation::getStatus, com.jjx.inventory.enums.StorageLocationStatusEnum.NORMAL.getCode());
         wrapper.orderByAsc(InventoryStorageLocation::getSortOrder);
 
         List<InventoryStorageLocation> locations = storageLocationService.list(wrapper);
@@ -450,7 +470,7 @@ public class InventoryStorageLocationController extends BaseController {
     @Log(module = "库位管理", businessType = BusinessType.IMPORT, bizType = "'storage_location'", bizId = "#warehouseId", action = LogActions.LOCATION_IMPORT)
     @SaCheckPermission("inventory:storage-location:add")
     public Result<String> importStorageLocation(@RequestBody List<StorageLocationImportDTO> importList, @RequestParam Long warehouseId) {
-        String operName = getUsername();
+        String operName = com.jjx.system.utils.SecurityUtils.getUsername();
         String message = storageLocationService.importStorageLocation(importList, warehouseId, operName);
         return Result.success(message);
     }

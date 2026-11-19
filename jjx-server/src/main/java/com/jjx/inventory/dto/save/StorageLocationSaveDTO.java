@@ -13,6 +13,10 @@ import java.math.BigDecimal;
 public class StorageLocationSaveDTO {
     private String areaCode;
     private Long warehouseId;
+    private Long parentId;
+    private Boolean capacityEnabled;
+    private String capacityUnit;
+    private String remark;
     private String locationCode;
     private String locationName;
     private String locationType;

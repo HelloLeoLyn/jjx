@@ -4,11 +4,23 @@ import type {
   InventoryStorageLocationQueryParams,
   StorageLocationSaveDTO,
   StorageLocationUpdateDTO,
+  LocationNode,
+  LocationBatch,
+  LocationSubdivision,
 } from '@/types/inventory/location'
 import type { PageResult, R } from '@/types'
 
 // 库位管理API
 export const locationApi = {
+  tree(warehouseId: number) {
+    return request.get<R<LocationNode[]>>('/inventory/storage-location/tree', { params: { warehouseId } })
+  },
+  inventory(id: number) {
+    return request.get<R<LocationBatch[]>>(`/inventory/storage-location/${id}/inventory`)
+  },
+  subdivide(id: number, data: LocationSubdivision) {
+    return request.post<R<{ transferNo?: string }>>(`/inventory/storage-location/${id}/subdivide`, data)
+  },
   // 获取库位列表
   list(params: InventoryStorageLocationQueryParams) {
     return request.get<R<PageResult<InventoryStorageLocation>>>(
