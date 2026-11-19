@@ -160,7 +160,7 @@ export const toolbarOptions: ToolbarOptions[] = [
   },
   {
     key: 'export',
-    label: '导出新模型',
+    label: '导出',
     type: 'warning',
     icon: 'Download',
     // permission: 'inventory:material:export', // 后端无导出接口/权限点，暂不启用
