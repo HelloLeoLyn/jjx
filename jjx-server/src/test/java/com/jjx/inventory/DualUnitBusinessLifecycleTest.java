@@ -6,6 +6,7 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.inventory.domain.*;
 import com.jjx.inventory.enums.MaterialReserveStatusEnum;
 import com.jjx.inventory.mapper.OrderMaterialReserveMapper;
+import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.measurement.*;
 import com.jjx.inventory.service.impl.*;
 import com.jjx.production.mapper.ProductionOrderMapper;
@@ -62,7 +63,7 @@ class DualUnitBusinessLifecycleTest extends RollFixture {
         when(orders.selectByIdForUpdate(anyLong())).thenAnswer(c->{var order=new com.jjx.sales.domain.entity.SalesOrder();order.setOrderId(c.getArgument(0));return order;});
         var mapper=spy(reservations);doReturn(List.of()).when(mapper).selectExpiringSoon();
         var service=proxy(new OrderMaterialReserveServiceImpl(mapper,allocations,orders,
-            mock(com.jjx.sales.mapper.SalesOrderProductMapper.class),mock(com.jjx.product.mapper.EngineeringBomMapper.class),mock(com.jjx.product.mapper.EngineeringBomItemMapper.class)),com.jjx.inventory.service.OrderMaterialReserveService.class);
+            mock(com.jjx.sales.mapper.SalesOrderProductMapper.class),mock(com.jjx.product.mapper.EngineeringBomMapper.class),mock(com.jjx.product.mapper.EngineeringBomItemMapper.class),mock(InventoryMaterialMapper.class)),com.jjx.inventory.service.OrderMaterialReserveService.class);
         service.releaseByOrder(101L,"订单取消");
         eq("0",stocks.selectById(stock.get(0)).getReservedQuantity());eq("9.75",stocks.selectById(stock.get(1)).getReservedQuantity());
         assertEquals(MaterialReserveStatusEnum.ACTIVE.getValue(),reservations.selectById(other.getId()).getStatus());
@@ -111,9 +112,12 @@ class DualUnitBusinessLifecycleTest extends RollFixture {
         var boms=mock(com.jjx.product.mapper.EngineeringBomMapper.class);
         var bom=new com.jjx.engineering.domain.entity.EngineeringBom();bom.setBomId(88L);when(boms.selectOne(any())).thenReturn(bom);
         var items=mock(com.jjx.product.mapper.EngineeringBomItemMapper.class);
-        var item=new com.jjx.engineering.domain.entity.EngineeringBomItem();item.setMaterialId(11L);item.setMaterialCode("AUX-TEST");item.setActualIssueQty(bd("4"));
+        var item=new com.jjx.engineering.domain.entity.EngineeringBomItem();item.setMaterialId(11L);item.setMaterialCode("AUX-TEST");item.setActualIssueQty(bd("4"));item.setUnit("㎡");
         when(items.selectList(any())).thenReturn(List.of(item));
-        var service=proxy(new OrderMaterialReserveServiceImpl(reservations,allocations,orders,products,boms,items),com.jjx.inventory.service.OrderMaterialReserveService.class);
+        var materialMapper=mock(InventoryMaterialMapper.class);
+        var material=new InventoryMaterial();material.setMaterialId(11L);material.setUnit("㎡");
+        when(materialMapper.selectById(11L)).thenReturn(material);
+        var service=proxy(new OrderMaterialReserveServiceImpl(reservations,allocations,orders,products,boms,items,materialMapper),com.jjx.inventory.service.OrderMaterialReserveService.class);
         assertDoesNotThrow(()->service.reserveForOrder(101L,3));
         assertTrue(reservations.selectActiveByOrder(101L).isEmpty());eq("0",balance());consistent();
     }

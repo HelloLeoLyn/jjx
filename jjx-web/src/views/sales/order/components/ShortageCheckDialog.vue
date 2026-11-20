@@ -26,6 +26,11 @@
         现货覆盖 {{ summary.stockCoveredCount }} 种产品 · 无BOM产品 {{ summary.noBomCount }} 个
       </div>
 
+      <el-alert v-if="calculationIssues.length" type="warning" :closable="false" show-icon
+        title="需求尚未完整计算：以下物料需核实，当前结果不能作为齐套通过或确定采购量" class="section-gap">
+        <p v-for="(issue, index) in calculationIssues" :key="index">{{ issue.message }}</p>
+      </el-alert>
+
       <section class="preview-section">
         <h3>第一步 · 成品库存覆盖</h3>
         <el-table :data="preview.productRows" border empty-text="暂无产品明细">
@@ -64,6 +69,7 @@
         <el-table :data="preview.materialRows" border empty-text="暂无物料需求">
           <el-table-column prop="materialCode" label="物料编码" min-width="120" />
           <el-table-column prop="materialName" label="物料名称" min-width="140" />
+          <el-table-column prop="unit" label="单位" width="70" />
           <el-table-column label="需求(含损耗)" width="120" align="right">
             <template #default="{ row }">{{ fmtNum(row.demand) }}</template>
           </el-table-column>
@@ -80,7 +86,8 @@
           </el-table-column>
           <el-table-column label="状态" width="100" align="center">
             <template #default="{ row }">
-              <el-tag :type="materialStatus[row.status]?.type || 'info'" size="small">
+              <span v-if="calculationIssues.length">待核实</span>
+              <el-tag v-else :type="materialStatus[row.status]?.type || 'info'" size="small">
                 {{ materialStatus[row.status]?.label || row.status }}
               </el-tag>
             </template>
@@ -89,7 +96,7 @@
       </section>
 
       <el-alert
-        v-if="!loading && !errorMsg && summary.shortageCount === 0"
+        v-if="!loading && !errorMsg && !calculationIssues.length && summary.shortageCount === 0"
         type="success"
         :closable="false"
         show-icon
@@ -103,7 +110,7 @@
         v-if="summary.shortageCount > 0 && hasPermi('sales:inventory:alert:check')"
         type="primary"
         :loading="submitting"
-        :disabled="!!errorMsg || loading"
+        :disabled="!!errorMsg || loading || !!calculationIssues.length"
         @click="handleConfirm"
       >
         确认生成缺料预警
@@ -149,6 +156,7 @@ const errorMsg = ref('')
 const checkTime = ref('')
 const preview = ref<any>({ orderNo: '', productRows: [], materialRows: [], summary: emptySummary() })
 const summary = computed<Summary>(() => preview.value.summary || emptySummary())
+const calculationIssues = computed<Array<{ message: string }>>(() => preview.value.calculationIssues || [])
 
 const productStatus: Record<string, { label: string; type: 'success' | 'warning' | 'info' }> = {
   'stock-covered': { label: '现货覆盖', type: 'success' },
@@ -164,7 +172,7 @@ const materialStatus: Record<string, { label: string; type: 'success' | 'info' |
 function fmtNum(value: any): string {
   if (value === null || value === undefined || value === '') return '-'
   const number = Number(value)
-  return Number.isInteger(number) ? String(number) : number.toFixed(2)
+  return Number.isInteger(number) ? String(number) : number.toFixed(4).replace(/\.?0+$/, '')
 }
 
 async function loadPreview() {

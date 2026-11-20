@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.inventory.domain.OrderMaterialReserve;
 import com.jjx.inventory.mapper.OrderMaterialReserveMapper;
+import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.service.OrderMaterialReserveService;
 import com.jjx.sales.domain.entity.SalesOrder;
 import com.jjx.sales.domain.entity.SalesOrderProduct;
@@ -42,6 +43,7 @@ public class OrderMaterialReserveServiceImpl implements OrderMaterialReserveServ
     private final SalesOrderProductMapper orderProductMapper;
     private final EngineeringBomMapper bomMapper;
     private final EngineeringBomItemMapper bomItemMapper;
+    private final InventoryMaterialMapper materialMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -53,13 +55,10 @@ public class OrderMaterialReserveServiceImpl implements OrderMaterialReserveServ
         if (days == null || days < 1 || days > 7) {
             days = 3; // 默认3天
         }
-        // 幂等：先释放旧预占
-        releaseByOrder(orderId, "重新预占");
-
         // 按BOM展开原料需求
         List<SalesOrderProduct> products = orderProductMapper.selectList(
                 new LambdaQueryWrapper<SalesOrderProduct>().eq(SalesOrderProduct::getOrderId, orderId));
-        Map<Long, BigDecimal> materialDemand = new HashMap<>();
+        var calculation = new BomMaterialDemandService(materialMapper, bomMapper, bomItemMapper).newDemand(false);
         Map<Long, String> codeMap = new HashMap<>();
         Map<Long, String> nameMap = new HashMap<>();
         if (products != null) {
@@ -73,15 +72,16 @@ public class OrderMaterialReserveServiceImpl implements OrderMaterialReserveServ
                 List<EngineeringBomItem> items = bomItemMapper.selectList(
                         new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bom.getBomId()));
                 BigDecimal orderQty = BigDecimal.valueOf(p.getQuantity() == null ? 0 : p.getQuantity());
+                calculation.add(items, orderQty);
                 for (EngineeringBomItem item : items) {
                     if (item.getMaterialId() == null) continue;
-                    BigDecimal need = batchDemand(item, orderQty);
-                    materialDemand.merge(item.getMaterialId(), need, BigDecimal::add);
                     codeMap.putIfAbsent(item.getMaterialId(), item.getMaterialCode());
                     nameMap.putIfAbsent(item.getMaterialId(), item.getMaterialName());
                 }
             }
         }
+        calculation.requireComplete();
+        Map<Long, BigDecimal> materialDemand = calculation.rounded();
         if (materialDemand.isEmpty()) {
             throw new BusinessException("订单无BOM可预占（产品需有已审批BOM）");
         }
@@ -96,6 +96,8 @@ public class OrderMaterialReserveServiceImpl implements OrderMaterialReserveServ
             materialDemand.computeIfPresent(previous.getMaterialId(), (id, required) -> required.subtract(covered).max(BigDecimal.ZERO));
         }
 
+        // 完整性检查成功后才释放旧预留；缺依据时保留原占用，不执行任何库存写入。
+        releaseByOrder(orderId, "重新预占");
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime expire = now.plusDays(days);
         for (Map.Entry<Long, BigDecimal> e : materialDemand.entrySet()) {
@@ -273,31 +275,6 @@ public class OrderMaterialReserveServiceImpl implements OrderMaterialReserveServ
         } catch (Exception e) {
             throw new BusinessException("预占到期自动释放失败：" + e.getMessage());
         }
-    }
-
-    private BigDecimal getActualIssueQty(EngineeringBomItem item) {
-        if (item.getActualIssueQty() != null) {
-            return item.getActualIssueQty();
-        }
-        log.warn("BOM 明细 {} 缺实际投料，按应用料兜底，请重新保存 BOM", item.getItemId());
-        BigDecimal quantity = item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO;
-        BigDecimal lossRate = (item.getLossRate() != null ? item.getLossRate() : BigDecimal.ZERO);
-        return quantity.multiply(BigDecimal.ONE.add(lossRate.divide(BigDecimal.valueOf(100))));
-    }
-
-    /**
-     * 整批需求 = MAX( 向上取整( 单位投料 × 数量 ), 最低投料量 )
-     * 单位投料 = actual_issue_qty（BOM 保存时写入的含损耗单位应用料，不取整）
-     * 取整只在整批做一次；最低投料量作为下限（min_issue_qty>0 时生效，与物料类型无关）
-     */
-    private BigDecimal batchDemand(EngineeringBomItem item, BigDecimal quantity) {
-        BigDecimal qty = quantity != null ? quantity : BigDecimal.ZERO;
-        BigDecimal demand = getActualIssueQty(item).multiply(qty).setScale(0, java.math.RoundingMode.UP);
-        BigDecimal minIssue = item.getMinIssueQty();
-        if (minIssue != null && minIssue.compareTo(BigDecimal.ZERO) > 0 && demand.compareTo(minIssue) < 0) {
-            demand = minIssue;
-        }
-        return demand;
     }
 
     @Override

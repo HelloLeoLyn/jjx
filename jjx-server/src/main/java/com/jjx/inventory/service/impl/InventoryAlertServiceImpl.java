@@ -249,7 +249,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             return result;
         }
 
-        Map<Long, BigDecimal> demandMap = new java.util.HashMap<>();
+        var demand = demandCalculator().newDemand(true);
         Map<Long, String> codeMap = new java.util.HashMap<>();
         Map<Long, String> nameMap = new java.util.HashMap<>();
         int noBomCount = 0;
@@ -315,8 +315,13 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                     new LambdaQueryWrapper<EngineeringBomItem>()
                             .eq(EngineeringBomItem::getBomId, bom.getBomId()));
             // dev-20261113-009：本单齐套统一走 explodeShortage（自制件展开到组件）。
-            explodeShortage(items, materialGap, demandMap, codeMap, nameMap);
+            demand.add(items, materialGap);
         }
+
+        Map<Long, BigDecimal> demandMap = demand.rounded();
+        demandMap.keySet().forEach(id -> fillMaterialIdentity(id, codeMap, nameMap));
+        List<Map<String, Object>> calculationIssues = new ArrayList<>(demand.issues());
+        result.put("calculationIssues", calculationIssues);
 
         java.util.Map<Long, java.math.BigDecimal> inTransitMap = new java.util.HashMap<>();
         try {
@@ -337,13 +342,19 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         // dev-20260930-021（P3）：本单材料缺口 = 跨订单分摊后分给本单的份额
         java.util.Set<Long> allocScope = new java.util.HashSet<>();
         allocScope.add(orderId);
-        java.util.Map<Long, BigDecimal> allocatedShortage =
-                allocateMaterialShortageByOrder(allocScope).getOrDefault(orderId, java.util.Collections.emptyMap());
+        java.util.Map<Long, BigDecimal> allocatedShortage = java.util.Collections.emptyMap();
+        try {
+            allocatedShortage = allocateMaterialShortageByOrder(allocScope).getOrDefault(orderId, java.util.Collections.emptyMap());
+        } catch (com.jjx.common.exception.BusinessException ex) {
+            calculationIssues.add(Map.of("message", ex.getMessage()));
+        }
+        boolean calculationComplete = calculationIssues.isEmpty();
+        result.put("calculationComplete", calculationComplete);
         int shortageCount = 0;
         int coveredCount = 0;
         for (Map.Entry<Long, BigDecimal> entry : demandMap.entrySet()) {
             Long materialId = entry.getKey();
-            BigDecimal demand = entry.getValue();
+            BigDecimal required = entry.getValue();
             InventoryStock stock = stockMapper.selectByMaterialId(materialId);
             BigDecimal available = (stock != null && stock.getAvailableQuantity() != null)
                     ? stock.getAvailableQuantity() : BigDecimal.ZERO;
@@ -354,8 +365,11 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             // dev-20260930-021（P3）：本单缺口取跨订单分摊后的份额（不再各单各算全量供给）
             BigDecimal actualGap = allocatedShortage.getOrDefault(materialId, BigDecimal.ZERO);
             String status;
-            if (actualGap.compareTo(BigDecimal.ZERO) <= 0) {
-                if (demand.subtract(available).compareTo(BigDecimal.ZERO) > 0) {
+            if (!calculationComplete) {
+                status = null;
+                actualGap = null;
+            } else if (actualGap.compareTo(BigDecimal.ZERO) <= 0) {
+                if (required.subtract(available).compareTo(BigDecimal.ZERO) > 0) {
                     coveredCount++;
                     status = "covered";
                 } else {
@@ -370,7 +384,8 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             item.put("materialId", materialId);
             item.put("materialCode", codeMap.get(materialId));
             item.put("materialName", nameMap.get(materialId));
-            item.put("demand", demand);
+            item.put("demand", required);
+            item.put("unit", demand.unit(materialId));
             item.put("available", available);
             item.put("inTransit", inTransit);
             item.put("actualGap", actualGap);
@@ -416,6 +431,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     public java.util.List<java.util.Map<String, Object>> checkOrderShortageWithDetail(Long orderId) {
         log.info("订单齐套检查开始: orderId={}", orderId);
         Map<String, Object> calculation = calculateOrderShortage(orderId);
+        requireCalculationComplete(calculation);
         String orderNo = (String) calculation.get("orderNo");
         if (orderNo == null) {
             log.warn("订单不存在，跳过齐套检查: {}", orderId);
@@ -555,19 +571,16 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             return;
         }
 
-        // 2. 幂等：清掉旧的未处理物料维度缺料预警（demand_shortage）
-        alertLogMapper.delete(new LambdaQueryWrapper<InventoryAlertLog>()
-                .eq(InventoryAlertLog::getAlertType, "demand_shortage")
-                .eq(InventoryAlertLog::getStatus, AlertStatus.UNPROCESSED.getValue()));
-
         // 3. 两步走汇总：产品维度先扣产品库存→还需生产→BOM展开→物料需求汇总
-        Map<Long, BigDecimal> demandMap = new java.util.HashMap<>();
+        var calculation = demandCalculator().newDemand(true);
+        Map<Long, BigDecimal> orderRoundedTotals = new HashMap<>();
         Map<Long, String> codeMap = new java.util.HashMap<>();
         Map<Long, String> nameMap = new java.util.HashMap<>();
         // 2026-08-12：物料 → 涉及订单集合（全局缺料合并用）
         Map<Long, java.util.Set<Long>> orderSetMap = new java.util.HashMap<>();
         int noBomCount = 0;
         for (SalesOrder order : orders) {
+            var orderDemand = demandCalculator().newDemand(true);
             List<SalesOrderProduct> products = orderProductMapper.selectList(
                     new LambdaQueryWrapper<SalesOrderProduct>()
                             .eq(SalesOrderProduct::getOrderId, order.getOrderId()));
@@ -598,14 +611,24 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                         new LambdaQueryWrapper<EngineeringBomItem>()
                                 .eq(EngineeringBomItem::getBomId, bom.getBomId()));
                 // dev-20261113-009：全局缺料同样复用 explodeShortage。
-                java.util.Map<Long, BigDecimal> localDemand = new java.util.HashMap<>();
-                explodeShortage(items, needProduce, localDemand, codeMap, nameMap);
-                for (java.util.Map.Entry<Long, BigDecimal> entryDemand : localDemand.entrySet()) {
-                    demandMap.merge(entryDemand.getKey(), entryDemand.getValue(), BigDecimal::add);
+                var localDemand = demandCalculator().newDemand(true);
+                localDemand.add(items, needProduce);
+                orderDemand.merge(localDemand);
+                for (java.util.Map.Entry<Long, BigDecimal> entryDemand : localDemand.rounded().entrySet()) {
                     orderSetMap.computeIfAbsent(entryDemand.getKey(), k -> new java.util.HashSet<>()).add(order.getOrderId());
                 }
             }
+            calculation.merge(orderDemand);
+            orderDemand.rounded().forEach((id, value) -> orderRoundedTotals.merge(id, value, BigDecimal::add));
         }
+        calculation.requireComplete();
+        // 全局累加各订单最终需求，与跨订单分摊保持同一取整边界。
+        Map<Long, BigDecimal> demandMap = orderRoundedTotals;
+        demandMap.keySet().forEach(id -> fillMaterialIdentity(id, codeMap, nameMap));
+        // 校验完整后再替换旧预警；未知需求不得生成确定采购量或清掉原预警。
+        alertLogMapper.delete(new LambdaQueryWrapper<InventoryAlertLog>()
+                .eq(InventoryAlertLog::getAlertType, "demand_shortage")
+                .eq(InventoryAlertLog::getStatus, AlertStatus.UNPROCESSED.getValue()));
         if (demandMap.isEmpty()) {
             log.info("全局缺料检查：无物料缺口（全部现货覆盖或无BOM）");
             return;
@@ -911,7 +934,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         Map<Long, BigDecimal> stockRemaining = new java.util.HashMap<>();
 
         for (SalesOrder o : all) {
-            Map<Long, BigDecimal> needByMat = new java.util.HashMap<>();
+            var calculation = demandCalculator().newDemand(true);
             List<SalesOrderProduct> ps = orderProductMapper.selectList(new LambdaQueryWrapper<SalesOrderProduct>()
                     .eq(SalesOrderProduct::getOrderId, o.getOrderId()));
             if (ps != null) {
@@ -930,9 +953,11 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                             .eq(EngineeringBomItem::getBomId, bom.getBomId()));
                     // dev-20261113-009：分摊口径也必须走同一展开实现，
                     // 否则展开出的组件没有分配记录、actualGap=0 而被判为 covered（不发预警）。
-                    explodeShortage(items, gap, needByMat, new java.util.HashMap<>(), new java.util.HashMap<>());
+                    calculation.add(items, gap);
                 }
             }
+            calculation.requireComplete();
+            Map<Long, BigDecimal> needByMat = calculation.rounded();
             Map<Long, BigDecimal[]> needShort = new java.util.HashMap<>();
             for (Map.Entry<Long, BigDecimal> e : needByMat.entrySet()) {
                 Long mid = e.getKey();
@@ -1673,26 +1698,6 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         return false;
     }
 
-    /**
-     * 展开结果按物料单位取整：连续计量（M/㎡）保留 4 位小数，件/张等按整单一次向上取整。
-     * 单位缺失按件口径向上取整（不猜）。
-     */
-    private BigDecimal roundDemandByUnit(Long materialId, BigDecimal exact) {
-        String unit = null;
-        try {
-            com.jjx.inventory.domain.InventoryMaterial material = materialMapper.selectById(materialId);
-            unit = material == null ? null : material.getUnit();
-        } catch (Exception e) {
-            log.warn("展开取整查物料单位失败: materialId={}, err={}", materialId, e.getMessage());
-        }
-        String normalized = com.jjx.common.util.UnitCodes.normalize(unit);
-        if (com.jjx.common.util.UnitCodes.M.equals(normalized)
-                || com.jjx.common.util.UnitCodes.SQM.equals(normalized)) {
-            return exact.setScale(4, java.math.RoundingMode.UP);
-        }
-        return exact.setScale(0, java.math.RoundingMode.UP);
-    }
-
     private void fillMaterialIdentity(Long materialId, Map<Long, String> codeMap, Map<Long, String> nameMap) {
         if (materialId == null) return;
         try {
@@ -1706,66 +1711,19 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         }
     }
 
-    /**
-     * 缺料展开唯一实现（dev-20261113-009）：自制件（make + 有效已批准制造 BOM）递归展开，
-     * 其余行保持 batchDemand 原口径（含损耗、逐行取整与最低投料）；展开结果精确累加后取整一次。
-     */
-    private void explodeShortage(List<EngineeringBomItem> items, BigDecimal quantity,
-                                 Map<Long, BigDecimal> demandMap, Map<Long, String> codeMap,
-                                 Map<Long, String> nameMap) {
-        if (items == null) return;
-        for (EngineeringBomItem item : items) {
-            if (item == null || item.getMaterialId() == null) continue;
-            if ("make".equalsIgnoreCase(item.getSourceType())
-                    && item.getSubBomId() != null && isEffectiveSubBom(item.getSubBomId())) {
-                java.util.Map<Long, BigDecimal> exact = new java.util.HashMap<>();
-                ShortageExplosion.explode(java.util.List.of(item), quantity, 0,
-                        ShortageExplosion.newVisited(),
-                        subId -> bomItemMapper.selectList(new LambdaQueryWrapper<EngineeringBomItem>()
-                                .eq(EngineeringBomItem::getBomId, subId)),
-                        this::isEffectiveSubBom, exact);
-                for (java.util.Map.Entry<Long, BigDecimal> entry : exact.entrySet()) {
-                    demandMap.merge(entry.getKey(), roundDemandByUnit(entry.getKey(), entry.getValue()),
-                            BigDecimal::add);
-                    fillMaterialIdentity(entry.getKey(), codeMap, nameMap);
-                }
-                continue;
-            }
-            BigDecimal need = batchDemand(item, quantity);
-            demandMap.merge(item.getMaterialId(), need, BigDecimal::add);
-            codeMap.putIfAbsent(item.getMaterialId(), item.getMaterialCode());
-            nameMap.putIfAbsent(item.getMaterialId(), item.getMaterialName());
-        }
-    }
-
     /** 自制件可见信号（dev-20261113-009）：不新增预警类型，只在既有文案标注。 */
     public static String selfMadeSuggestionText() {
         return "自制·需生产（不生成采购单）";
     }
 
-    private BigDecimal getActualIssueQty(EngineeringBomItem item) {
-        if (item.getActualIssueQty() != null) {
-            return item.getActualIssueQty();
-        }
-        log.warn("BOM 明细 {} 缺实际投料，按应用料兜底，请重新保存 BOM", item.getItemId());
-        BigDecimal quantity = item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO;
-        BigDecimal lossRate = (item.getLossRate() != null ? item.getLossRate() : BigDecimal.ZERO);
-        return quantity.multiply(BigDecimal.ONE.add(lossRate.divide(BigDecimal.valueOf(100))));
+    private BomMaterialDemandService demandCalculator() {
+        return new BomMaterialDemandService(materialMapper, bomMapper, bomItemMapper);
     }
 
-    /**
-     * 整批需求 = MAX( 向上取整( 单位投料 × 数量 ), 最低投料量 )
-     * 单位投料 = actual_issue_qty（BOM 保存时写入的含损耗单位应用料，不取整）
-     * 取整只在整批做一次；最低投料量作为下限（min_issue_qty>0 时生效，与物料类型无关）
-     */
-    private BigDecimal batchDemand(EngineeringBomItem item, BigDecimal quantity) {
-        BigDecimal qty = quantity != null ? quantity : BigDecimal.ZERO;
-        BigDecimal demand = getActualIssueQty(item).multiply(qty).setScale(0, java.math.RoundingMode.UP);
-        BigDecimal minIssue = item.getMinIssueQty();
-        if (minIssue != null && minIssue.compareTo(BigDecimal.ZERO) > 0 && demand.compareTo(minIssue) < 0) {
-            demand = minIssue;
+    private void requireCalculationComplete(Map<String, Object> result) {
+        if (Boolean.FALSE.equals(result.get("calculationComplete"))) {
+            throw new com.jjx.common.exception.BusinessException("齐套需求尚无法完整计算，请核实：" + result.get("calculationIssues"));
         }
-        return demand;
     }
 
     private List<AlertVO> convertToVOList(List<InventoryAlertLog> alerts) {
