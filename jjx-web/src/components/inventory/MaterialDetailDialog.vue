@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" title="物料详情" width="900px" append-to-body>
+  <el-dialog v-model="visible" title="物料详情" width="min(1000px, calc(100vw - 24px))" append-to-body>
     <el-skeleton v-if="loading" :rows="8" animated />
     <template v-else-if="material">
       <el-descriptions title="基本信息" :column="2" border size="small">
@@ -9,7 +9,7 @@
         <el-descriptions-item label="物料名称">{{
           text(material.materialName)
         }}</el-descriptions-item>
-        <el-descriptions-item label="原文说明" :span="2">原文已归档至 Excel</el-descriptions-item>
+        <el-descriptions-item label="主要供应商">{{ text(material.supplierName) }}</el-descriptions-item>
         <el-descriptions-item label="品类">{{ categoryName }}</el-descriptions-item>
         <el-descriptions-item label="大类">{{ materialTypeText }}</el-descriptions-item>
         <el-descriptions-item label="材料">{{ text(material.materialGrade) }}</el-descriptions-item>
@@ -58,6 +58,10 @@
         </el-descriptions-item>
       </el-descriptions>
 
+      <el-descriptions title="备注 / 说明" :column="1" border size="small" class="detail-block">
+        <el-descriptions-item label="物料备注及迁移来源"><div class="remark-text" data-test="material-remark">{{ text(material.remark) }}</div></el-descriptions-item>
+      </el-descriptions>
+
       <el-descriptions
         v-if="attributeRows.length"
         title="品类属性"
@@ -71,19 +75,14 @@
         }}</el-descriptions-item>
       </el-descriptions>
 
-      <el-descriptions title="库存" :column="3" border size="small" class="detail-block">
-        <el-descriptions-item label="当前库存">{{
-          stockQuantity(material.currentStock)
-        }}</el-descriptions-item>
-        <el-descriptions-item label="可用库存">{{
-          stockQuantity(material.availableStock)
-        }}</el-descriptions-item>
-        <el-descriptions-item label="预留库存">{{
-          stockQuantity(material.reservedStock)
-        }}</el-descriptions-item>
-        <el-descriptions-item label="在途库存">{{
-          stockQuantity(material.inTransitStock)
-        }}</el-descriptions-item>
+      <el-alert v-if="stockError" :title="stockError" type="warning" :closable="false" class="detail-block" />
+      <el-descriptions v-if="canViewStock" title="库存（全部仓库）" :column="3" border size="small" class="detail-block">
+        <el-descriptions-item label="当前库存">{{ liveQuantity(stock?.physicalQuantity ?? stock?.totalQuantity, stock?.physicalQuantity == null ? stock?.unit : stock?.physicalUnit) }}</el-descriptions-item>
+        <el-descriptions-item label="可用库存">{{ liveQuantity(stock?.availablePhysicalQuantity ?? stock?.availableQuantity, stock?.availablePhysicalQuantity == null ? stock?.unit : stock?.physicalUnit) }}</el-descriptions-item>
+        <el-descriptions-item label="预留库存">{{ liveQuantity(stock?.reservedPhysicalQuantity ?? stock?.totalReserved, stock?.reservedPhysicalQuantity == null ? stock?.unit : stock?.physicalUnit) }}</el-descriptions-item>
+      </el-descriptions>
+      <el-descriptions title="库存设置" :column="3" border size="small" class="detail-block">
+        <el-descriptions-item label="在途库存（档案记录）">{{ stockQuantity(material.inTransitStock) }}</el-descriptions-item>
         <el-descriptions-item label="安全库存">{{ stockQuantity(material.safeStock) }}</el-descriptions-item>
         <el-descriptions-item label="最高库存">{{ stockQuantity(material.maxStock) }}</el-descriptions-item>
         <el-descriptions-item label="再订货点">{{
@@ -98,9 +97,6 @@
         <el-descriptions-item label="采购周期(天)">{{
           text(material.leadTime)
         }}</el-descriptions-item>
-        <el-descriptions-item label="主要供应商">{{
-          text(material.supplierName)
-        }}</el-descriptions-item>
         <el-descriptions-item label="保质期(天)">{{
           text(material.shelfLife)
         }}</el-descriptions-item>
@@ -110,9 +106,6 @@
       </el-descriptions>
 
       <el-descriptions title="其他" :column="2" border size="small" class="detail-block">
-        <el-descriptions-item label="备注" :span="2">{{
-          text(material.remark)
-        }}</el-descriptions-item>
         <el-descriptions-item label="创建人">{{ text(material.createBy) }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{
           text(material.createTime)
@@ -126,14 +119,20 @@
     <el-empty v-else description="未找到物料信息" />
 
     <template #footer>
+      <el-button v-if="material && canEdit" data-test="edit-material" @click="editVisible = true">编辑物料</el-button>
       <el-button type="primary" @click="visible = false">关闭</el-button>
     </template>
   </el-dialog>
+  <MaterialMasterFormDialog v-if="editVisible && material && canEdit" v-model="editVisible" :material-id="material.materialId" @success="handleEdited" />
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
+import { stockApi } from '@/api/inventory/stock'
+import type { StockVO } from '@/types/inventory/stock'
+import { usePermission } from '@/composables/usePermission'
+import MaterialMasterFormDialog from './MaterialMasterFormDialog.vue'
 import { materialApi } from '@/api/inventory/material'
 import { MaterialStatusEnum } from '@/enums/inventory/MaterialEnum'
 import {
@@ -153,14 +152,31 @@ import { parseMaterialSize, renderMaterialDimensions } from './materialSize'
 interface Props {
   modelValue: boolean
   materialId?: number | null
+  allowEdit?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   modelValue: false,
   materialId: null,
+  allowEdit: false,
 })
 
-const emit = defineEmits<{ (e: 'update:modelValue', value: boolean): void }>()
+const emit = defineEmits<{
+  (e: 'update:modelValue', value: boolean): void
+  (e: 'changed'): void
+}>()
+const { hasPermission } = usePermission()
+const canEdit = computed(() => props.allowEdit && hasPermission('inventory:material:edit'))
+const canViewStock = computed(() => hasPermission('inventory:stock:view'))
+const editVisible = ref(false)
+const stock = ref<StockVO | null>(null)
+const stockError = ref('')
+const liveQuantity = (value?: number | null, unit?: string | null) => value == null ? '—' : `${num(value)} ${unit || ''}`.trim()
+const handleEdited = async () => {
+  editVisible.value = false
+  emit('changed')
+  if (props.modelValue && props.materialId) await loadDetail(props.materialId)
+}
 
 const visible = computed({
   get: () => props.modelValue,
@@ -174,6 +190,7 @@ const dictionaries = ref<MaterialDictionaries>({})
 const stockQuantity = (value?: number | null) => `${num(value)} ${material.value?.unit || ''}`.trim()
 const measurementPolicy = computed(() => readMeasurementPolicy(material.value?.measurementPolicyJson))
 let detailRequest = 0
+onBeforeUnmount(() => { detailRequest++ })
 const dictionaryText = (dict: string, value?: string | null) =>
   dictionaries.value[dict]?.find((o) => o.code === value)?.label || text(value)
 const attributeRows = computed(() => {
@@ -242,12 +259,24 @@ const statusTag = computed(() => {
 })
 
 const loadCategoryOptions = async () => {
-  categoryOptions.value = await loadMaterialCategoryOptions()
+  try { categoryOptions.value = await loadMaterialCategoryOptions() }
+  catch { categoryOptions.value = [] }
 }
 
 const loadDetail = async (materialId: number) => {
   const request = ++detailRequest
   loading.value = true
+  editVisible.value = false
+  material.value = null
+  masterDetail.value = null
+  stock.value = null
+  stockError.value = ''
+  const stockRequest = canViewStock.value
+    ? stockApi.getByMaterial(String(materialId)).then(res => {
+      if (request === detailRequest) stock.value = res.data || null
+    }).catch(() => {
+      if (request === detailRequest) stockError.value = '库存数量暂时读取失败，可关闭详情后重试'
+    }) : Promise.resolve()
   try {
     const [res, detail, dict] = await Promise.all([
       materialApi.getInfo(String(materialId)),
@@ -259,13 +288,14 @@ const loadDetail = async (materialId: number) => {
     masterDetail.value = detail.data || null
     dictionaries.value = dict.data || {}
   } catch (error) {
-    console.error('加载物料详情失败:', error)
-    ElMessage.error('加载物料详情失败')
     if (request === detailRequest) {
+      console.error('加载物料详情失败:', error)
+      ElMessage.error('加载物料详情失败')
       material.value = null
       masterDetail.value = null
     }
   } finally {
+    await stockRequest
     if (request === detailRequest) loading.value = false
   }
 }
@@ -275,9 +305,17 @@ watch(
   ([isOpen, id]) => {
     if (!isOpen) {
       detailRequest++
+      editVisible.value = false
       return
     }
-    if (id) loadDetail(id)
+    if (id && Number.isSafeInteger(id) && id > 0) void loadDetail(id)
+    else {
+      detailRequest++
+      material.value = null
+      masterDetail.value = null
+      stock.value = null
+      loading.value = false
+    }
     loadCategoryOptions()
   },
   { immediate: true }
@@ -285,6 +323,11 @@ watch(
 </script>
 
 <style scoped>
+.remark-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .detail-block {
   margin-top: 16px;
 }

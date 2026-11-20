@@ -110,6 +110,16 @@ public class InventoryMigrationService {
                 creating.setMaterialCode(sequences.generateBusinessNumberByTypeWithPrefix("material",prefix,"",6,repository.materialCodeFloor()));
                 material=master.saveMigration(creating,operator,repository.nextMaterialId()); known.put(key,material);
             }
+            if (input.originalRemark()!=null && !input.originalRemark().isBlank()) {
+                InventoryMaterial locked=materials.selectOne(new LambdaQueryWrapper<InventoryMaterial>()
+                    .eq(InventoryMaterial::getMaterialId,material.getMaterialId()).last("FOR UPDATE"));
+                String sourceRemark=appendSourceRemark(locked.getRemark(),batch.batchCode(),input.sourceRow(),input.originalRemark());
+                if (!Objects.equals(sourceRemark,locked.getRemark())) {
+                    materials.update(null,new UpdateWrapper<InventoryMaterial>().eq("material_id",material.getMaterialId())
+                        .set("remark",sourceRemark).set("update_by",operator).set("update_time",LocalDateTime.now()));
+                }
+                material.setRemark(sourceRemark);
+            }
             if (input.originalUnit()!=null && !Objects.equals(material.getUnit(),input.originalUnit())) throw new BusinessException("源行"+input.sourceRow()+"：原单位与库存单位不一致，须先明确换算");
             InventoryItem existingIdentity=identities.getBySource(InventoryItemTypeEnum.MATERIAL,material.getMaterialId());
             if (existingIdentity!=null && !Objects.equals(existingIdentity.getItemCode(),material.getMaterialCode())) throw new BusinessException("统一库存身份与新档案编码不一致，禁止错误关联");
@@ -276,9 +286,25 @@ public class InventoryMigrationService {
         if (before!=null && !Objects.equals(before.getLocationId(),location.getLocationId())) throw new BusinessException("同一位置规范化后对应多个库位："+key);
     }
     public static String locationKey(String text) { return Normalizer.normalize(text,Normalizer.Form.NFKC).replaceAll("[\\s，,、；;]+","").toLowerCase(Locale.ROOT); }
+    /** 来源按批次和原行分段；不丢合并物料的备注，不截断，不改已有用户说明。 */
+    public static String appendSourceRemark(String current,String batchCode,Integer sourceRow,String originalRemark) {
+        if (originalRemark==null || originalRemark.isBlank()) return current;
+        String marker="【迁移来源 "+batchCode+" / 源行"+sourceRow+"】";
+        String block=marker+"\n"+originalRemark;
+        if (current!=null && current.contains(marker)) {
+            int start=current.indexOf(marker);
+            int end=current.indexOf("\n\n【迁移来源 ",start+marker.length());
+            if (current.substring(start,end<0?current.length():end).equals(block)) return current;
+            throw new BusinessException("同一迁移源行备注不一致，请核查");
+        }
+        String result=current==null || current.isBlank()?block:current+"\n\n"+block;
+        if (result.length()>1000) throw new BusinessException("合并来源备注超过1000字，请核查，不能截断");
+        return result;
+    }
     private String provenance(Line line) {
         var data=new LinkedHashMap<String,Object>(); data.put("row",line.sourceRow()); data.put("name",line.originalName()); data.put("spec",line.originalSpecification());
         data.put("unit",line.originalUnit()); data.put("quantity",line.quantity()); data.put("area",line.originalArea()); data.put("issues",line.issues());
+        data.put("originalRemark",line.originalRemark());
         String result=write(data); if (result.length()>500) throw new BusinessException("来源信息超过500字，请拆分核查"); return result;
     }
     private static void validateBatch(Batch batch) {

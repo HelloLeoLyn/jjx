@@ -39,6 +39,17 @@ class InventoryMigrationTest {
         assertEquals(cn.dev33.satoken.annotation.SaMode.AND,importing.mode());
     }
 
+    @Test void sourceRemarksKeepEachRowAndDoNotTruncateOrOverwriteCustomerNotes() {
+        String first=InventoryMigrationService.appendSourceRemark("客户备注","MIG-A",2,"专用\n第二行");
+        String all=InventoryMigrationService.appendSourceRemark(first,"MIG-A",3,"样品");
+        assertTrue(all.startsWith("客户备注")); assertTrue(all.contains("源行2】\n专用\n第二行"));
+        assertTrue(all.contains("源行3】\n样品"));
+        assertEquals(all,InventoryMigrationService.appendSourceRemark(all,"MIG-A",3,"样品"));
+        assertThrows(BusinessException.class,() -> InventoryMigrationService.appendSourceRemark(all,"MIG-A",3,"其它原文"));
+        assertThrows(BusinessException.class,() -> InventoryMigrationService.appendSourceRemark(all,"MIG-A",3,"样"));
+        assertThrows(BusinessException.class,() -> InventoryMigrationService.appendSourceRemark("x".repeat(990),"MIG-A",4,"不能截断"));
+    }
+
     /** 真实MySQL服务/Mapper/事务；每项外层回滚，不启Web/调度服务，不留下测试库存。 */
     @Nested
     @EnabledIfEnvironmentVariable(named="JJX_TEST_MIGRATION_DATABASE",matches="1")
@@ -99,6 +110,18 @@ class InventoryMigrationTest {
             assertNull(runtime.jdbc().queryForObject("SELECT total_amount FROM inventory_inbound_order WHERE inbound_id=?",BigDecimal.class,imported.inboundId()));
             assertEquals(com.jjx.common.enums.ApproveStatusEnum.APPROVED.getValue(),runtime.jdbc().queryForObject("SELECT approve_status FROM inventory_inbound_order WHERE inbound_id=?",Integer.class,imported.inboundId()));
             assertNull(runtime.jdbc().queryForObject("SELECT standard_price FROM inventory_material WHERE material_id=(SELECT material_id FROM inventory_inbound_item WHERE inbound_id=? LIMIT 1)",BigDecimal.class,imported.inboundId()));
+        }
+        @Test void mergedMaterialsKeepBothSourceRemarksAndEachNewVoucherCarriesItsOwnOriginalNote() {
+            Batch base=batch("2","M");
+            var first=new Line(2,"原名","300",null,"M","专用\n第二行",null,BigDecimal.ONE,List.of(),base.lines().get(0).material());
+            var second=new Line(3,"原名","300",null,"M","样品",null,BigDecimal.ZERO,List.of(),base.lines().get(1).material());
+            var input=new Batch(base.batchCode(),base.sourceSha256(),base.businessDate(),base.warehouseName(),List.of(first,second));
+            var result=importing(input);
+            String remark=runtime.jdbc().queryForObject("SELECT m.remark FROM inventory_material m JOIN inventory_inbound_item i ON i.material_id=m.material_id WHERE i.inbound_id=? LIMIT 1",String.class,result.inboundId());
+            assertTrue(remark.contains("源行2】\n专用\n第二行"));assertTrue(remark.contains("源行3】\n样品"));
+            var original=runtime.jdbc().queryForList("SELECT JSON_UNQUOTE(JSON_EXTRACT(remark,'$.originalRemark')) FROM inventory_inbound_item WHERE inbound_id=? ORDER BY sort_order",String.class,result.inboundId());
+            assertEquals(List.of("专用\n第二行","样品"),original);
+            assertTrue(importing(input).alreadyImported());
         }
         @Test void costMaintenanceAdjustsOriginalAndAlreadyIssuedValuesWithoutChangingTheirFacts() {
             Batch batch=batch("1.5","M");Imported imported=importing(batch);

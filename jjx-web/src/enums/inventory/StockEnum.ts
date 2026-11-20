@@ -1,5 +1,5 @@
 // src/enums/inventory/StockEnum.ts
-import { createEnum } from '../base'
+import { createEnum, createNamedEnum } from '../base'
 
 /**
  * 库存状态枚举
@@ -14,13 +14,10 @@ export const StockStatusEnum = createEnum({
   defaultTag: { type: 'info' },
 })
 
-export const InventoryItemTypeEnum = createEnum({
-  items: [
-    { value: 'MATERIAL', label: '材料', tagProps: { type: 'primary' } },
-    { value: 'PRODUCT', label: '产品', tagProps: { type: 'success' } },
-  ],
-  defaultTag: { type: 'info' },
-})
+export const InventoryItemTypeEnum = createNamedEnum({
+  MATERIAL: { value: 'MATERIAL', label: '材料', tagProps: { type: 'primary' } },
+  PRODUCT: { value: 'PRODUCT', label: '产品', tagProps: { type: 'success' } },
+}, { type: 'info' })
 
 /**
  * 库存相关枚举统一导出

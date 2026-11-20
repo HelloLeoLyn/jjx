@@ -193,7 +193,12 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="物料编码" prop="materialCode" width="150" />
+        <el-table-column label="物料编码" prop="materialCode" width="150">
+          <template #default="{ row }">
+            <el-link v-if="canViewArchive(row)" type="primary" @click="handleViewArchive(row)">{{ row.materialCode }}</el-link>
+            <span v-else>{{ row.materialCode }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="物料名称" prop="materialName" width="150" show-overflow-tooltip />
         <el-table-column label="规格型号" prop="specification" width="120" show-overflow-tooltip />
         <el-table-column label="库存数量" width="130" align="right">
@@ -269,6 +274,8 @@
       @success="handleImportSuccess"
     />
 
+    <MaterialDetailDialog v-if="materialDetailVisible" v-model="materialDetailVisible" :material-id="archiveId" allow-edit @changed="handleRefresh" />
+    <ProductDetailDialog v-if="productDetailVisible" v-model="productDetailVisible" :product-id="archiveId ?? undefined" />
     <!-- 批次库存对话框 -->
     <InventoryMigrationDialog v-model="migrationVisible" @changed="handleRefresh" />
     <StockDetailDialog
@@ -306,8 +313,29 @@ import StockImportDialog from '@/components/inventory/StockImportDialog.vue'
 import StockBatchImportDialog from '@/components/inventory/StockBatchImportDialog.vue'
 import StockDetailDialog from '@/components/inventory/StockDetailDialog.vue'
 import InventoryMigrationDialog from '@/components/inventory/InventoryMigrationDialog.vue'
+import MaterialDetailDialog from '@/components/inventory/MaterialDetailDialog.vue'
+import ProductDetailDialog from '@/views/product/list/components/ProductDetailDialog.vue'
+import { usePermission } from '@/composables/usePermission'
 
 const migrationVisible = ref(false)
+const materialDetailVisible = ref(false)
+const productDetailVisible = ref(false)
+const archiveId = ref<number | null>(null)
+const { hasPermission, hasAnyPermission } = usePermission()
+const canViewArchive = (row: StockVO) => row.itemType === InventoryItemTypeEnum.MATERIAL.value
+  ? hasAnyPermission(['inventory:material:view', 'engineering:bom:add', 'engineering:bom:edit'])
+  : row.itemType === InventoryItemTypeEnum.PRODUCT.value && hasPermission('product:list:view')
+const handleViewArchive = (row: StockVO) => {
+  if (!canViewArchive(row)) return
+  const id = Number(row.sourceId || (row.itemType === InventoryItemTypeEnum.MATERIAL.value ? row.materialId : undefined))
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    ElMessage.warning('该库存尚未关联有效档案，无法查看详情')
+    return
+  }
+  archiveId.value = id
+  materialDetailVisible.value = row.itemType === InventoryItemTypeEnum.MATERIAL.value
+  productDetailVisible.value = row.itemType === InventoryItemTypeEnum.PRODUCT.value
+}
 
 const router = useRouter()
 

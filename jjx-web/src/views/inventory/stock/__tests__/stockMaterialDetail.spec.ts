@@ -1,0 +1,47 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { shallowMount, flushPromises } from '@vue/test-utils'
+import Page from '../index.vue'
+const mocks = vi.hoisted(() => ({ list: vi.fn(), summary: vi.fn(), alerts: vi.fn(), push: vi.fn(), warning: vi.fn(), allowed: new Set<string>() }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push: mocks.push }) }))
+vi.mock('@/api/inventory/stock', () => ({ stockApi: { list: mocks.list, summary: mocks.summary, getAlertInfo: mocks.alerts } }))
+vi.mock('@/composables/usePermission', () => ({ usePermission: () => ({ hasPermission: (p: string) => mocks.allowed.has(p), hasAnyPermission: (ps: string[]) => ps.some(p => mocks.allowed.has(p)) }) }))
+vi.mock('element-plus', async original => ({ ...await original<typeof import('element-plus')>(), ElMessage: { warning: mocks.warning, error: vi.fn(), success: vi.fn() } }))
+vi.mock('@/components/inventory/MaterialDetailDialog.vue', () => ({ default: { name: 'MaterialDetailDialog', props: ['modelValue', 'materialId'], emits: ['changed'], template: '<div />' } }))
+vi.mock('@/views/product/list/components/ProductDetailDialog.vue', () => ({ default: { name: 'ProductDetailDialog', props: ['modelValue', 'productId'], template: '<div />' } }))
+vi.mock('@/components/inventory/StockImportDialog.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('@/components/inventory/StockBatchImportDialog.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('@/components/inventory/StockDetailDialog.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('@/components/inventory/InventoryMigrationDialog.vue', () => ({ default: { template: '<div />' } }))
+const row = { sourceId: '358', materialId: '999', inventoryItemId: '3266', stockId: '777', itemType: 'MATERIAL', materialCode: 'RM000354' }
+function mounted() { return shallowMount(Page, { global: { directives: { hasPermi: {}, loading: {} } } }) }
+beforeEach(() => {
+  vi.clearAllMocks(); mocks.allowed.clear(); mocks.allowed.add('inventory:material:view'); mocks.allowed.add('product:list:view')
+  mocks.list.mockResolvedValue({ data: { records: [], total: 0 } }); mocks.summary.mockResolvedValue({ data: {} }); mocks.alerts.mockResolvedValue({ data: {} })
+})
+describe('即时库存编码联查档案', () => {
+  it('材料使用来源档案ID；成品使用产品来源ID，不把库存ID传给详情', async () => {
+    const w = mounted(); await flushPromises(); const vm = w.vm as any
+    vm.handleViewArchive(row); await flushPromises()
+    expect(w.findComponent({ name: 'MaterialDetailDialog' }).props('materialId')).toBe(358)
+    vm.handleViewArchive({ ...row, itemType: 'PRODUCT', sourceId: '87' }); await flushPromises()
+    expect(w.findComponent({ name: 'MaterialDetailDialog' }).exists()).toBe(false)
+    expect(w.findComponent({ name: 'ProductDetailDialog' }).props('productId')).toBe(87)
+    expect(mocks.push).not.toHaveBeenCalled(); w.unmount()
+  })
+  it('缺少权限、来源ID无效不打开，也不把库存身份ID当产品ID', async () => {
+    const w = mounted(); const vm = w.vm as any
+    mocks.allowed.clear(); vm.handleViewArchive(row); expect(vm.materialDetailVisible).toBe(false)
+    mocks.allowed.add('product:list:view')
+    vm.handleViewArchive({ ...row, itemType: 'PRODUCT', sourceId: undefined }); expect(vm.productDetailVisible).toBe(false)
+    expect(mocks.warning).toHaveBeenCalled(); w.unmount()
+  })
+  it('编辑成功刷新数据，关闭/刷新保留筛选、页码和每页条数', async () => {
+    const w = mounted(); await flushPromises(); const vm = w.vm as any
+    Object.assign(vm.queryParams, { current: 3, pageSize: 20, materialCode: 'RM000354' })
+    const before = { ...vm.queryParams }
+    vm.handleViewArchive(row); await flushPromises()
+    w.findComponent({ name: 'MaterialDetailDialog' }).vm.$emit('changed'); await flushPromises()
+    expect(mocks.list).toHaveBeenLastCalledWith(before); expect(vm.queryParams).toEqual(before)
+    vm.materialDetailVisible = false; await flushPromises(); expect(vm.queryParams).toEqual(before); w.unmount()
+  })
+})

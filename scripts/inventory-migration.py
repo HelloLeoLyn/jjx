@@ -192,7 +192,7 @@ def prepare(source, reference, business_date):
                     'attributeJson': attributes, 'isCustomerSupplied': '客供' in text(row[3]), 'isSample': '样品专用' in text(row[3]),
                     'supplierId': supplier['id'] if supplier else None,
                     'supplierName': supplier['name'] if supplier else None,
-                    'supplierMaterialName': text(row[3]), 'remark': ('迁移原品名：' + text(row[3]) + '；原规格：' + text(row[4]) + '；' + text(stock[12]))[:900]}
+                    'supplierMaterialName': text(row[3]), 'remark': '迁移原品名：' + text(row[3]) + '；原规格：' + text(row[4])}
         line = {'sourceRow': source_row, 'originalName': text(row[3]), 'originalSpecification': text(row[4]),
                 'originalArea': decimal_text(number(stock[6])), 'originalUnit': original_unit,
                 'originalRemark': text(stock[12]), 'location': stock[9], 'quantity': decimal_text(quantity),
