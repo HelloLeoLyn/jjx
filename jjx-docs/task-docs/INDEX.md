@@ -94,3 +94,6 @@
 | dev-20261120-004 | dev-20261120-004-plan.md | plan | 即时库存批次快捷盘点与确认过账实施 |
 | dev-20261120-003 | dev-20261120-003-completion.md | completion | 搜索/分页/同范围统计实现与验证边界 |
 | dev-20261120-004 | dev-20261120-004-completion.md | completion | 批次快捷盘点、权限过账与MySQL回滚验证 |
+
+| dev-20261120-005 | dev-20261120-005-plan.md | plan | 历史保留两张规格表的治理依据与基线修复 |
+| dev-20261120-005 | dev-20261120-005-completion.md | completion | 精确保留备案、正常基线门禁与完整validate通过 |

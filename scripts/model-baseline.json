@@ -1,11 +1,13 @@
 {
-  "generatedAt": "2026-10-24",
-  "tableCountBaseline": 136,
+  "generatedAt": "2026-11-20",
+  "tableCountBaseline": 140,
   "tables": [
     "archive_production_quality_inspection",
     "archive_production_quality_inspection_item",
     "biz_requirement",
     "biz_requirement_approval",
+    "bom_change_request",
+    "bom_change_request_item",
     "engineering_archive_import",
     "engineering_base",
     "engineering_bom",
@@ -36,7 +38,10 @@
     "inventory_item",
     "inventory_material",
     "inventory_material_category",
+    "inventory_material_classify_rule",
     "inventory_material_required_field",
+    "inventory_material_spec_attr_def",
+    "inventory_material_spec_value",
     "inventory_outbound_item",
     "inventory_outbound_order",
     "inventory_stock",
@@ -73,6 +78,7 @@
     "purchase_order",
     "purchase_order_item",
     "purchase_payment",
+    "purchase_processing_disposition",
     "purchase_supplier",
     "quality_capa",
     "quality_lot",
@@ -256,6 +262,20 @@
       "date": "2026-11-17",
       "proposalLink": "jjx-docs/history/purchase-processing-disposition-dev-20261117-002.md",
       "reason": "独立采购加工处置事实：支持未入库且未建档的余料单独确认报废；原入库明细/IQC/不良单表强制业务关联不适用。用户授权实施并在新增记录表说明后确认本次结构变更手工备份。"
+    },
+    {
+      "table": "inventory_material_spec_attr_def",
+      "taskCode": "dev-20261120-005",
+      "date": "2026-11-20",
+      "proposalLink": "jjx-docs/task-docs/dev-20261120-005-plan.md",
+      "reason": "历史规格属性定义表，当前27行；原302曾批准，309/358曾退役，后续dev-20261111-018明确用户已定保留。用户2026-11-20授权处理基线，现补历史保留例外；无运行时读写，不恢复旧接口或第二属性真源。"
+    },
+    {
+      "table": "inventory_material_spec_value",
+      "taskCode": "dev-20261120-005",
+      "date": "2026-11-20",
+      "proposalLink": "jjx-docs/task-docs/dev-20261120-005-plan.md",
+      "reason": "历史规格属性取值表，当前0行；原302曾批准，309/358曾退役，后续dev-20261111-018明确用户已定保留。用户2026-11-20授权处理基线，现补历史保留例外；无运行时读写，不恢复旧接口或第二属性真源。"
     }
   ],
   "typeSuffixAllowlist": [
