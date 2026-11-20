@@ -1,7 +1,6 @@
 // views/inventory/material/config.ts
 import type { SearchOptions, ToolbarOptions, TableOptions } from '@/components/common-ui/type'
 import { MaterialRootTypeEnum, MaterialStatusEnum } from '@/enums/inventory/MaterialEnum'
-import { MaterialClassStatusEnum } from '@/enums/inventory/MaterialClassEnum'
 
 // 搜索配置
 export const searchOptions: SearchOptions[] = [
@@ -25,12 +24,6 @@ export const searchOptions: SearchOptions[] = [
     type: 'select',
     advanced: true,
     options: [],
-  },
-  {
-    prop: 'classStatus',
-    label: '归类状态',
-    type: 'select',
-    options: MaterialClassStatusEnum.items.map((item) => ({ value: item.value, label: item.label })),
   },
   {
     prop: 'categoryId',
@@ -138,20 +131,6 @@ export const toolbarOptions: ToolbarOptions[] = [
     permission: 'inventory:material:add',
   },
   {
-    key: 'classify-rules',
-    label: '归类规则',
-    type: 'info',
-    icon: 'SetUp',
-    permission: 'inventory:material:edit',
-  },
-  {
-    key: 'master-settings',
-    label: '分类与模板',
-    type: 'info',
-    icon: 'Setting',
-    permission: 'inventory:category:edit',
-  },
-  {
     key: 'import',
     label: '导入',
     type: 'success',
@@ -164,13 +143,6 @@ export const toolbarOptions: ToolbarOptions[] = [
     type: 'warning',
     icon: 'Download',
     // permission: 'inventory:material:export', // 后端无导出接口/权限点，暂不启用
-  },
-  {
-    key: 'migration-export',
-    label: '导出待归类',
-    type: 'info',
-    icon: 'Download',
-    permission: 'inventory:material:view',
   },
   {
     key: 'print-label',

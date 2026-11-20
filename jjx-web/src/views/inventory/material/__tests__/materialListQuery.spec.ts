@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import MaterialList from '../index.vue'
-import { MaterialClassStatusEnum } from '@/enums/inventory/MaterialClassEnum'
 
 vi.mock('element-plus/es/components/base/style/css', () => ({}))
 vi.mock('element-plus/es/components/button/style/css', () => ({}))
@@ -31,19 +30,9 @@ vi.mock('@/components/inventory/MaterialDetailDialog.vue', () => ({
 vi.mock('@/components/inventory/MaterialRegenerateDialog.vue', () => ({
   default: { template: '<div />' },
 }))
-vi.mock('@/components/inventory/MaterialClassifyDialog.vue', () => ({
-  default: { template: '<div />' },
-}))
-vi.mock('@/components/inventory/MaterialClassifyRuleDrawer.vue', () => ({
-  default: { template: '<div />' },
-}))
 vi.mock('@/components/inventory/MaterialMasterImportDialog.vue', () => ({
   default: { template: '<div />' },
 }))
-vi.mock('@/components/inventory/MaterialMasterSettingsDialog.vue', () => ({
-  default: { template: '<div />' },
-}))
-vi.mock('@/api/inventory/classify', () => ({ materialClassifyApi: {} }))
 vi.mock('@/api/inventory/materialMaster', () => ({
   materialMasterApi: {
     categories: async () => ({ data: [] }),
@@ -84,8 +73,8 @@ afterEach(() => {
   page.mockReset()
 })
 
-describe('物料列表默认查询与归类筛选', () => {
-  it('混合品类逐行按字段单位显示尺寸，保留×分隔符和缺省行为', async () => {
+describe('物料列表默认查询与业务筛选', () => {
+  it('混合品类逐行按字段单位显示尺寸，沿用LWT标签和星号分隔', async () => {
     const dimensions = { widthMm: 315, lengthMm: 1000000, thicknessMm: 0.254, sizeUnit: 'cm' }
     const records = [
       { ...dimensions, categoryId: 29, unit: 'PCS' },
@@ -96,12 +85,12 @@ describe('物料列表默认查询与归类筛选', () => {
     wrapper = shallowMount(MaterialList, { global: { directives: { hasPermi: {}, loading: {} } } })
     await flushPromises()
     const state = wrapper.vm as any
-    expect(state.materialSizeText(records[0])).toBe('254μm×315mm×1000m')
-    expect(state.materialSizeText(records[1])).toBe('315×1000000×0.254mm')
-    expect(state.materialSizeText(records[2])).toBe('300××0.175mm')
+    expect(state.materialSizeText(records[0])).toBe('T254μm*W315mm*L1000m')
+    expect(state.materialSizeText(records[1])).toBe('W315mm*L1000000mm*T0.254mm')
+    expect(state.materialSizeText(records[2])).toBe('W300mm*T0.175mm')
   })
 
-  it('首屏和重置不携带旧档案范围，三态选择原样提交', async () => {
+  it('首屏、搜索和重置不携带归类限制，关键词和品类筛选仍可使用', async () => {
     const requests: Record<string, unknown>[] = []
     page.mockImplementation(async (params) => {
       requests.push({ ...params })
@@ -113,26 +102,24 @@ describe('物料列表默认查询与归类筛选', () => {
     await flushPromises()
     expect(requests).toHaveLength(1)
     expect(requests[0]).not.toHaveProperty('masterDataOnly')
-    expect(requests[0].classStatus).toBe('')
+    expect(requests[0]).not.toHaveProperty('classStatus')
     // 默认每页条数由 dev-20261024-025 改为 20（本断言原写 50 已过期，dev-20261030-017 修正）
     expect(requests[0].pageSize).toBe(20)
 
     const search = wrapper.findComponent({ name: 'SearchForm' })
     const fields = search.props('fields') as Array<{ prop: string; options?: unknown[] }>
     expect(fields.some((field) => field.prop === 'masterDataOnly')).toBe(false)
-    expect(fields.find((field) => field.prop === 'classStatus')?.options).toEqual(
-      MaterialClassStatusEnum.items.map(({ value, label }) => ({ value, label }))
-    )
-    for (const { value } of MaterialClassStatusEnum.items) {
-      search.props('modelValue').classStatus = value
-      search.vm.$emit('search')
-      await flushPromises()
-      expect(requests.at(-1)?.classStatus).toBe(value)
-      expect(requests.at(-1)).not.toHaveProperty('masterDataOnly')
-    }
+    expect(fields.some((field) => field.prop === 'classStatus')).toBe(false)
+    Object.assign(search.props('modelValue'), { keyword: 'PET', categoryId: 29 })
+    search.vm.$emit('search')
+    await flushPromises()
+    expect(requests.at(-1)).toMatchObject({ keyword: 'PET', categoryId: 29 })
+    expect(requests.at(-1)).not.toHaveProperty('classStatus')
     search.vm.$emit('reset')
     await flushPromises()
-    expect(requests.at(-1)?.classStatus).toBe('')
+    expect(requests.at(-1)).not.toHaveProperty('classStatus')
+    expect(requests.at(-1)?.keyword).toBe('')
+    expect(requests.at(-1)?.categoryId).toBeUndefined()
     expect(requests.at(-1)).not.toHaveProperty('masterDataOnly')
   })
 

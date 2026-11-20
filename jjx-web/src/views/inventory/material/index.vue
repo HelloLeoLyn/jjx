@@ -52,15 +52,6 @@
     >
       <template #batch-actions>
         <el-button
-          type="primary"
-          size="small"
-          v-hasPermi="['inventory:material:edit']"
-          :disabled="!ids.length"
-          @click="openBatchClassify"
-        >
-          批量定分类
-        </el-button>
-        <el-button
           type="danger"
           size="small"
           v-hasPermi="['inventory:material:delete']"
@@ -76,7 +67,6 @@
       <el-table
         v-loading="loading"
         :data="materialList"
-        :row-class-name="classRowName"
         @selection-change="handleSelectionChange"
         border
       >
@@ -156,7 +146,7 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="320" fixed="right">
+        <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
             <el-button
               link
@@ -178,14 +168,6 @@
               v-hasPermi="['inventory:material:edit']"
               @click="handleRegenerate(row)"
               >按规则生成</el-button
-            >
-            <el-button
-              v-if="resolveClassStatus(row) === 'rule_unconfirmed'"
-              link
-              type="warning"
-              v-hasPermi="['inventory:material:edit']"
-              @click="confirmClass(row)"
-              >确认归类</el-button
             >
             <el-button
               link
@@ -217,13 +199,6 @@
       :material-id="regenerateMaterialId"
       @success="getList"
     />
-    <MaterialClassifyDialog
-      v-model="classifyVisible"
-      :material-ids="classifyIds"
-      :names="classifyNames"
-      @success="getList"
-    />
-    <MaterialClassifyRuleDrawer v-model="rulesVisible" />
 
     <!-- 物料表单对话框 -->
     <MaterialFormDialog
@@ -234,7 +209,6 @@
     />
 
     <MaterialMasterImportDialog v-model="importDialogVisible" @success="getList" />
-    <MaterialMasterSettingsDialog v-model="settingsVisible" @success="loadCategoryOptions" />
   </div>
 </template>
 
@@ -255,12 +229,7 @@ import SupplierSelector from '@/components/Selector/SupplierSelector.vue'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import MaterialDetailDialog from '@/components/inventory/MaterialDetailDialog.vue'
 import MaterialRegenerateDialog from '@/components/inventory/MaterialRegenerateDialog.vue'
-import MaterialClassifyDialog from '@/components/inventory/MaterialClassifyDialog.vue'
-import MaterialClassifyRuleDrawer from '@/components/inventory/MaterialClassifyRuleDrawer.vue'
-import { materialClassifyApi } from '@/api/inventory/classify'
-import { MaterialClassStatusEnum, resolveClassStatus } from '@/enums/inventory/MaterialClassEnum'
 import MaterialMasterImportDialog from '@/components/inventory/MaterialMasterImportDialog.vue'
-import MaterialMasterSettingsDialog from '@/components/inventory/MaterialMasterSettingsDialog.vue'
 import { materialMasterApi } from '@/api/inventory/materialMaster'
 import { downloadMaterialBlob, readMeasurementPolicy } from '@/components/inventory/materialMasterModel'
 import { CommonStatusEnum } from '@/enums/common/StatusEnum'
@@ -306,7 +275,6 @@ const queryParams = reactive<InventoryMaterialQueryParams>({
   materialForm: '',
   tagIds: [],
   tagMatchMode: 'AND',
-  classStatus: '',
   supplierId: undefined,
   categoryId: undefined,
   attributeFilters: '',
@@ -356,13 +324,8 @@ const detailVisible = ref(false)
 const detailMaterialId = ref<number | null>(null)
 const regenerateVisible = ref(false)
 const regenerateMaterialId = ref<number | null>(null)
-const classifyVisible = ref(false)
-const classifyIds = ref<number[]>([])
-const classifyNames = ref<string[]>([])
-const rulesVisible = ref(false)
 // 生成规格默认隐藏（dev-20261028-013），需要时勾选显示
 const showGeneratedSpec = ref(false)
-const settingsVisible = ref(false)
 
 // 按末级品类生成模板并做整表预检。
 const importDialogVisible = ref(false)
@@ -618,7 +581,6 @@ const handleReset = () => {
   queryParams.materialMeta = ''
   queryParams.materialForm = ''
   queryParams.status = ''
-  queryParams.classStatus = ''
   queryParams.supplierId = undefined
   queryParams.categoryId = undefined
   queryParams.materialGrade = ''
@@ -666,38 +628,6 @@ const handleFormSuccess = () => {
   getList()
 }
 
-// 归类三态行高亮：未归类标黄提示，但不禁用编辑（dev-20261024-004 阶段三）
-const classRowName = ({ row }: { row: InventoryMaterial }) =>
-  resolveClassStatus(row) === 'unclassified' ? 'row-unclassified' : ''
-
-// 批量定分类（单次上限 200 条，超限前端先拦）
-const openBatchClassify = () => {
-  if (!ids.value.length) {
-    ElMessage.warning('请先勾选物料')
-    return
-  }
-  if (ids.value.length > 200) {
-    ElMessage.warning(`单次最多 200 条，当前已选 ${ids.value.length} 条`)
-    return
-  }
-  classifyIds.value = ids.value.map(Number)
-  classifyNames.value = materialList.value
-    .filter((row) => ids.value.includes(String(row.materialId)))
-    .map((row) => row.materialName)
-  classifyVisible.value = true
-}
-
-// 单条确认归类（仅规则命中未确认的行）
-const confirmClass = async (row: InventoryMaterial) => {
-  try {
-    await materialClassifyApi.confirm(row.materialId)
-    ElMessage.success('已确认归类')
-    getList()
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '确认归类失败')
-  }
-}
-
 // 复制新增：打开新增弹窗并带入原物料档案（不做后端复制）
 const handleCopy = (row: any) => {
   editingMaterialId.value = null
@@ -739,12 +669,6 @@ const handleToolbarClick = (key: string) => {
   if (key === 'add') handleAdd()
   if (key === 'import') importDialogVisible.value = true
   if (key === 'export') handleExport()
-  if (key === 'master-settings') settingsVisible.value = true
-  if (key === 'migration-export')
-    materialMasterApi
-      .exportMigrationCandidates()
-      .then((blob) => downloadMaterialBlob(blob, '待归类物料.xlsx'))
-  if (key === 'classify-rules') rulesVisible.value = true
   if (key === 'print-label') {
     if (!ids.value.length) {
       ElMessage.warning('请先选择要打印的物料')
@@ -790,9 +714,5 @@ onMounted(async () => {
 }
 .table-options {
   margin: 8px 0;
-}
-
-:deep(.el-table .row-unclassified) {
-  background: #fdf6ec;
 }
 </style>
