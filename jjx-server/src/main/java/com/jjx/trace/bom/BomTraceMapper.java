@@ -6,7 +6,7 @@ import java.util.List;
 public interface BomTraceMapper {
     String VERSION="SELECT b.bom_id,b.bom_code,b.bom_version version,COALESCE(NULLIF(b.output_type,''),'PRODUCT') output_type,"
         +"COALESCE(b.output_id,b.product_id) output_id,b.parent_bom_id,b.create_time,"
-        +"COALESCE((SELECT NULLIF(u.nick_name,'') FROM sys_user u WHERE u.user_name=b.create_by OR CAST(u.user_id AS CHAR)=b.create_by LIMIT 1),b.create_by) creator_name FROM engineering_bom b ";
+        +"COALESCE((SELECT NULLIF(u.nick_name,'') FROM sys_user u WHERE u.user_name=b.create_by OR CAST(u.user_id AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci=b.create_by LIMIT 1),b.create_by) creator_name FROM engineering_bom b ";
     @Select(VERSION+"WHERE b.bom_id=#{id}")
     BomTraceVersion anchor(@Param("id") Long id);
     @Select(VERSION+"WHERE COALESCE(NULLIF(b.output_type,''),'PRODUCT')=#{outputType} AND COALESCE(b.output_id,b.product_id)=#{outputId} ORDER BY b.create_time,b.bom_id")
