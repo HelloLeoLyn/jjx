@@ -82,7 +82,7 @@
     >
     <el-table-column label="检测项目" width="125"
       ><template #default="{ row }"
-        ><el-button link type="primary" @click="emit('edit', row)"
+        ><el-button link type="primary" @click="openInspectionEntry(row)"
           >检测项目{{ progress(row) }}/{{ row.inspectionItems.length }}</el-button
         >
       </template></el-table-column
@@ -183,7 +183,8 @@ const materialActions: TableAction<any>[] = [
     key: 'lot-entry',
     label: '去检验批录入',
     order: 4,
-    visible: ({ row }) => !!row.lotId,
+    // dev-20261117-027：可录入的行由「检验录入」直接跳台账，这里只保留给不可编辑但有 lotId 的行
+    visible: ({ row }) => !!row.lotId && pendingActionKey(row) !== 'edit',
   },
   {
     key: 'review',
@@ -220,8 +221,18 @@ function handleMaterialAction(key: string, row: any) {
     return
   }
   if (pendingActionKey(row) !== key) return
-  if (key === 'edit') return emit('edit', row)
+  if (key === 'edit') return openInspectionEntry(row)
   emit('review')
+}
+
+/**
+ * 检验录入统一入口（dev-20261117-027）：
+ * 有检验批的行跳转台账录入/判定，关闭工作台直接弹窗写入；
+ * 无 lotId 的历史行保留原录入弹窗作为兜底（反例要求：不得失去可用入口）。
+ */
+function openInspectionEntry(row: any) {
+  if (row?.lotId) return emit('open-lot', row)
+  return emit('edit', row)
 }
 </script>
 
