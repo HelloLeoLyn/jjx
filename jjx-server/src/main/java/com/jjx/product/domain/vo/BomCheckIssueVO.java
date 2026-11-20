@@ -9,6 +9,12 @@ import lombok.Data;
 @Data
 public class BomCheckIssueVO {
 
+    /** 整套问题定位：问题所属BOM及版本。 */
+    private Long bomId;
+    private String bomCode;
+    private String bomVersion;
+    private String specification;
+
     /** 明细ID（问题所在行；主表级问题为 null） */
     private Long itemId;
 

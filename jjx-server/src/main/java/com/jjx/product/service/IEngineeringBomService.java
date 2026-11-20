@@ -208,6 +208,9 @@ public interface IEngineeringBomService extends IService<EngineeringBom> {
      */
     List<com.jjx.product.domain.vo.BomCheckIssueVO> checkBomForSubmit(Long bomId);
 
+    /** 列表待处理明细：与整套预检问题数量同源，包含实际下层BOM的问题。 */
+    List<com.jjx.product.domain.vo.BomCheckIssueVO> getPackageIssues(Long bomId);
+
     /**
      * BOM 批准前体检（只读）：行全部审核通过、待移除行已确认、物料已关联。
      * dev-20261020-029

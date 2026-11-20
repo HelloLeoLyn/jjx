@@ -42,6 +42,10 @@ export const productBomApi = {
   getProductBomPage(params: EngineeringBomQueryParams) {
     return request.get<R<PageResult<ProductBomRow>>>('/engineering/bom/product-page', { params })
   },
+  /** 列表待处理明细，与问题计数同源，包含实际引用的下层BOM。 */
+  getPackageIssues(bomId: number) {
+    return request.get<R<BomCheckIssue[]>>(`/engineering/bom/${bomId}/package-issues`)
+  },
   /** 整套范围预览：只读展示每个产品实际引用的方案版本/状态/明细/问题。 */
   planReviewPackages(action: 'SUBMIT' | 'APPROVE' | 'REJECT', rootBomIds: number[]) {
     return request.post<R<BomReviewPackage[]>>('/engineering/bom/review/package/plan', rootBomIds, {

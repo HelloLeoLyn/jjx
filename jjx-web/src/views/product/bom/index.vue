@@ -95,12 +95,13 @@
           align="center"
         >
           <template #default="{ row }">
-            <el-tag v-if="row.issueCount == null || row.issueCount < 0" type="warning" size="small"
-              >待核查</el-tag
-            >
-            <el-tag v-else-if="row.issueCount > 0" type="danger" size="small">
-              {{ row.issueCount }} 项待处理
-            </el-tag>
+            <el-button
+              v-if="row.issueCount == null || row.issueCount < 0 || row.issueCount > 0"
+              link
+              :type="row.issueCount > 0 ? 'danger' : 'warning'"
+              :disabled="!row.latestId"
+              @click="openPendingIssues(row)"
+            >{{ row.issueCount > 0 ? row.issueCount + ' 项待处理' : '待核查' }}</el-button>
             <span v-else class="secondary-line">—</span>
           </template>
         </el-table-column>
@@ -124,6 +125,37 @@
         @pagination="loadData"
       />
     </el-card>
+
+    <el-dialog v-model="pendingVisible" :title="pendingTitle" width="min(1250px, calc(100vw - 32px))" append-to-body>
+      <el-skeleton v-if="pendingLoading" :rows="5" animated />
+      <el-alert v-else-if="pendingError" :title="pendingError" type="error" :closable="false" />
+      <template v-else-if="pendingIssues.length">
+        <p class="secondary-line">共 {{ pendingIssues.length }} 项。以下包含最新维护版本及其实际引用的下层BOM问题；请按处理建议修改对应BOM，保存后重新查看。</p>
+        <el-table :data="pendingIssues" border size="small">
+          <el-table-column label="所属BOM / 版本" min-width="180">
+            <template #default="{ row }">
+              <el-link v-if="row.bomId" type="primary" @click="openVersionDetail(row.bomId)">{{ row.bomCode || '查看BOM' }} {{ row.bomVersion }}</el-link>
+            </template>
+          </el-table-column>
+          <el-table-column label="物料" min-width="180">
+            <template #default="{ row }">
+              <div>{{ row.materialName || (row.itemId ? '未填写物料名称' : '整单问题') }}</div>
+              <div v-if="row.materialCode" class="secondary-line">{{ row.materialCode }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column label="规格" prop="specification" min-width="130" />
+          <el-table-column label="问题原因" prop="message" min-width="240" />
+          <el-table-column label="处理建议" min-width="260">
+            <template #default="{ row }">{{ issueGuidance(row) }}</template>
+          </el-table-column>
+        </el-table>
+      </template>
+      <el-empty v-else description="当前已无待处理问题" />
+      <template #footer>
+        <el-button :loading="pendingLoading" @click="pendingTarget && openPendingIssues(pendingTarget)">重新查看</el-button>
+        <el-button type="primary" @click="pendingVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
 
     <VersionMaintenanceDialog
       v-model="versionsVisible"
@@ -169,7 +201,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed, watch } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '@/utils/request'
@@ -185,7 +217,7 @@ import BomDetail from './components/BomDetail.vue'
 import BomApproveDialog from './components/BomApproveDialog.vue'
 import BomReviewScope from './components/BomReviewScope.vue'
 import type { ReviewAction } from './components/BomReviewScope.vue'
-import type { EngineeringBom, ProductBomRow, BomReviewBatchResult } from '@/types/product/bom'
+import type { EngineeringBom, ProductBomRow, BomReviewBatchResult, BomCheckIssue } from '@/types/product/bom'
 
 type Version = EngineeringBom & { canSetCurrent: boolean; approveBy?: string; approveTime?: string }
 type DomainTab = 'PRODUCT' | 'MATERIAL'
@@ -275,6 +307,57 @@ const exportList = async () => {
   link.click()
   URL.revokeObjectURL(url)
 }
+const pendingVisible = ref(false)
+const pendingLoading = ref(false)
+const pendingTitle = ref('待处理明细')
+const pendingError = ref('')
+const pendingIssues = ref<BomCheckIssue[]>([])
+const pendingTarget = ref<ProductBomRow>()
+let pendingRequest = 0
+const openPendingIssues = async (row: ProductBomRow) => {
+  if (!row.latestId) return
+  const requestId = ++pendingRequest
+  pendingTarget.value = row
+  pendingTitle.value = `${row.productCode || row.productName || 'BOM'} ${row.latestVersion || ''} · 待处理明细`
+  pendingIssues.value = []
+  pendingError.value = ''
+  pendingVisible.value = true
+  pendingLoading.value = true
+  try {
+    const response = await productBomApi.getPackageIssues(row.latestId)
+    if (requestId !== pendingRequest) return
+    if (!Array.isArray(response.data)) throw new Error('问题明细返回异常，请重新查看')
+    pendingIssues.value = response.data
+    row.issueCount = response.data.length
+  } catch (error: any) {
+    if (requestId === pendingRequest) pendingError.value = error?.message || '问题明细读取失败，请重新查看'
+  } finally {
+    if (requestId === pendingRequest) pendingLoading.value = false
+  }
+}
+const issueGuidance = (issue: BomCheckIssue) => {
+  switch (issue.field) {
+    case 'processId': return '在对应BOM中重新选择有效标准工序；若该行属于公共物料，清空项目。正/反面等说明可填写在备注中。'
+    case 'materialId': return '在对应BOM中关联有效物料档案，需要时先新建物料。'
+    case 'materialName': return '在对应BOM中补充材料名称。'
+    case 'quantity':
+    case 'moduleQty':
+    case 'baseQty': return '核对该行用量、模数和基数，按实际用料修正。'
+    case 'unit': return '为该行选择正确的计量单位。'
+    case 'unitFactor': return '核对BOM与物料档案单位，跨单位时补充换算系数及依据。'
+    case 'parentMaterialId':
+    case 'subBomId': return '查看对应BOM，核对父子关系及引用的下层BOM版本，按问题原因修正。'
+    default: return '查看对应BOM，按问题原因修正，保存后重新查看。'
+  }
+}
+watch(pendingVisible, (visible) => {
+  if (!visible) {
+    pendingRequest++
+    pendingLoading.value = false
+  }
+})
+onBeforeUnmount(() => { pendingRequest++ })
+
 const selected = ref<ProductBomRow>()
 const versions = ref<Version[]>([])
 const versionsVisible = ref(false)

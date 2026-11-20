@@ -237,6 +237,10 @@ export interface BomItemReviewRequest {
 }
 
 export interface BomCheckIssue {
+  bomId?: number
+  bomCode?: string
+  bomVersion?: string
+  specification?: string
   /** 明细ID（问题所在行；主表级问题为空） */
   itemId?: number
   materialCode?: string

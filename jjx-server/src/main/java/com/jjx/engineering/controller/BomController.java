@@ -318,6 +318,13 @@ public class BomController extends BaseController {
         return Result.success(productBomService.checkBomForSubmit(bomId));
     }
 
+    /** BOM列表待处理明细，与列表整套预检计数使用同一来源。 */
+    @GetMapping("/{bomId}/package-issues")
+    @SaCheckPermission("engineering:bom:view")
+    public Result<List<com.jjx.product.domain.vo.BomCheckIssueVO>> packageIssues(@PathVariable Long bomId) {
+        return Result.success(productBomService.getPackageIssues(bomId));
+    }
+
     /**
      * BOM 批准前体检（只读）：行状态/待移除确认/物料关联（dev-20261020-029）。
      */

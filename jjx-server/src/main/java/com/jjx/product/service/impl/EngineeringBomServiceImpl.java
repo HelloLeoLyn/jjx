@@ -1752,15 +1752,46 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
 
     /** 产品列表问题数：按整套送审预检汇总（含实际下层递归），只读。 */
     private int countPackageIssues(Long rootBomId) {
+        return getPackageIssues(rootBomId).size();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<com.jjx.product.domain.vo.BomCheckIssueVO> getPackageIssues(Long rootBomId) {
         PackageScan scan = collectPackage(rootBomId, false);
-        int count = scan.errors.size();
+        // 与列表一致：已批准版本不重复提示审核问题。
+        if (scan.root != null && Objects.equals(scan.root.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())) {
+            return java.util.List.of();
+        }
+        var result = new java.util.ArrayList<com.jjx.product.domain.vo.BomCheckIssueVO>();
+        for (String message : scan.errors) {
+            var problem = issue(null, null, null, "subBomId", message);
+            problem.setBomId(rootBomId);
+            if (scan.root != null) {
+                problem.setBomCode(scan.root.getBomCode());
+                problem.setBomVersion(scan.root.getBomVersion());
+            }
+            result.add(problem);
+        }
         if (!scan.nodes.isEmpty()) {
             PackageContext ctx = new PackageContext(scan.nodes.keySet(), true, false);
             for (EngineeringBom bom : scan.nodes.values()) {
-                count += checkBom(bom.getBomId(), false, ctx).size();
+                var items = new java.util.HashMap<Long, EngineeringBomItem>();
+                var sourceItems = scan.items.get(bom.getBomId());
+                if (sourceItems != null) {
+                    for (EngineeringBomItem item : sourceItems) items.put(item.getItemId(), item);
+                }
+                for (var problem : checkBom(bom.getBomId(), false, ctx)) {
+                    problem.setBomId(bom.getBomId());
+                    problem.setBomCode(bom.getBomCode());
+                    problem.setBomVersion(bom.getBomVersion());
+                    var item = items.get(problem.getItemId());
+                    if (item != null) problem.setSpecification(item.getSpecification());
+                    result.add(problem);
+                }
             }
         }
-        return count;
+        return result;
     }
 
     private static final class PackageScan {
