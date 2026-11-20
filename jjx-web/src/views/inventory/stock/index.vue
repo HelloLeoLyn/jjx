@@ -163,7 +163,7 @@
               type="primary"
               @click="handleViewTransactions(row)"
             >收发明细</el-button>
-            <el-button link type="primary" @click="handleAdjust(row)">调整</el-button>
+            <el-button v-if="canAdjust" link type="primary" @click="handleAdjust(row)">调整</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -187,6 +187,8 @@
 
     <MaterialDetailDialog v-if="materialDetailVisible" v-model="materialDetailVisible" :material-id="archiveId" allow-edit @changed="handleRefresh" />
     <ProductDetailDialog v-if="productDetailVisible" v-model="productDetailVisible" :product-id="archiveId ?? undefined" />
+    <QuickStocktakeDialog v-if="adjustVisible" v-model="adjustVisible" :inventory-item-id="adjustInventoryItemId"
+      :material-name="adjustMaterialName" :warehouse-id="appliedQuery.warehouseId" :location-id="appliedQuery.locationId" @changed="handleRefresh" />
     <!-- 批次库存对话框 -->
     <InventoryMigrationDialog v-model="migrationVisible" @changed="handleRefresh" />
     <StockDetailDialog
@@ -227,6 +229,7 @@ import MaterialDetailDialog from '@/components/inventory/MaterialDetailDialog.vu
 import ProductDetailDialog from '@/views/product/list/components/ProductDetailDialog.vue'
 import { usePermission } from '@/composables/usePermission'
 import StockSearchForm from './StockSearchForm.vue'
+import QuickStocktakeDialog from '@/components/inventory/QuickStocktakeDialog.vue'
 import { stockSearchPayload, type StockSearchModel } from './stockSearch'
 
 const migrationVisible = ref(false)
@@ -234,6 +237,10 @@ const materialDetailVisible = ref(false)
 const productDetailVisible = ref(false)
 const archiveId = ref<number | null>(null)
 const { hasPermission, hasAnyPermission } = usePermission()
+const canAdjust = computed(() => hasPermission('inventory:stocktake:view') && hasAnyPermission(['inventory:stocktake:add', 'inventory:stocktake:approve']))
+const adjustVisible = ref(false)
+const adjustInventoryItemId = ref('')
+const adjustMaterialName = ref('')
 const canViewArchive = (row: StockVO) => row.itemType === InventoryItemTypeEnum.MATERIAL.value
   ? hasAnyPermission(['inventory:material:view', 'engineering:bom:add', 'engineering:bom:edit'])
   : row.itemType === InventoryItemTypeEnum.PRODUCT.value && hasPermission('product:list:view')
@@ -389,7 +396,10 @@ const handleViewTransactions = (row: StockVO) => {
 
 // 库存调整
 const handleAdjust = (row: StockVO) => {
-  ElMessage.info(`调整库存: ${row.materialName}`)
+  if (!canAdjust.value || !row.inventoryItemId) return
+  adjustInventoryItemId.value = row.inventoryItemId
+  adjustMaterialName.value = row.materialName
+  adjustVisible.value = true
 }
 
 // 获取剩余天数标签类型

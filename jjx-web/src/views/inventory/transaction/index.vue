@@ -304,6 +304,7 @@ onMounted(() => {
   queryParams.materialName =
     typeof route.query.materialName === 'string' ? route.query.materialName : ''
   queryParams.batchNo = typeof route.query.batchNo === 'string' ? route.query.batchNo : ''
+  queryParams.sourceNo = typeof route.query.sourceNo === 'string' ? route.query.sourceNo : ''
   void loadWarehouses()
   void load()
 })

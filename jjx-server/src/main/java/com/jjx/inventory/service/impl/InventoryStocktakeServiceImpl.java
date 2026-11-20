@@ -67,6 +67,11 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
         com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
     }
 
+    private static void rejectQuickStocktake(InventoryStocktakeOrder order) {
+        if(order!=null && order.getRemark()!=null && order.getRemark().startsWith("QST:"))
+            throw new BusinessException("快捷盘点请从即时库存的调整记录确认过账，不能走普通盘点修改流程");
+    }
+
     @Override
     public IPage<StocktakeVO> page(StocktakeQueryDTO query) {
         LambdaQueryWrapper<InventoryStocktakeOrder> wrapper = new LambdaQueryWrapper<>();
@@ -306,6 +311,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     @Transactional(rollbackFor = Exception.class)
     public boolean startStocktake(Long stocktakeId) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
+        rejectQuickStocktake(order);
         if (order == null) {
             log.error("盘点单不存在: stocktakeId={}", stocktakeId);
             return false;
@@ -329,6 +335,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     @Transactional(rollbackFor = Exception.class)
     public boolean inputStocktakeData(Long stocktakeId, List<Map<String, Object>> items) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
+        rejectQuickStocktake(order);
         if (order == null) {
             log.error("盘点单不存在: stocktakeId={}", stocktakeId);
             return false;
@@ -392,6 +399,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     @Override
     public Map<String, Object> calculateDiff(Long stocktakeId) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
+        rejectQuickStocktake(order);
         if (order == null) {
             log.error("盘点单不存在: stocktakeId={}", stocktakeId);
             return Map.of("success", false, "message", "盘点单不存在");
@@ -490,6 +498,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     @Transactional(rollbackFor = Exception.class)
     public boolean confirmResult(Long stocktakeId) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
+        rejectQuickStocktake(order);
         if (order == null) {
             log.error("盘点单不存在: stocktakeId={}", stocktakeId);
             return false;
@@ -513,6 +522,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     @Transactional(rollbackFor = Exception.class)
     public boolean processDiff(Long stocktakeId, Long operatorId, String operatorName) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
+        rejectQuickStocktake(order);
         if (order == null) {
             log.error("盘点单不存在: stocktakeId={}", stocktakeId);
             return false;
@@ -689,6 +699,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     @Transactional(rollbackFor = Exception.class)
     public boolean closeStocktake(Long stocktakeId) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
+        rejectQuickStocktake(order);
         if (order == null) {
             log.error("盘点单不存在: stocktakeId={}", stocktakeId);
             return false;
@@ -710,6 +721,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     @Override
     public boolean submitApprove(Long stocktakeId) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
+        rejectQuickStocktake(order);
         if (order == null) {
             log.error("盘点单不存在: stocktakeId={}", stocktakeId);
             return false;
@@ -726,6 +738,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     @Override
     public boolean approve(Long stocktakeId, Long approverId, String approverName, String remark) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
+        rejectQuickStocktake(order);
         if (order == null) {
             log.error("盘点单不存在: stocktakeId={}", stocktakeId);
             return false;
@@ -770,6 +783,7 @@ public class InventoryStocktakeServiceImpl extends ServiceImpl<InventoryStocktak
     @Override
     public boolean updateStatus(Long stocktakeId, Integer status) {
         InventoryStocktakeOrder order = stocktakeOrderMapper.selectById(stocktakeId);
+        rejectQuickStocktake(order);
         if (order == null) {
             log.error("盘点单不存在: stocktakeId={}", stocktakeId);
             return false;

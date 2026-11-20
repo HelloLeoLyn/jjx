@@ -3,6 +3,7 @@ import { shallowMount, flushPromises } from '@vue/test-utils'
 import Page from '../index.vue'
 const mocks = vi.hoisted(() => ({ list: vi.fn(), summary: vi.fn(), alerts: vi.fn(), push: vi.fn(), warning: vi.fn(), allowed: new Set<string>() }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: mocks.push }) }))
+vi.mock('@/components/inventory/QuickStocktakeDialog.vue', () => ({ default: { name: 'QuickStocktakeDialog', props: ['modelValue', 'inventoryItemId', 'materialName', 'warehouseId', 'locationId'], template: '<div />' } }))
 vi.mock('../StockSearchForm.vue', () => ({ default: { name: 'StockSearchForm', props: ['modelValue'], emits: ['search', 'reset'], template: '<div />' } }))
 vi.mock('@/api/inventory/stock', () => ({ stockApi: { list: mocks.list, summary: mocks.summary, getAlertInfo: mocks.alerts } }))
 vi.mock('@/composables/usePermission', () => ({ usePermission: () => ({ hasPermission: (p: string) => mocks.allowed.has(p), hasAnyPermission: (ps: string[]) => ps.some(p => mocks.allowed.has(p)) }) }))
@@ -68,5 +69,18 @@ describe('即时库存搜索与分页', () => {
     await vm.getList(); resolveOld({ data: { records: [{ stockId: 'old' }], total: 10 } }); await old
     expect(vm.stockList).toEqual([{ stockId: 'new' }]); expect(vm.total).toBe(25)
     w.unmount()
+  })
+})
+
+describe('即时库存调整入口', () => {
+  it('按盘点权限打开快捷盘点并传库存物品身份，不传材料档案或库存汇总ID', async () => {
+    const w = mounted(); await flushPromises(); const vm = w.vm as any
+    vm.handleAdjust(row); expect(vm.adjustVisible).toBe(false)
+    mocks.allowed.add('inventory:stocktake:view'); mocks.allowed.add('inventory:stocktake:add')
+    // 权限在真实应用登录时固定；重新挂载模拟有盘点权限的用户。
+    w.unmount(); const allowed = mounted(); await flushPromises(); const avm = allowed.vm as any
+    avm.handleAdjust({ ...row, materialName: '测试材料' }); await flushPromises()
+    expect(allowed.findComponent({ name: 'QuickStocktakeDialog' }).props('inventoryItemId')).toBe('3266')
+    allowed.unmount()
   })
 })

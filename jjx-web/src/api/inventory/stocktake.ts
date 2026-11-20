@@ -128,3 +128,39 @@ export const stocktakeApi = {
     })
   },
 }
+
+export interface QuickStocktakeBatch {
+  stock: import('@/types/inventory/stock').StockItemVO
+  unit: string
+  warehouseName: string
+  locationName: string
+  fingerprint: string
+}
+export interface QuickStocktakeReceipt {
+  stocktakeId: string
+  stocktakeNo: string
+  orderStatus: number
+  inventoryItemId: string
+  stockItemId: string
+  systemQuantity: number
+  actualQuantity: number
+  diffQuantity: number
+  unit: string
+  reason: string
+}
+export const quickStocktakeApi = {
+  preview(data: { inventoryItemId: string; stockItemId: string; fingerprint: string; actualQuantity: number }) {
+    return request.post<R<{ diffQuantity: number; unit: string }>>('/inventory/stocktake/quick/preview', data)
+  },
+  batches(params: { inventoryItemId: string; pageNum: number; pageSize: number; warehouseId?: string | number; locationId?: string | number }) {
+    return request.get<R<PageResult<QuickStocktakeBatch>>>('/inventory/stocktake/quick/batches', { params })
+  },
+  records(params: { inventoryItemId: string; pageNum: number; pageSize: number }) {
+    return request.get<R<PageResult<QuickStocktakeReceipt>>>('/inventory/stocktake/quick/records', { params })
+  },
+  save(data: { requestId: string; inventoryItemId: string; stockItemId: string; fingerprint: string; actualQuantity: number; reason: string }) {
+    return request.post<R<QuickStocktakeReceipt>>('/inventory/stocktake/quick', data)
+  },
+  cancel(id: string) { return request.post<R<QuickStocktakeReceipt>>(`/inventory/stocktake/quick/${id}/cancel`) },
+  confirm(id: string) { return request.post<R<QuickStocktakeReceipt>>(`/inventory/stocktake/quick/${id}/confirm`) },
+}

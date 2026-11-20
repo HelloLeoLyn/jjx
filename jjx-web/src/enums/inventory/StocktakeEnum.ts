@@ -1,5 +1,5 @@
 // src/enums/inventory/StocktakeEnum.ts
-import { createEnum } from '../base'
+import { createEnum, createNamedEnum } from '../base'
 import { ApproveStatusEnum } from './InboundEnum'
 
 /**
@@ -48,3 +48,10 @@ export const StocktakeEnum = {
   approveStatus: ApproveStatusEnum,
   adjustStatus: AdjustStatusEnum,
 }
+
+/** 快捷盘点复用后端InventoryOrderStatusEnum数值，不影响普通盘点旧枚举。 */
+export const QuickStocktakeStatusEnum = createNamedEnum({
+  CONFIRMED: { value: 5, label: '待确认过账', tagProps: { type: 'warning' } },
+  CANCELLED: { value: 9, label: '已作废', tagProps: { type: 'info' } },
+  PROCESSED: { value: 11, label: '已生效', tagProps: { type: 'success' } },
+}, { type: 'info' })
