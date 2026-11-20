@@ -16,6 +16,9 @@ import java.util.Map;
  */
 public interface InventoryMaterialService extends IService<InventoryMaterial> {
 
+    /** 库存联查复用档案检索规则；仅返回带参数的条件，不拉取全量物料。 */
+    com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<InventoryMaterial> inventorySearchFilter(MaterialQueryDTO query);
+
     List<com.jjx.inventory.dto.vo.MaterialCategoryOptionVO> getCategoryOptions();
 
     /**

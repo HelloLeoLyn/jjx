@@ -3,6 +3,7 @@ import { shallowMount, flushPromises } from '@vue/test-utils'
 import Page from '../index.vue'
 const mocks = vi.hoisted(() => ({ list: vi.fn(), summary: vi.fn(), alerts: vi.fn(), push: vi.fn(), warning: vi.fn(), allowed: new Set<string>() }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: mocks.push }) }))
+vi.mock('../StockSearchForm.vue', () => ({ default: { name: 'StockSearchForm', props: ['modelValue'], emits: ['search', 'reset'], template: '<div />' } }))
 vi.mock('@/api/inventory/stock', () => ({ stockApi: { list: mocks.list, summary: mocks.summary, getAlertInfo: mocks.alerts } }))
 vi.mock('@/composables/usePermission', () => ({ usePermission: () => ({ hasPermission: (p: string) => mocks.allowed.has(p), hasAnyPermission: (ps: string[]) => ps.some(p => mocks.allowed.has(p)) }) }))
 vi.mock('element-plus', async original => ({ ...await original<typeof import('element-plus')>(), ElMessage: { warning: mocks.warning, error: vi.fn(), success: vi.fn() } }))
@@ -37,11 +38,35 @@ describe('即时库存编码联查档案', () => {
   })
   it('编辑成功刷新数据，关闭/刷新保留筛选、页码和每页条数', async () => {
     const w = mounted(); await flushPromises(); const vm = w.vm as any
-    Object.assign(vm.queryParams, { current: 3, pageSize: 20, materialCode: 'RM000354' })
+    Object.assign(vm.queryParams, { pageNum: 1, pageSize: 20, keyword: 'RM000354' })
+    vm.handleQuery(); await flushPromises(); vm.queryParams.pageNum = 3
     const before = { ...vm.queryParams }
     vm.handleViewArchive(row); await flushPromises()
     w.findComponent({ name: 'MaterialDetailDialog' }).vm.$emit('changed'); await flushPromises()
-    expect(mocks.list).toHaveBeenLastCalledWith(before); expect(vm.queryParams).toEqual(before)
+    expect(mocks.list).toHaveBeenLastCalledWith(expect.objectContaining(before)); expect(vm.queryParams).toEqual(before)
     vm.materialDetailVisible = false; await flushPromises(); expect(vm.queryParams).toEqual(before); w.unmount()
+  })
+})
+
+describe('即时库存搜索与分页', () => {
+  it('第二页传pageNum并保留已应用条件，未搜索的表单改动不混入翻页', async () => {
+    const w = mounted(); await flushPromises(); const vm = w.vm as any
+    Object.assign(vm.queryParams, { keyword: '离型纸 120g', warehouseId: 1, parentCategoryId: 18 })
+    vm.handleQuery(); await flushPromises(); vm.queryParams.pageNum = 2; vm.queryParams.keyword = '尚未搜索'
+    await vm.getList()
+    expect(mocks.list).toHaveBeenLastCalledWith(expect.objectContaining({ pageNum: 2, keyword: '离型纸 120g', warehouseId: 1, categoryId: 18 }))
+    expect(mocks.list.mock.calls.at(-1)?.[0]).not.toHaveProperty('current')
+    expect(mocks.summary).toHaveBeenLastCalledWith(expect.objectContaining({ keyword: '离型纸 120g', warehouseId: 1, categoryId: 18 }))
+    w.unmount()
+  })
+  it('较早查询迟到时不能覆盖新页结果', async () => {
+    const w = mounted(); await flushPromises(); const vm = w.vm as any
+    let resolveOld!: (v: unknown) => void
+    mocks.list.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
+    const old = vm.getList(); vm.queryParams.pageNum = 2
+    mocks.list.mockResolvedValueOnce({ data: { records: [{ stockId: 'new' }], total: 25 } })
+    await vm.getList(); resolveOld({ data: { records: [{ stockId: 'old' }], total: 10 } }); await old
+    expect(vm.stockList).toEqual([{ stockId: 'new' }]); expect(vm.total).toBe(25)
+    w.unmount()
   })
 })

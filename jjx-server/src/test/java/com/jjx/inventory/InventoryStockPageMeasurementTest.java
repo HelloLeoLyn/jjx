@@ -22,11 +22,11 @@ class InventoryStockPageMeasurementTest {
         var materials=mock(InventoryMaterialMapper.class);var items=mock(InventoryItemMapper.class);
         var locations=mock(InventoryStorageLocationMapper.class);var converter=mock(StockConverter.class);
         var service=new InventoryStockServiceImpl(summaries,batches,materials,mock(InventoryWarehouseMapper.class),locations,items,converter,mock(InventoryStockMutationService.class));
-        var summary=new InventoryStock();summary.setInventoryItemId(31L);summary.setMaterialId(354L);summary.setTotalQuantity(new BigDecimal("244"));
-        var page=new Page<InventoryStock>(2,1,100);page.setRecords(List.of(summary));
-        when(summaries.selectPage(any(Page.class),any(Wrapper.class))).thenReturn(page);
+        var reader=mock(com.jjx.inventory.service.impl.InventoryStockQueryService.class);
+        service.setQueryService(reader);
         var vo=new StockVO();vo.setInventoryItemId(31L);vo.setMaterialId(354L);vo.setTotalQuantity(new BigDecimal("244"));
-        when(converter.toVO(summary)).thenReturn(vo);
+        var page=new Page<StockVO>(2,1,100);page.setRecords(List.of(vo));
+        when(reader.page(any())).thenReturn(page);
         var item=new InventoryItem();item.setInventoryItemId(31L);item.setItemType("MATERIAL");item.setSourceId(354L);item.setUnit("㎡");
         when(items.selectBatchIds(eq(List.of(31L)))).thenReturn(List.of(item));
         var material=new InventoryMaterial();material.setMaterialId(354L);material.setMaterialForm("FILM");material.setUnit("KG");

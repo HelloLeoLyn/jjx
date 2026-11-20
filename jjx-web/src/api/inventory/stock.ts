@@ -4,6 +4,8 @@ import type { StockQueryParams, StockVO, StockSummaryVO, StockAlertInfo, StockDa
 
 // 库存汇总API
 export const stockApi = {
+  warehouses() { return request.get<R<{ value: number; label: string }[]>>('/inventory/stock/search/warehouses') },
+  locations(warehouseId: number) { return request.get<R<{ value: number; label: string }[]>>('/inventory/stock/search/locations', { params: { warehouseId } }) },
   // 分页查询库存汇总列表
   list(params: StockQueryParams) {
     return request.get<R<PageResult<StockVO>>>('/inventory/stock/list', {

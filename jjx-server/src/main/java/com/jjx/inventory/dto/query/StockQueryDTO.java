@@ -13,6 +13,14 @@ import java.math.BigDecimal;
 @EqualsAndHashCode(callSuper = true)
 public class StockQueryDTO extends PageQuery {
 
+    private String keyword;
+    private Long categoryId;
+    private String materialMeta;
+    private String materialForm;
+    private String color;
+    private String brand;
+    private String attributeFilters;
+
     /** 库存物品类型：MATERIAL/PRODUCT */
     private String itemType;
 

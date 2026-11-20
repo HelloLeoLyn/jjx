@@ -137,6 +137,14 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         return result;
     }
 
+    @Override
+    public LambdaQueryWrapper<InventoryMaterial> inventorySearchFilter(MaterialQueryDTO query) {
+        var filter = buildQueryWrapper(query);
+        filter.getExpression().getOrderBy().clear();
+        filter.setParamAlias("materialFilter");
+        return filter;
+    }
+
     private @NonNull LambdaQueryWrapper<InventoryMaterial> buildQueryWrapper(MaterialQueryDTO queryDTO) {
         LambdaQueryWrapper<InventoryMaterial> wrapper = new LambdaQueryWrapper<>();
         if (queryDTO.getMaterialCode() != null && !queryDTO.getMaterialCode().isEmpty()) {

@@ -1,11 +1,20 @@
 // 库存汇总查询参数
 export interface StockQueryParams {
-  current?: number
+  pageNum?: number
+  keyword?: string
+  categoryId?: number
+  materialMeta?: string
+  materialForm?: string
+  color?: string
+  brand?: string
+  attributeFilters?: string
+  onlyHasStock?: boolean
+  locationId?: string | number
   pageSize?: number
   itemType?: 'MATERIAL' | 'PRODUCT'
   materialCode?: string
   materialName?: string
-  warehouseId?: string
+  warehouseId?: string | number
   minQuantity?: number
   maxQuantity?: number
   lowStock?: boolean
@@ -125,6 +134,7 @@ export interface BatchFlowSummaryVO {
 
 // 库存汇总VO
 export interface StockSummaryVO {
+  lowStockMaterialCount?: number
   missingCostBatches?: number
   quantityByUnit?: Record<string, number>
   totalQuantity: number

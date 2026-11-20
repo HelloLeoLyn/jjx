@@ -1,40 +1,7 @@
 <template>
   <div class="stock-list">
-    <!-- 搜索栏 -->
-    <el-card class="search-card">
-      <el-form :model="queryParams" :inline="true">
-        <el-form-item label="库存类型">
-          <el-select v-model="queryParams.itemType" clearable placeholder="全部" style="width: 120px">
-            <el-option
-              v-for="item in InventoryItemTypeEnum.items"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="物料编码">
-          <el-input
-            v-model="queryParams.materialCode"
-            placeholder="请输入物料编码"
-            clearable
-            @keyup.enter="handleQuery"
-          />
-        </el-form-item>
-        <el-form-item label="物料名称">
-          <el-input
-            v-model="queryParams.materialName"
-            placeholder="请输入物料名称"
-            clearable
-            @keyup.enter="handleQuery"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleQuery">搜索</el-button>
-          <el-button @click="handleReset">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+    <StockSearchForm v-model="queryParams" @search="handleQuery" @reset="handleQuery" />
+    <div class="query-scope">统计范围：{{ appliedQuery.warehouseId ? '所选仓库' : '全部仓库' }}{{ appliedQuery.locationId ? ' / 所选库位' : '' }}；列表与统计均按当前已应用条件计算</div>
 
     <!-- 统计卡片 -->
     <el-row :gutter="16" class="stats-row">
@@ -85,7 +52,7 @@
               <el-icon><Clock /></el-icon>
             </div>
             <div class="stat-info">
-              <div class="stat-value">{{ alertInfo.lowStockCount || 0 }}</div>
+              <div class="stat-value">{{ summaryData.lowStockMaterialCount || 0 }}</div>
               <div class="stat-label">低库存物料</div>
             </div>
           </div>
@@ -124,63 +91,7 @@
         <el-col :span="1.5">
           <el-button v-hasPermi="['inventory:stock:view']" @click="migrationVisible = true">库存迁移数据维护</el-button>
         </el-col>
-        <el-col :span="1.5">
-          <el-button @click="showFilter = !showFilter">
-            <el-icon><Filter /></el-icon>{{ showFilter ? '隐藏筛选' : '更多筛选' }}
-          </el-button>
-        </el-col>
       </el-row>
-
-      <!-- 更多筛选条件 -->
-      <el-collapse-transition>
-        <div v-show="showFilter" class="advanced-filter">
-          <el-divider />
-          <el-form :model="queryParams" :inline="true" label-width="100px">
-            <el-form-item label="数量范围">
-              <el-input-number
-                v-model="queryParams.minQuantity"
-                :min="0"
-                placeholder="最小"
-                style="width: 100px"
-              />
-              <span style="margin: 0 8px">-</span>
-              <el-input-number
-                v-model="queryParams.maxQuantity"
-                :min="0"
-                placeholder="最大"
-                style="width: 100px"
-              />
-            </el-form-item>
-            <el-form-item label="库存状态">
-              <el-select
-                v-model="stockStatusFilter"
-                placeholder="请选择"
-                clearable
-                style="width: 120px"
-                @change="handleStatusFilter"
-              >
-                <el-option label="低库存" value="low" />
-                <el-option label="临期" value="expiring" />
-                <el-option label="呆滞" value="obsolete" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="创建时间">
-              <el-date-picker
-                v-model="dateRange"
-                type="daterange"
-                range-separator="至"
-                start-placeholder="开始日期"
-                end-placeholder="结束日期"
-                value-format="YYYY-MM-DD"
-                style="width: 240px"
-              />
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" @click="handleQuery">应用筛选</el-button>
-            </el-form-item>
-          </el-form>
-        </div>
-      </el-collapse-transition>
     </el-card>
 
     <!-- 表格 -->
@@ -260,7 +171,7 @@
       <pagination
         v-show="total > 0"
         :total="total"
-        v-model:page="queryParams.current"
+        v-model:page="queryParams.pageNum"
         v-model:limit="queryParams.pageSize"
         @pagination="getList"
       />
@@ -291,7 +202,7 @@ defineOptions({
   name: 'StockList',
 })
 
-import { computed, ref, reactive, onMounted } from 'vue'
+import { computed, ref, shallowRef, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -301,13 +212,12 @@ import {
   Clock,
   Download,
   Refresh,
-  Filter,
   Upload,
   ArrowDown,
 } from '@element-plus/icons-vue'
 import { stockApi } from '@/api/inventory/stock'
 import { formatCurrency, formatNumber } from '@/utils/format'
-import type { StockQueryParams, StockVO, StockSummaryVO } from '@/types/inventory/stock'
+import type { StockVO, StockSummaryVO } from '@/types/inventory/stock'
 import { InventoryItemTypeEnum } from '@/enums/inventory'
 import StockImportDialog from '@/components/inventory/StockImportDialog.vue'
 import StockBatchImportDialog from '@/components/inventory/StockBatchImportDialog.vue'
@@ -316,6 +226,8 @@ import InventoryMigrationDialog from '@/components/inventory/InventoryMigrationD
 import MaterialDetailDialog from '@/components/inventory/MaterialDetailDialog.vue'
 import ProductDetailDialog from '@/views/product/list/components/ProductDetailDialog.vue'
 import { usePermission } from '@/composables/usePermission'
+import StockSearchForm from './StockSearchForm.vue'
+import { stockSearchPayload, type StockSearchModel } from './stockSearch'
 
 const migrationVisible = ref(false)
 const materialDetailVisible = ref(false)
@@ -340,24 +252,16 @@ const handleViewArchive = (row: StockVO) => {
 const router = useRouter()
 
 // 查询参数
-const queryParams = reactive<StockQueryParams>({
-  current: 1,
+const queryParams = reactive<StockSearchModel>({
+  pageNum: 1,
   pageSize: 10,
-  materialCode: '',
-  materialName: '',
+  keyword: '',
   minQuantity: undefined,
   maxQuantity: undefined,
 })
 
-// 日期范围
-const dateRange = ref<string[]>([])
-
-// 库存状态筛选
-const stockStatusFilter = ref<string>('')
-
 // 响应式数据
 const loading = ref(false)
-const showFilter = ref(false)
 const stockList = ref<StockVO[]>([])
 const summaryData = ref<StockSummaryVO>({
   totalQuantity: 0,
@@ -384,27 +288,30 @@ const detailDialogVisible = ref(false)
 const currentStockId = ref<string>('')
 const currentInventoryItemId = ref<string>('')
 
-// 获取库存列表
+let listVersion = 0
+let summaryVersion = 0
+// 查询时复制已应用条件，翻页沿用；正在编辑的表单不改变当前结果口径。
+const appliedQuery = shallowRef(stockSearchPayload(queryParams))
 const getList = async () => {
+  const version = ++listVersion
   loading.value = true
   try {
-    const res = await stockApi.list(queryParams)
+    const res = await stockApi.list({ ...appliedQuery.value, pageNum: queryParams.pageNum, pageSize: queryParams.pageSize })
+    if (version !== listVersion) return
     stockList.value = res.data?.records || []
     total.value = res.data?.total || 0
   } catch (error) {
+    if (version === listVersion) { stockList.value = []; total.value = 0 }
     console.error('获取库存列表失败:', error)
-    ElMessage.error('获取库存列表失败')
-  } finally {
-    loading.value = false
-  }
+  } finally { if (version === listVersion) loading.value = false }
 }
-
-// 获取库存汇总
 const getSummary = async () => {
+  const version = ++summaryVersion
   try {
-    const res = await stockApi.summary(queryParams)
-    summaryData.value = res.data || summaryData.value
+    const res = await stockApi.summary({ ...appliedQuery.value })
+    if (version === summaryVersion && res.data) summaryData.value = res.data
   } catch (error) {
+    if (version === summaryVersion) summaryData.value = { totalQuantity: 0, totalReservedQuantity: 0, totalAvailableQuantity: 0, totalCost: 0, materialCount: 0 }
     console.error('获取库存汇总失败:', error)
   }
 }
@@ -421,24 +328,8 @@ const getAlertInfo = async () => {
 
 // 搜索
 const handleQuery = () => {
-  queryParams.current = 1
-  getList()
-  getSummary()
-}
-
-// 重置
-const handleReset = () => {
-  queryParams.current = 1
-  queryParams.materialCode = ''
-  queryParams.materialName = ''
-  queryParams.itemType = undefined
-  queryParams.minQuantity = undefined
-  queryParams.maxQuantity = undefined
-  queryParams.lowStock = undefined
-  queryParams.expiring = undefined
-  queryParams.obsolete = undefined
-  dateRange.value = []
-  stockStatusFilter.value = ''
+  queryParams.pageNum = 1
+  appliedQuery.value = stockSearchPayload(queryParams)
   getList()
   getSummary()
 }
@@ -499,14 +390,6 @@ const handleViewTransactions = (row: StockVO) => {
 // 库存调整
 const handleAdjust = (row: StockVO) => {
   ElMessage.info(`调整库存: ${row.materialName}`)
-}
-
-// 库存状态筛选
-const handleStatusFilter = (val: string) => {
-  queryParams.lowStock = val === 'low' ? true : undefined
-  queryParams.expiring = val === 'expiring' ? true : undefined
-  queryParams.obsolete = val === 'obsolete' ? true : undefined
-  handleQuery()
 }
 
 // 获取剩余天数标签类型

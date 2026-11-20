@@ -55,133 +55,19 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
     private final StockConverter stockConverter;
     private final com.jjx.inventory.service.InventoryStockMutationService stockMutationService;
 
+    private InventoryStockQueryService queryService;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setQueryService(InventoryStockQueryService queryService) { this.queryService=queryService; }
+
     @Override
     public IPage<StockVO> page(StockQueryDTO query) {
-        // 构建查询条件
-        LambdaQueryWrapper<InventoryStock> wrapper = new LambdaQueryWrapper<>();
-
-        if (query.getItemType() != null && !query.getItemType().isBlank()) {
-            String itemType = query.getItemType().toUpperCase();
-            if (!"MATERIAL".equals(itemType) && !"PRODUCT".equals(itemType)) {
-                throw new IllegalArgumentException("非法的库存物品类型");
-            }
-            wrapper.inSql(InventoryStock::getInventoryItemId,
-                    "SELECT inventory_item_id FROM inventory_item WHERE item_type='" + itemType + "'");
-        }
-
-        if (query.getMaterialId() != null) {
-            wrapper.eq(InventoryStock::getMaterialId, query.getMaterialId());
-        }
-        if (query.getMaterialCode() != null && !query.getMaterialCode().isEmpty()) {
-            wrapper.like(InventoryStock::getMaterialCode, query.getMaterialCode());
-        }
-        if (query.getMaterialName() != null && !query.getMaterialName().isEmpty()) {
-            wrapper.like(InventoryStock::getMaterialName, query.getMaterialName());
-        }
-        if (query.getWarehouseId() != null) {
-            wrapper.inSql(InventoryStock::getInventoryItemId,
-                    "SELECT inventory_item_id FROM inventory_stock_item WHERE warehouse_id=" + query.getWarehouseId());
-        }
-        if (query.getLocationId() != null) {
-            wrapper.inSql(InventoryStock::getInventoryItemId,
-                    "SELECT inventory_item_id FROM inventory_stock_item WHERE location_id=" + query.getLocationId());
-        }
-        if (query.getMinQuantity() != null) {
-            wrapper.ge(InventoryStock::getTotalQuantity, query.getMinQuantity());
-        }
-        if (query.getMaxQuantity() != null) {
-            wrapper.le(InventoryStock::getTotalQuantity, query.getMaxQuantity());
-        }
-
-        // 临期查询
-        if (Boolean.TRUE.equals(query.getExpiring())) {
-            LocalDate alertDate = LocalDate.now().plusDays(30);
-            wrapper.le(InventoryStock::getEarliestExpiry, alertDate);
-            wrapper.isNotNull(InventoryStock::getEarliestExpiry);
-        }
-
-        // 2026-09-10: 台账仅展示统一库存物品行，历史遗留的 inventory_item_id 为空的行不再出现在列表（配套 79 号迁移清理）
-        wrapper.isNotNull(InventoryStock::getInventoryItemId);
-        wrapper.orderByDesc(InventoryStock::getLastUpdateTime);
-
-        // 分页查询
-        Page<InventoryStock> stockPage = new Page<>(query.getPageNum(), query.getPageSize());
-        IPage<InventoryStock> pageResult = stockMapper.selectPage(stockPage, wrapper);
-
-        // 转换为 StockVO
-        List<StockVO> voList = pageResult.getRecords().stream()
-                .map(this::convertToStockVO)
-                .collect(Collectors.toList());
-        enrichPage(voList);
-
-        // 低库存过滤（需要关联物料表的安全库存，在 enrichStockVO 中已判断）
-        if (Boolean.TRUE.equals(query.getLowStock())) {
-            voList = voList.stream()
-                    .filter(vo -> Boolean.TRUE.equals(vo.getLowStock()))
-                    .collect(Collectors.toList());
-        }
-
-        // 构建分页结果
-        Page<StockVO> resultPage = new Page<>(pageResult.getCurrent(), pageResult.getSize(), pageResult.getTotal());
-        resultPage.setRecords(voList);
-        return resultPage;
+        var result=queryService.page(query);
+        enrichPage(result.getRecords(),query);
+        return result;
     }
 
     @Override
-    public StockSummaryVO getSummary(StockQueryDTO query) {
-        LambdaQueryWrapper<InventoryStock> wrapper = new LambdaQueryWrapper<>();
-        if (query.getItemType() != null && !query.getItemType().isBlank()) {
-            String itemType = query.getItemType().toUpperCase();
-            if (!"MATERIAL".equals(itemType) && !"PRODUCT".equals(itemType)) {
-                throw new IllegalArgumentException("非法的库存物品类型");
-            }
-            wrapper.inSql(InventoryStock::getInventoryItemId,
-                    "SELECT inventory_item_id FROM inventory_item WHERE item_type='" + itemType + "'");
-        }
-        if (query.getMaterialId() != null) {
-            wrapper.eq(InventoryStock::getMaterialId, query.getMaterialId());
-        }
-
-        List<InventoryStock> stocks = stockMapper.selectList(wrapper);
-
-        StockSummaryVO summary = new StockSummaryVO();
-        BigDecimal totalQuantity = BigDecimal.ZERO;
-        BigDecimal totalReserved = BigDecimal.ZERO;
-        BigDecimal totalCost = BigDecimal.ZERO;
-        int materialCount = 0;
-        List<Long> materialIds = new ArrayList<>();
-
-        for (InventoryStock stock : stocks) {
-            if (stock.getTotalQuantity() != null) {
-                totalQuantity = totalQuantity.add(stock.getTotalQuantity());
-            }
-            if (stock.getTotalReserved() != null) {
-                totalReserved = totalReserved.add(stock.getTotalReserved());
-            }
-            if (stock.getInventoryItemId() != null && !materialIds.contains(stock.getInventoryItemId())) {
-                materialIds.add(stock.getInventoryItemId());
-                materialCount++;
-            }
-        }
-
-        if (!materialIds.isEmpty()) {
-            var costs = stockMapper.costSummary(materialIds, com.jjx.inventory.enums.StockItemStatusEnum.ACTIVE.getValue());
-            totalCost = new BigDecimal(String.valueOf(costs.get("known_cost")));
-            summary.setMissingCostBatches(((Number)costs.get("missing_cost_batches")).intValue());
-            var byUnit = new java.util.LinkedHashMap<String,BigDecimal>();
-            for (var row : stockMapper.quantitiesByUnit(materialIds, com.jjx.inventory.enums.StockItemStatusEnum.ACTIVE.getValue())) {
-                byUnit.put(String.valueOf(row.get("unit")), new BigDecimal(String.valueOf(row.get("quantity"))));
-            }
-            summary.setQuantityByUnit(byUnit);
-        } else summary.setMissingCostBatches(0);
-        summary.setTotalQuantity(totalQuantity);
-        summary.setTotalReservedQuantity(totalReserved);
-        summary.setTotalAvailableQuantity(totalQuantity.subtract(totalReserved));
-        summary.setTotalCost(totalCost);
-        summary.setMaterialCount(materialCount);
-
-        return summary;
-    }
+    public StockSummaryVO getSummary(StockQueryDTO query) { return queryService.summary(query); }
 
     @Override
     public StockVO getById(Long stockId) {
@@ -729,7 +615,9 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
     }
 
     /** 当前页按ID集合读取，不逐行查档案/库位/批次，也不为展示拉全库库存。 */
-    private void enrichPage(List<StockVO> rows) {
+    private void enrichPage(List<StockVO> rows) { enrichPage(rows,new StockQueryDTO()); }
+
+    private void enrichPage(List<StockVO> rows,StockQueryDTO query) {
         if(rows.isEmpty())return;
         var itemIds=rows.stream().map(StockVO::getInventoryItemId).filter(java.util.Objects::nonNull).distinct().toList();
         var materialIds=rows.stream().map(StockVO::getMaterialId).filter(java.util.Objects::nonNull).distinct().toList();
@@ -742,6 +630,8 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
             .collect(Collectors.toMap(InventoryStorageLocation::getLocationId,v->v));
         var batches=itemIds.isEmpty()?java.util.Map.<Long,List<InventoryStockItem>>of():stockItemMapper.selectList(new LambdaQueryWrapper<InventoryStockItem>()
             .in(InventoryStockItem::getInventoryItemId,itemIds)
+            .eq(query.getWarehouseId()!=null,InventoryStockItem::getWarehouseId,query.getWarehouseId())
+            .eq(query.getLocationId()!=null,InventoryStockItem::getLocationId,query.getLocationId())
             .eq(InventoryStockItem::getStatus,com.jjx.inventory.enums.StockItemStatusEnum.ACTIVE.getValue())
             .gt(InventoryStockItem::getQuantity,BigDecimal.ZERO)).stream()
             .collect(Collectors.groupingBy(InventoryStockItem::getInventoryItemId));
@@ -758,8 +648,8 @@ public class InventoryStockServiceImpl extends ServiceImpl<InventoryStockMapper,
                 vo.setSpecification(material.getSpecification());
                 // 库存物品单位是历史记账口径，不能被当前档案单位覆盖。
                 if(vo.getUnit()==null)vo.setUnit(material.getUnit());
-                vo.setSafeStock(material.getSafeStock());vo.setMaxStock(material.getMaxStock());
-                if(material.getSafeStock()!=null && vo.getTotalQuantity()!=null)vo.setLowStock(vo.getTotalQuantity().compareTo(material.getSafeStock())<0);
+                if(vo.getSafeStock()==null)vo.setSafeStock(material.getSafeStock());vo.setMaxStock(material.getMaxStock());
+                if(vo.getLowStock()==null && vo.getSafeStock()!=null && vo.getAvailableQuantity()!=null)vo.setLowStock(vo.getSafeStock().signum()>0 && vo.getAvailableQuantity().compareTo(vo.getSafeStock())<0);
             }
             InventoryStockMeasurement.enrich(vo,material,vo.getInventoryItemId()==null?java.util.List.of():batches.getOrDefault(vo.getInventoryItemId(),java.util.List.of()));
         }
