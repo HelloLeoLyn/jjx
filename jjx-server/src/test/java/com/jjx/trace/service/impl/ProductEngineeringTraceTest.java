@@ -38,7 +38,7 @@ class ProductEngineeringTraceTest {
         jdbc.execute("CREATE TABLE engineering_routing(routing_id BIGINT, product_id BIGINT)");
         jdbc.execute("CREATE TABLE sys_oper_log(id BIGINT PRIMARY KEY, user_id BIGINT, username VARCHAR, real_name VARCHAR,"
                 + "tenant_id BIGINT, module VARCHAR, business_type INT, oper_url VARCHAR, oper_ip VARCHAR, oper_param VARCHAR,"
-                + "biz_type VARCHAR, biz_id VARCHAR, trace_id VARCHAR, biz_status VARCHAR, action VARCHAR, detail VARCHAR,"
+                + "biz_type VARCHAR, biz_id VARCHAR, trace_id VARCHAR, oper_group_id VARCHAR, biz_status VARCHAR, action VARCHAR, detail VARCHAR,"
                 + "cost_time BIGINT, status INT, error_msg VARCHAR, user_agent VARCHAR, create_time TIMESTAMP)");
         var config = new MybatisConfiguration();
         config.setMapUnderscoreToCamelCase(true);
@@ -90,7 +90,7 @@ class ProductEngineeringTraceTest {
         assertEquals(2, service.getEventsByBiz("product", 8L, 3, 2).getRecords().size());
         assertTrue(service.getEventsByBiz("product", 8L, 4, 2).getRecords().isEmpty());
         assertEquals(0, service.getEventsByBiz("product", 99L, 1, 2).getTotal());
-        assertEquals(1, service.getEventsByBiz("bom", 11L, 1, 20).getTotal());
+        // BOM全版本范围由BomTraceReaderTest与真实MySQL只读用例独立验证。
     }
 
     @Test
@@ -156,7 +156,7 @@ class ProductEngineeringTraceTest {
     }
 
     @Test
-    void traceExcludesOldEngineeringRowsBeforePagingAndPreservesOtherEventsAndStorage() {
+    void traceShowsAllSourcesInTimeOrderAndPreservesOriginalLogs() {
         String trace = "efcfe92bb764426f";
         event(1, "bom", "11", "产品BOM管理", trace, 0);
         event(2, "routing", "21", "工艺路线管理", trace, 0);
@@ -165,12 +165,17 @@ class ProductEngineeringTraceTest {
         event(5, "attachment", "80", "附件", trace, 100);
         event(6, null, null, "历史事件", trace, 200);
         var before = jdbc.queryForList("SELECT * FROM sys_oper_log ORDER BY id");
+        // 现行口径（dev-20261022-003）：trace 查询全显示、不按来源截断，按时间+id 排序后分页。
         var first = service.getEvents(trace, 1, 2);
-        assertEquals(4, first.getTotal());
-        assertEquals(List.of("order", "sample"), first.getRecords().stream().map(e -> e.getBizType()).toList());
+        assertEquals(6, first.getTotal());
+        assertEquals(List.of("bom", "routing"),
+                first.getRecords().stream().map(e -> e.getBizType()).toList());
         var second = service.getEvents(trace, 2, 2);
-        assertEquals("attachment", second.getRecords().getFirst().getBizType());
-        assertNull(second.getRecords().getLast().getBizType());
+        assertEquals(List.of("order", "sample"),
+                second.getRecords().stream().map(e -> e.getBizType()).toList());
+        var third = service.getEvents(trace, 3, 2);
+        assertEquals("attachment", third.getRecords().getFirst().getBizType());
+        assertNull(third.getRecords().getLast().getBizType());
         assertEquals(before, jdbc.queryForList("SELECT * FROM sys_oper_log ORDER BY id"));
     }
 

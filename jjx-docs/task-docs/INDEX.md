@@ -97,3 +97,6 @@
 
 | dev-20261120-005 | dev-20261120-005-plan.md | plan | 历史保留两张规格表的治理依据与基线修复 |
 | dev-20261120-005 | dev-20261120-005-completion.md | completion | 精确保留备案、正常基线门禁与完整validate通过 |
+
+| dev-20261120-007 | dev-20261120-007-plan.md | plan | BOM全版本流水、历史证据补全与原子操作日志 |
+| dev-20261120-007 | dev-20261120-007-completion.md | completion | BOM全版本流水与版本操作留痕：完成记录、验证结果与接手修正 |

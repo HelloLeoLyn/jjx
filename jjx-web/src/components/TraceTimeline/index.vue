@@ -1,8 +1,12 @@
 <template>
-  <el-drawer v-model="visible" title="业务事件流" size="880px" @close="handleClose">
+  <el-drawer v-model="visible" :title="isBom ? `BOM全版本流水${bomCode ? ` · ${bomCode}` : ''}` : '业务事件流'" size="880px" @close="handleClose">
     <div class="toolbar">
       <span class="toolbar-hint">按时间正序展示业务操作</span>
       <div class="toolbar-actions">
+        <el-select v-if="isBom" v-model="bomVersionFilter" placeholder="全部版本" style="width: 190px" @change="changeBomVersion">
+          <el-option label="全部版本" value="" />
+          <el-option v-for="item in bomVersions" :key="item.bomId" :value="String(item.bomId)" :label="`${item.version}${item.deleted ? '（已删除）' : ''}`" />
+        </el-select>
         <el-tag v-if="scopeLabel" size="small" type="info">{{ scopeLabel }}</el-tag>
         <el-switch v-model="showTechnical" active-text="技术详情" />
       </div>
@@ -33,6 +37,10 @@
         <el-table-column label="功能" min-width="140" prop="action"> </el-table-column>
         <el-table-column label="时间" width="165">
           <template #default="scope">{{ formatTime(scope.row.time) }}</template>
+        </el-table-column>
+        <el-table-column v-if="isBom" label="涉及版本" prop="bomVersion" min-width="125" />
+        <el-table-column v-if="isBom" label="记录来源" width="135">
+          <template #default="{ row }">{{ TraceEvidenceSourceEnum.getLabel(row.evidenceSource) }}</template>
         </el-table-column>
         <el-table-column label="业务状态" width="110">
           <template #default="scope">
@@ -78,8 +86,9 @@
         </el-table-column>
         <el-table-column label="结果" width="80" align="center">
           <template #default="scope">
-            <el-tag :type="scope.row.result === 1 ? 'success' : 'danger'" size="small">
-              {{ scope.row.result === 1 ? '成功' : '失败' }}
+            <el-tag v-if="scope.row.evidenceSource === TraceEvidenceSourceEnum.ARCHIVE.value" type="info" size="small">档案记录</el-tag>
+            <el-tag v-else :type="OperLogStatusEnum.getTagProps(scope.row.result).type" size="small">
+              {{ scope.row.evidenceSource === TraceEvidenceSourceEnum.LEGACY_REQUEST.value ? '请求' : '' }}{{ OperLogStatusEnum.getLabel(scope.row.result) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -163,7 +172,8 @@ import { Download, Loading } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { attachmentApi } from '@/api/system/attachment'
 import { attachmentRefApi } from '@/api/system/attachmentRef'
-import { BusinessTypeEnum } from '@/enums/system/LogEnum'
+import { TraceEvidenceSourceEnum } from '@/enums/system/TraceEvidenceEnum'
+import { BusinessTypeEnum, OperLogStatusEnum } from '@/enums/system/LogEnum'
 import { matchReview, type ReviewHistory } from './reviewMatch'
 
 interface TraceAttachment {
@@ -179,6 +189,10 @@ interface TraceDetail {
 }
 
 interface TraceEvent {
+  bomCode?: string
+  bomVersion?: string
+  evidenceSource?: string
+  relatedBomIds?: string[]
   eventId: string
   reviewFlowId?: string
   groupId?: string
@@ -221,6 +235,25 @@ const emit = defineEmits<{
   (event: 'update:modelValue', value: boolean): void
 }>()
 
+const isBom = computed(() => !props.traceId && props.bizType === 'bom')
+const bomVersionFilter = ref('')
+const bomVersions = ref<{ bomId: string | number; version: string; deleted?: boolean }[]>([])
+const bomCode = ref('')
+let contextVersion = 0
+async function loadBomContext(id: string) {
+  const version = ++contextVersion
+  try {
+    const res = await request.get('/api/trace/bom-context', { params: { bomId: id } })
+    if (version !== contextVersion) return
+    bomVersions.value = res.data?.versions || []
+    bomCode.value = res.data?.bomCode || ''
+  } catch (error) { if (version === contextVersion) { bomVersions.value = []; bomCode.value = '' }; console.error(error) }
+}
+function currentTraceParams(): TraceParams {
+  return isBom.value && bomVersionFilter.value
+    ? { ...props, bizId: bomVersionFilter.value, scope: 'bom_version' } : props
+}
+function changeBomVersion() { void resetAndLoad(currentTraceParams()) }
 const eventTable = ref<any>()
 const expandedRows = ref<string[]>([])
 function sourceLabel(row: TraceEvent): string {
@@ -265,6 +298,7 @@ watch(
     visible.value = open
     if (!open) {
       loadedKey = undefined
+      contextVersion++
       requestVersion++
       inFlight.clear()
       return
@@ -273,6 +307,10 @@ watch(
     const key = JSON.stringify([traceId, bizType, bizId, scope, groupId])
     if (loadedKey === key) return
     loadedKey = key
+    bomVersionFilter.value = ''
+    bomVersions.value = []; bomCode.value = ''
+    contextVersion++
+    if (!traceId && bizType === 'bom' && bizId) void loadBomContext(bizId)
     resetAndLoad(snapshot)
   },
   { flush: 'post', immediate: true }
@@ -328,7 +366,7 @@ function resetAndLoad(snapshot: TraceParams) {
   return loadEvents(snapshot, true)
 }
 
-function loadEvents(snapshot: TraceParams = props, locate = false): Promise<void> {
+function loadEvents(snapshot: TraceParams = currentTraceParams(), locate = false): Promise<void> {
   const { traceId, bizType, bizId, scope, groupId } = snapshot
   if (!traceId && !(bizType && bizId)) return Promise.resolve()
   const params: Record<string, any> = {

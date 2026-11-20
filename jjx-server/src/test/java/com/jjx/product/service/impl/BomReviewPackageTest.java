@@ -45,6 +45,7 @@ class BomReviewPackageTest {
         materials = mock(InventoryMaterialMapper.class);
         service = new EngineeringBomServiceImpl(boms, items, products, null, null, materials,
                 mock(ReviewFlowService.class), null, null, null);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "bomTraceRecorder", org.mockito.Mockito.mock(com.jjx.trace.bom.BomTraceRecorder.class));
         com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
                 new org.apache.ibatis.builder.MapperBuilderAssistant(
                         new com.baomidou.mybatisplus.core.MybatisConfiguration(), "test"),

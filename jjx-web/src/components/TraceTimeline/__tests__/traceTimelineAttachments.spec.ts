@@ -193,3 +193,39 @@ describe('TraceTimeline 产品工程流水', () => {
     expect(wrapper.text()).not.toContain('作业规范版本')
   })
 })
+
+describe('BOM全版本流水', () => {
+  function bomMock(url: string) {
+    if (url === '/api/trace/bom-context') return Promise.resolve({ data: { bomCode: 'YL1025PWOO-BOM', versions: [{ bomId: '1', version: 'V1.0' }, { bomId: '4', version: 'V1.1' }, { bomId: '5', version: 'V1.2' }] } }) as any
+    return Promise.resolve({ data: { total: 25, records: [
+      { eventId: 'oper-55', bomVersion: 'V1.0、V1.1', evidenceSource: 'OPER_LOG', bizType: 'bom', bizId: '4', action: '切换当前版本', result: 1, detail: '{"changes":["当前版本：V1.0 → V1.1"]}' },
+      { eventId: 'bom-archive-5', bomVersion: 'V1.2', evidenceSource: 'BOM_VERSION_ARCHIVE', bizType: 'bom', bizId: '5', action: '复制版本（历史档案补全）', result: null, detail: '{"changes":["依据版本档案，只读补全"]}' },
+    ] } }) as any
+  }
+  function mountBom() {
+    return mount(TraceTimeline, { props: { modelValue: true, bizType: 'bom', bizId: '4' }, global: { stubs: { ElDrawer: defineComponent({ template: '<div><slot/></div>' }) } } })
+  }
+  it('默认全版本，版本和证据来源可见，档案补全不显示操作成功', async () => {
+    get.mockImplementation(bomMock); wrapper = mountBom(); await flushPromises()
+    expect(get).toHaveBeenCalledWith('/api/trace/events', expect.objectContaining({ params: expect.objectContaining({ bizType: 'bom', bizId: '4' }) }))
+    expect(wrapper.text()).toContain('V1.2'); expect(wrapper.text()).toContain('历史档案补全'); expect(wrapper.text()).toContain('档案记录')
+    expect(wrapper.findAll('tbody tr')[1].text()).not.toContain('成功')
+  })
+  it('版本筛选回第一页，翻页仍带版本范围；清除后恢复全版本', async () => {
+    get.mockImplementation(bomMock); wrapper = mountBom(); await flushPromises(); const vm = wrapper.vm as any
+    vm.pageNum = 3; vm.bomVersionFilter = '1'; await vm.changeBomVersion(); await flushPromises()
+    expect(get).toHaveBeenLastCalledWith('/api/trace/events', { params: expect.objectContaining({ bizId: '1', scope: 'bom_version', pageNum: 1 }) })
+    vm.pageNum = 2; vm.handlePageChange(); await flushPromises()
+    expect(get).toHaveBeenLastCalledWith('/api/trace/events', { params: expect.objectContaining({ bizId: '1', scope: 'bom_version', pageNum: 2 }) })
+    vm.bomVersionFilter = ''; vm.changeBomVersion(); await flushPromises()
+    expect(get).toHaveBeenLastCalledWith('/api/trace/events', { params: expect.objectContaining({ bizId: '4', pageNum: 1 }) })
+    expect((get.mock.calls.at(-1)?.[1] as any).params.scope).toBeUndefined()
+  })
+  it('关闭或更换BOM后，迟到版本上下文不能回写', async () => {
+    let resolveOld!: (v: unknown) => void
+    get.mockImplementation((url: string) => url === '/api/trace/bom-context' ? new Promise(resolve => { resolveOld = resolve }) as any : bomMock(url))
+    wrapper = mountBom(); await flushPromises(); await wrapper.setProps({ modelValue: false })
+    resolveOld({ data: { bomCode: '旧BOM', versions: [{ bomId: '99', version: 'V99' }] } }); await flushPromises()
+    expect((wrapper.vm as any).bomVersions).toEqual([])
+  })
+})

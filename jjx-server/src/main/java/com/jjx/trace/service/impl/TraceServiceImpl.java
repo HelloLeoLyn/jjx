@@ -45,6 +45,9 @@ public class TraceServiceImpl implements TraceService {
     @Autowired(required = false)
     private SysAttachmentMapper attachmentMapper;
 
+    @Autowired
+    private com.jjx.trace.bom.BomTraceReader bomTraceReader;
+
     @Override
     public PageResult<UnifiedTraceEventVO> getEvents(String traceId, String scope, int pageNum, int pageSize) {
         if (traceId == null || traceId.isBlank()) {
@@ -80,6 +83,7 @@ public class TraceServiceImpl implements TraceService {
         if (bizType == null || bizType.isBlank() || bizId == null) {
             return PageResult.build(Collections.emptyList(), 0);
         }
+        if ("bom".equals(bizType)) return bomTraceReader.events(bizId,scope,pageNum,pageSize,this::fromLog);
         LambdaQueryWrapper<SysOperLog> query = Wrappers.<SysOperLog>lambdaQuery();
         if ("product".equals(bizType)) {
             // 一次只读查询覆盖全部版本（含历史 trace 上的工程日志），先排序后在数据库分页。

@@ -58,6 +58,7 @@ class BomGroupPersistenceTest {
         var implementation = new EngineeringBomServiceImpl(session.getMapper(EngineeringBomMapper.class),
                 session.getMapper(EngineeringBomItemMapper.class), mock(ProductMapper.class), new EngineeringBomConverterImpl(),
                 null, null, null, null, mock(OperLogChangeRecorder.class), null);
+        org.springframework.test.util.ReflectionTestUtils.setField(implementation, "bomTraceRecorder", org.mockito.Mockito.mock(com.jjx.trace.bom.BomTraceRecorder.class));
         var materials = mock(com.jjx.inventory.mapper.InventoryMaterialMapper.class);
         materialMaster = mock(com.jjx.inventory.master.MaterialMasterService.class);
         var material = new com.jjx.inventory.domain.InventoryMaterial();

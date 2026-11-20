@@ -23,6 +23,14 @@ public class TraceController {
 
     private final TraceService traceService;
 
+    private final com.jjx.trace.bom.BomTraceReader bomTraceReader;
+
+    @GetMapping("/bom-context")
+    @cn.dev33.satoken.annotation.SaCheckPermission("engineering:bom:view")
+    public Result<com.jjx.trace.bom.BomTraceReader.Context> bomContext(@RequestParam Long bomId) {
+        return Result.success(bomTraceReader.context(bomId));
+    }
+
     @Operation(summary = "按 trace_id 查询操作流水（主表，分页）")
     @GetMapping("/events")
     public Result<PageResult<UnifiedTraceEventVO>> getEvents(

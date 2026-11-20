@@ -66,6 +66,9 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     @org.springframework.beans.factory.annotation.Autowired
     private BomSpecificationService bomSpecificationService;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.jjx.trace.bom.BomTraceRecorder bomTraceRecorder;
+
     private final EngineeringBomMapper productBomMapper;
     private final EngineeringBomItemMapper productBomItemMapper;
     private final ProductMapper productMapper;
@@ -1228,7 +1231,9 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
 
         // 删除BOM主表
         // 记录删除时的状态：行已不存在，能反映业务事实的只有删除前的状态
-        return productBomMapper.deleteById(bomId) > 0 ? ProductEnums.BomStatus.fromValue(st) : null;
+        if(productBomMapper.deleteById(bomId)<=0)return null;
+        bomTraceRecorder.record(bom,com.jjx.trace.bom.BomTraceRecorder.DELETE,st,null,List.of("删除草稿版本："+bom.getBomVersion()));
+        return ProductEnums.BomStatus.fromValue(st);
     }
 
     @Override
@@ -1275,10 +1280,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 productMapper.updateById(product);
             }
         }
-        changeRecorder.recordUpdate("产品BOM管理", "bom.set-current", "bom", String.valueOf(bomId), null,
-                ProductEnums.BomStatus.APPROVED.getLabel(), com.jjx.common.constant.LogActions.BOM_SET_DEFAULT,
-                List.of("当前版本:" + (before == null ? "无" : before.getBomVersion() + "(#" + before.getBomId() + ")")
-                        + "→" + bom.getBomVersion() + "(#" + bomId + ")"));
+        bomTraceRecorder.record(bom,com.jjx.trace.bom.BomTraceRecorder.CURRENT,ProductEnums.BomStatus.APPROVED.getValue(),before,
+                List.of("当前版本："+(before==null?"无":before.getBomVersion())+" → "+bom.getBomVersion()));
         return ProductEnums.BomStatus.APPROVED;
     }
 
@@ -1483,6 +1486,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         }
 
         calculateBomCost(newBom.getBomId());
+        bomTraceRecorder.record(newBom,com.jjx.trace.bom.BomTraceRecorder.COPY,newBom.getApproveStatus(),oldBom,
+                List.of("复制版本："+oldBom.getBomVersion()+" → "+newBom.getBomVersion()));
         return getBomDetail(newBom.getBomId());
     }
 
@@ -2234,6 +2239,9 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                             + nodeBom.getBomId() + "）");
                 }
             }
+            if(PACKAGE_ACTION_SUBMIT.equals(nodeResult.getAction()) || PACKAGE_ACTION_APPROVE.equals(nodeResult.getAction()))
+                bomTraceRecorder.record(nodeBom,PACKAGE_ACTION_SUBMIT.equals(action)?com.jjx.trace.bom.BomTraceRecorder.SUBMIT:com.jjx.trace.bom.BomTraceRecorder.APPROVE,
+                    nodeResult.getStatusAfter(),null,List.of("版本："+nodeBom.getBomVersion(),"产品整套操作，根方案版本："+root.getBomVersion()));
             productResult.getNodes().add(nodeResult);
         }
         return productResult;
@@ -2455,6 +2463,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         node.setAction(PACKAGE_ACTION_REJECT);
         node.setStatusBefore(current);
         node.setStatusAfter(ProductEnums.BomStatus.REJECT.getValue());
+        bomTraceRecorder.record(root,com.jjx.trace.bom.BomTraceRecorder.REJECT,ProductEnums.BomStatus.REJECT.getValue(),null,
+                List.of("版本："+root.getBomVersion(),"驳回意见："+Objects.toString(remark,"")));
         result.getNodes().add(node);
         return result;
     }

@@ -69,6 +69,7 @@ class BomReviewPackageTransactionTest {
 
         service = spy(new EngineeringBomServiceImpl(boms, items, products, null, null, materials,
                 flows, null, null, null));
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "bomTraceRecorder", org.mockito.Mockito.mock(com.jjx.trace.bom.BomTraceRecorder.class));
         ReflectionTestUtils.setField(service, "transactionManager", new DataSourceTransactionManager(db));
         ReflectionTestUtils.setField(service, "baseMapper", boms);
         doAnswer(inv -> {

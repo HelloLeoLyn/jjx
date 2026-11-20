@@ -40,6 +40,7 @@ class VersionMaintenanceServiceTest {
     EngineeringBomMapper bomMapper;
     EngineeringRoutingMapper routeMapper;
     OperLogChangeRecorder audit;
+    com.jjx.system.mapper.SysOperLogMapper traceLogs;
     IEngineeringBomService bom;
     IEngineeringRoutingService route;
     EngineeringBomServiceImpl bomImpl;
@@ -53,14 +54,16 @@ class VersionMaintenanceServiceTest {
         config.setEnvironment(new Environment("version-maintenance",new SpringManagedTransactionFactory(),source));
         config.addMapper(EngineeringBomMapper.class);config.addMapper(EngineeringRoutingMapper.class);
         config.addMapper(EngineeringBomItemMapper.class);config.addMapper(EngineeringRoutingItemMapper.class);
-        config.addMapper(ProductMapper.class);
+        config.addMapper(ProductMapper.class);config.addMapper(com.jjx.system.mapper.SysOperLogMapper.class);
         var session=new SqlSessionTemplate(new MybatisSqlSessionFactoryBuilder().build(config));
         db=new JdbcTemplate(source);tx=new DataSourceTransactionManager(source);
-        createTable(EngineeringBom.class);createTable(EngineeringRouting.class);
+        createTable(EngineeringBom.class);createTable(EngineeringRouting.class);createTable(com.jjx.system.domain.entity.SysOperLog.class);
+        traceLogs=session.getMapper(com.jjx.system.mapper.SysOperLogMapper.class);
         bomMapper=spy(session.getMapper(EngineeringBomMapper.class));routeMapper=spy(session.getMapper(EngineeringRoutingMapper.class));
         audit=mock(OperLogChangeRecorder.class);
         bomImpl=spy(new EngineeringBomServiceImpl(bomMapper,mock(EngineeringBomItemMapper.class),mock(ProductMapper.class),
                 new EngineeringBomConverterImpl(),mock(com.jjx.production.mapper.ProductionOrderMapper.class),null,mock(com.jjx.system.service.ReviewFlowService.class),mock(com.jjx.event.EventPublisher.class),audit,null));
+        org.springframework.test.util.ReflectionTestUtils.setField(bomImpl, "bomTraceRecorder", org.mockito.Mockito.mock(com.jjx.trace.bom.BomTraceRecorder.class));
         ReflectionTestUtils.setField(bomImpl,"baseMapper",bomMapper);
         doReturn(List.of()).when(bomImpl).checkBomForApprove(anyLong());
         routeImpl=new EngineeringRoutingServiceImpl(routeMapper,mock(com.jjx.event.EventPublisher.class),
@@ -189,4 +192,33 @@ class VersionMaintenanceServiceTest {
             if(domain.equals("bom")) bom.removeBomWithItems(3L);else route.deleteVersion(3L);
         }
     }
+    @Test void realBomVersionLogKeepsFromToAndFailureRollsBackCurrentFlags() {
+        try(var security=mockStatic(com.jjx.system.utils.SecurityUtils.class)) {
+            security.when(com.jjx.system.utils.SecurityUtils::getUsername).thenReturn("test");
+            security.when(com.jjx.system.utils.SecurityUtils::getDisplayName).thenReturn("测试人");
+            security.when(com.jjx.system.utils.SecurityUtils::getUserId).thenReturn(1L);
+            ReflectionTestUtils.setField(bomImpl,"bomTraceRecorder",new com.jjx.trace.bom.BomTraceRecorder(traceLogs));
+            seed("bom",1,"V1.0",3,true);seed("bom",2,"V1.1",3,false);seed("bom",3,"V1.2",3,false);
+            switchTo("bom",2,1);
+            var log=traceLogs.selectList(null).getFirst();assertEquals("2",log.getBizId());
+            assertTrue(log.getDetail().contains("V1.0"));assertTrue(log.getDetail().contains("V1.1"));assertTrue(log.getDetail().contains("bomObject"));
+            db.execute("ALTER TABLE sys_oper_log ADD CONSTRAINT fail_second CHECK(biz_id <> '3')");
+            assertThrows(Exception.class,()->switchTo("bom",3,2));assertEquals(1,currentCount("bom"));
+            assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM engineering_bom WHERE bom_id=2 AND is_current=1",Integer.class));
+            assertEquals(1,traceLogs.selectCount(null));
+        }
+    }
+    @Test void copyLogFailureRollsBackTheNewVersion() {
+        try(var security=mockStatic(com.jjx.system.utils.SecurityUtils.class)) {
+            security.when(com.jjx.system.utils.SecurityUtils::getUsername).thenReturn("test");
+            security.when(com.jjx.system.utils.SecurityUtils::getDisplayName).thenReturn("测试人");
+            security.when(com.jjx.system.utils.SecurityUtils::getUserId).thenReturn(1L);
+            ReflectionTestUtils.setField(bomImpl,"bomTraceRecorder",new com.jjx.trace.bom.BomTraceRecorder(traceLogs));
+            seed("bom",1,"V1.0",3,true);
+            db.execute("ALTER TABLE sys_oper_log ADD CONSTRAINT deny_copy CHECK(action <> '复制新版本')");
+            assertThrows(Exception.class,()->bom.copyAsNewVersion(1L,"V1.1"));
+            assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM engineering_bom",Integer.class));assertEquals(0,traceLogs.selectCount(null));
+        }
+    }
+
 }
