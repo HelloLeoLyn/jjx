@@ -19,7 +19,7 @@ const replacement = { materialId: 9, materialCode: 'NEW', materialName: '新材�
 const detail = (specification = original.specification) => ({ data: { material: { specification, categoryId: 7 }, attributes: { coating: '单面加硬' } } })
 const wrappers: any[] = []
 // Render the real specification slot with the reactive row, without mounting the full table.
-function editor(row: any = original, props: Record<string, unknown> = {}, slotProp = 'specification') {
+function editor(row: any = original, props: Record<string, unknown> = {}, slotProp = 'specification', realMaterialSelector = false) {
   const renderedState = shallowRef<any>()
   const wrapper = shallowMount(BomItemEditor, {
     props: { modelValue: [{ ...row }], ...props },
@@ -45,6 +45,9 @@ function editor(row: any = original, props: Record<string, unknown> = {}, slotPr
           return () => h('input', { value: props.modelValue, onInput: (event: Event) => emit('update:modelValue', (event.target as HTMLInputElement).value) })
         },
       }),
+      ...(realMaterialSelector ? {
+        BomMaterialSelector: false, EditableSearchSelect: false, ElInput: false, ElButton: false,
+      } : {}),
     } },
   })
   wrappers.push(wrapper)
@@ -368,5 +371,138 @@ describe('BOM编辑原始参数与档案单位护栏', () => {
     expect(state.rowClassName({ row })).toBe('bom-row-error')
     expect(exposed.validateItems()).toBe(false)
     expect(row.unit).toBe('M')
+  })
+})
+
+describe('快速模式选择档案物料（dev-20261121-001）', () => {
+  const action = (wrapper: any, label: string) => {
+    const button = wrapper.findAll('.spec-cell button').find((entry: any) => entry.text() === label)
+    expect(button, label).toBeTruthy()
+    return button!
+  }
+  const quickEditor = async (row: any = original) => {
+    const result = editor(row, {}, 'materialName', true)
+    result.state.setQuickMode(true)
+    await flushPromises()
+    return result
+  }
+
+  it('未关联原文行可搜索真实候选、回车选中并回填，保留首次关联前的比例', async () => {
+    vi.mocked(materialApi.search).mockResolvedValue({ data: { records: [replacement], total: 1 } } as any)
+    const { wrapper, row, exposed } = await quickEditor({
+      ...original, materialId: 0, materialName: 'Excel材料原文', moduleQty: 6, baseQty: 1,
+    })
+    expect(wrapper.get('.spec-cell input').element.value).toBe('Excel材料原文')
+    await action(wrapper, '选择档案物料').trigger('click')
+    await wrapper.get('.spec-cell input').setValue('新材料')
+    await vi.waitFor(() => expect(materialApi.search).toHaveBeenCalledWith({
+      keyword: '新材料', pageNum: 1, pageSize: 10,
+    }))
+    await flushPromises()
+    expect(row.materialId).toBe(0)
+    expect(row.materialName).toBe('Excel材料原文')
+    await wrapper.get('.spec-cell input').trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect(row).toMatchObject({ ...replacement, moduleQty: 6, baseQty: 1 })
+    expect(wrapper.findComponent({ name: 'BomMaterialSelector' }).exists()).toBe(false)
+    expect(exposed.validateItems()).toBe(true)
+    expect(exposed.getItems()[0]).toMatchObject({ ...replacement, moduleQty: 6, baseQty: 1 })
+  })
+
+  it('已关联行也有选档案入口，换料沿用旧定额及制造引用清理规则', async () => {
+    const { wrapper, row, exposed } = await quickEditor({
+      ...original, baseQty: 1, moduleQty: 6, subBomId: 124, sourceType: 'make',
+    })
+    expect(wrapper.find('.spec-cell input').exists()).toBe(false)
+    await action(wrapper, '选择档案物料').trigger('click')
+    wrapper.findComponent({ name: 'BomMaterialSelector' }).vm.$emit('select', replacement)
+    await flushPromises()
+    expect(row).toMatchObject({ ...replacement, subBomId: null })
+    expect(row.moduleQty).toBeUndefined()
+    expect(row.baseQty).toBeUndefined()
+    expect(row.sourceType).toBeUndefined()
+    expect(exposed.validateItems()).toBe(true)
+  })
+
+  it.each([0, 5])('原ID=%s：未确认搜索阻止保存及切模式，取消后保留原内容', async (materialId) => {
+    const warning = vi.spyOn(ElMessage, 'warning').mockImplementation(() => ({} as any))
+    const { wrapper, row, state, exposed } = await quickEditor({ ...original, materialId })
+    await action(wrapper, '选择档案物料').trigger('click')
+    await wrapper.get('.spec-cell input').setValue('尚未确认的搜索')
+    expect(exposed.validateItems()).toBe(false)
+    expect(warning).toHaveBeenCalledWith('第1行物料搜索尚未确认，请选择候选物料或取消修改')
+    state.setQuickMode(false)
+    expect(state.quickMode).toBe(true)
+    await action(wrapper, '取消选择').trigger('click')
+    expect(row.materialName).toBe(original.materialName)
+    expect(row.materialId).toBe(materialId)
+    expect(row.specification).toBe(original.specification)
+    expect(row.unit).toBe(original.unit)
+    expect(exposed.validateItems()).toBe(true)
+    state.setQuickMode(false)
+    expect(state.quickMode).toBe(false)
+  })
+
+  it('取消选料后迟到的搜索事件不再阻止原文保存', async () => {
+    const { wrapper, row, exposed } = await quickEditor({ ...original, materialId: 0 })
+    await action(wrapper, '选择档案物料').trigger('click')
+    const selector = wrapper.findComponent({ name: 'BomMaterialSelector' })
+    await wrapper.get('.spec-cell input').setValue('待取消搜索')
+    const cancelled = action(wrapper, '取消选择').trigger('click')
+    selector.vm.$emit('draft-change', { text: '迟到搜索', pending: true })
+    await cancelled
+    expect(row.materialName).toBe(original.materialName)
+    expect(exposed.validateItems()).toBe(true)
+  })
+
+  it('快速原文仍可直接输入和留空保存，只有主动选档案才打开搜索', async () => {
+    const { wrapper, row, exposed } = await quickEditor({ ...original, materialId: 0, materialName: '' })
+    expect(exposed.validateItems()).toBe(true)
+    await wrapper.get('.spec-cell input').setValue('直接录入材料原文')
+    expect(row.materialName).toBe('直接录入材料原文')
+    expect(exposed.validateItems()).toBe(true)
+    expect(materialApi.search).not.toHaveBeenCalled()
+    expect(wrapper.findComponent({ name: 'BomMaterialSelector' }).exists()).toBe(false)
+  })
+
+  it('清空档案选择时清除旧档案单位及制造引用，取消后可保存未关联草稿', async () => {
+    const { wrapper, row, exposed } = await quickEditor({
+      ...original, archiveUnit: 'M', subBomId: 124, sourceType: 'make',
+      unitFactor: 3, unitFactorBasis: '旧换算', unitFactorSource: '旧来源',
+    })
+    await action(wrapper, '选择档案物料').trigger('click')
+    wrapper.findComponent({ name: 'BomMaterialSelector' }).vm.$emit('clear')
+    await flushPromises()
+    await action(wrapper, '取消选择').trigger('click')
+    expect(row).toMatchObject({ materialId: 0, materialName: '', subBomId: null, unitFactor: null })
+    expect(row.archiveUnit).toBeUndefined()
+    expect(row.sourceType).toBeUndefined()
+    expect(exposed.validateItems()).toBe(true)
+  })
+
+  it('只读时隐藏入口、卸载已打开的选择器并拒绝旧回调换料', async () => {
+    const { wrapper, row, state } = await quickEditor()
+    await action(wrapper, '选择档案物料').trigger('click')
+    await wrapper.setProps({ readonly: true })
+    expect(wrapper.findComponent({ name: 'BomMaterialSelector' }).exists()).toBe(false)
+    expect(wrapper.find('.spec-cell button').exists()).toBe(false)
+    state.handleMaterialSelect(replacement, row)
+    expect(row.materialId).toBe(original.materialId)
+    state.handleMaterialClear(row)
+    expect(row.materialId).toBe(original.materialId)
+    state.toggleQuickMaterialSelector(row)
+    expect(row.materialName).toBe(original.materialName)
+  })
+
+  it('清空明细及重新加载后不把选料状态带到新行', async () => {
+    const { wrapper, state, exposed, row } = await quickEditor()
+    await action(wrapper, '选择档案物料').trigger('click')
+    expect(state.isQuickMaterialSelecting(row)).toBe(true)
+    exposed.clearItems()
+    state.handleAddItem()
+    await flushPromises()
+    expect(state.isQuickMaterialSelecting(state.items[0])).toBe(false)
+    await wrapper.setProps({ modelValue: [{ ...original }] })
+    expect(state.isQuickMaterialSelecting(state.items[0])).toBe(false)
   })
 })
