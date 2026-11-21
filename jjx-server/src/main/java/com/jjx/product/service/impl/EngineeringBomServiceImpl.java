@@ -2765,15 +2765,13 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                             "行状态为「" + rowStatus.getLabel() + "」，需逐行审核通过"));
                 }
             }
-            // 材料原文（快速模式）：名称必填，规格选填；未建档允许先入审核
+            // 材料原文（快速模式）：名称必填，规格选填；未关联物料仅允许保存草稿
             if (org.apache.commons.lang3.StringUtils.isBlank(it.getMaterialName())) {
                 issues.add(issue(iid, code, name, "materialName", "材料名称不能为空"));
             }
-            // 物料关联：批准时必须已匹配有效物料
+            // 物料关联：提交审核和批准时均必须已匹配有效物料
             if (it.getMaterialId() == null || it.getMaterialId() <= 0) {
-                if (forApprove) {
-                    issues.add(issue(iid, code, name, "materialId", "未匹配物料，请审核员关联已有物料或新建"));
-                }
+                issues.add(issue(iid, code, name, "materialId", "未匹配物料，请先关联已有物料或新建"));
             } else if (inventoryMaterialMapper.selectById(it.getMaterialId()) == null) {
                 issues.add(issue(iid, code, name, "materialId", "物料不存在（material_id=" + it.getMaterialId() + "）"));
             }
