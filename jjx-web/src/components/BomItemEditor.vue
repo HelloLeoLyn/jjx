@@ -470,10 +470,10 @@ const tableHeight = ref(400)
 // 快速模式（dev-20261020-029）：直接录材料名称+规格，materialId 可空
 const quickMode = ref(false)
 const materialDrafts = ref<Record<string, string>>({})
-// 仅保留常规模式的行内录入方式，不随明细保存；未关联的已有原文默认直接编辑。
+// 仅保留常规模式的行内录入方式，不随明细保存；未关联行（包括新空行）默认直接输入原文。
 const rawMaterialRows = ref<Record<string, boolean>>({})
 const isRawMaterialRow = (row: EngineeringBomItem): boolean =>
-  !row.materialId && (rawMaterialRows.value[String(row.itemId)] ?? Boolean(row.materialName))
+  !row.materialId && (rawMaterialRows.value[String(row.itemId)] ?? true)
 
 function setRawMaterialMode(row: EngineeringBomItem, raw: boolean) {
   if (props.readonly || quickMode.value || row.materialId) return
@@ -490,6 +490,11 @@ const specRequests = new Map<string, Promise<void>>()
 const specVersions = new Map<string, number>()
 function handleMaterialDraft(row: EngineeringBomItem, draft: { text: string; pending: boolean }) {
   const key = String(row.itemId)
+  // 切换为原文后，忽略已卸载搜索框迟到的输入事件（例如输入法 compositionend）。
+  if (!quickMode.value && isRawMaterialRow(row)) {
+    delete materialDrafts.value[key]
+    return
+  }
   if (draft.pending) materialDrafts.value[key] = draft.text
   else delete materialDrafts.value[key]
 }
