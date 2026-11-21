@@ -103,14 +103,14 @@
               @click="openTransfer(row)"
               >{{ isSpecOwner(row) ? '转交' : '改派' }}</el-button
             >
-            <el-button
+            <!-- <el-button
               v-hasPermi="['product:work-spec:publish']"
               link
               type="primary"
               @click="publishVersion(row)"
               >规范定版</el-button
-            >
-            <el-button link type="primary" @click="openVersions(row)">版本</el-button>
+            > -->
+            <el-button link type="primary" @click="openVersions(row)">版本维护</el-button>
             <el-button link type="primary" @click="openPreview(row)">预览/打印</el-button>
           </template>
         </el-table-column>
@@ -168,8 +168,8 @@
     <!-- 规范定版：列表操作栏入口 -->
     <el-dialog
       v-model="versionsVisible"
-      :title="`规范定版 - ${versionsRow?.productCode || ''}`"
-      width="900px"
+      :title="`版本维护 - ${versionsRow?.productCode || ''}`"
+      width="1200px"
       top="6vh"
       append-to-body
       destroy-on-close
