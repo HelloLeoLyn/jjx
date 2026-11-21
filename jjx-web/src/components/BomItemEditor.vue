@@ -68,6 +68,9 @@
         @row-click="handleRowClick"
         :span-method="comboSpan"
         :row-class-name="rowClassName"
+        :cell-style="layoutExpandCellStyle"
+        :expand-row-keys="visibleLayoutExpandKeys"
+        @expand-change="handleLayoutExpand"
         class="bom-item-table"
       >
         <!-- 序号列 - 拖拽手柄 -->
@@ -87,13 +90,13 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column v-if="Object.keys(layoutMaterialDrafts).length" type="expand">
+        <el-table-column v-if="hasLayoutMaterialDrafts" type="expand">
           <template #default="scope">
-            <div v-if="layoutMaterialDrafts[String(scope.row.itemId)]" style="padding: 12px">
-              <p>子料仅保留在本窗口，需另存为生产BOM；本次支持0或1条子料，多条请保留待后续处理。</p>
-              <el-button v-if="!readonly && layoutMaterialDrafts[String(scope.row.itemId)]?.length === 1" link type="danger" @click="emit('remove-layout-material', scope.row)">移除此子料草稿</el-button>
+            <div v-if="hasLayoutMaterialDraft(scope.row)" style="padding: 12px">
+              <p>制造BOM投入明细仅保留在本窗口，需另存为制造BOM；普通行没有此明细。</p>
+              <el-button v-if="!readonly && layoutMaterialDrafts[String(scope.row.itemId)]?.length === 1" link type="danger" @click="emit('remove-layout-material', scope.row)">移除此制造BOM投入草稿</el-button>
               <el-table :data="layoutMaterialDrafts[String(scope.row.itemId)]" border>
-                <el-table-column label="子料档案 / 材料原文" min-width="200">
+                <el-table-column label="制造BOM投入物料" min-width="200">
                   <template #default="child">
                     <BomMaterialSelector
                       v-if="!readonly"
@@ -133,64 +136,21 @@
             />
           </template>
         </el-table-column>
-        <!-- 两种模式均可选择档案；快速模式默认保留原文录入，按需打开选料。 -->
+        <!-- 输入即搜索；未选候选时保存原文，选中时关联档案身份。 -->
         <el-table-column label="物料名称" prop="materialName" min-width="140">
           <template #default="scope">
             <div class="material-name-cell">
-              <el-input
-                v-if="quickMode && !scope.row.materialId && !isQuickMaterialSelecting(scope.row)"
-                v-model="scope.row.materialName"
-                :disabled="readonly"
-                placeholder="输入材料名称（可暂空）"
-                size="small"
-                maxlength="200"
-              />
-              <span v-else-if="readonly || (quickMode && !isQuickMaterialSelecting(scope.row))">{{
-                scope.row.materialName
-              }}</span>
-              <el-input
-                v-else-if="!quickMode && isRawMaterialRow(scope.row)"
-                v-model="scope.row.materialName"
-                placeholder="输入材料原文（必填）"
-                size="small"
-                maxlength="200"
-              />
+              <span v-if="readonly">{{ scope.row.materialName }}</span>
               <BomMaterialSelector
                 v-else
                 :material-id="scope.row.materialId"
                 :material-name="scope.row.materialName"
-                confirm-selection
-                @draft-change="(draft) => handleMaterialDraft(scope.row, draft)"
+                allow-raw-text
+                @raw-input="(text) => handleMaterialNameInput(scope.row, text)"
                 @select="(material) => handleMaterialSelect(material, scope.row)"
                 @clear="handleMaterialClear(scope.row)"
                 @create="(keyword) => handleCreateMaterial(scope.row, keyword)"
               />
-              <el-button
-                v-if="!readonly && quickMode"
-                link
-                type="primary"
-                size="small"
-                @click="toggleQuickMaterialSelector(scope.row)"
-              >
-                {{ isQuickMaterialSelecting(scope.row) ? '取消选择' : '选择档案物料' }}
-              </el-button>
-              <el-button
-                v-if="!readonly && !quickMode && !scope.row.materialId"
-                link
-                type="primary"
-                size="small"
-                @click="setRawMaterialMode(scope.row, !isRawMaterialRow(scope.row))"
-              >
-                {{ isRawMaterialRow(scope.row) ? '选择档案物料' : '直接输入材料原文' }}
-              </el-button>
-              <!-- <el-tag
-              v-if="quickMode && !scope.row.materialId"
-              size="small"
-              type="warning"
-              effect="plain"
-              >未建档</el-tag
-            > -->
-              <!-- <small class="material-code">{{ scope.row.materialCode }}</small> -->
             </div>
           </template>
         </el-table-column>
@@ -404,7 +364,7 @@
               >删除</el-button
             >
             <el-button
-              v-if="showManufacturing(scope.row) && !layoutMaterialDrafts[String(scope.row.itemId)]"
+              v-if="showManufacturing(scope.row) && !hasLayoutMaterialDraft(scope.row) && (!quickMode || Number(scope.row.subBomId) > 0)"
               link
               type="primary"
               size="small"
@@ -413,7 +373,7 @@
               >{{ manufacturingLabel(scope.row) }}</el-button
             >
             <el-button
-              v-if="layoutMaterialDrafts[String(scope.row.itemId)] && !isPendingRemove(scope.row)"
+              v-if="hasLayoutMaterialDraft(scope.row) && !isPendingRemove(scope.row)"
               link type="primary" size="small" :disabled="readonly"
               @click="emit('save-manufacturing-draft', scope.row)"
             >另存为生产BOM</el-button>
@@ -546,58 +506,35 @@ const refreshLoading = ref(false)
 const tableHeight = ref(400)
 // 快速模式（dev-20261020-029）：直接录材料名称+规格，materialId 可空
 const quickMode = ref(false)
-const materialDrafts = ref<Record<string, string>>({})
-const quickMaterialSelectors = ref<Record<string, boolean>>({})
-const isQuickMaterialSelecting = (row: EngineeringBomItem): boolean =>
-  quickMaterialSelectors.value[String(row.itemId)] === true
-
-function toggleQuickMaterialSelector(row: EngineeringBomItem) {
-  if (props.readonly || !quickMode.value) return
-  const key = String(row.itemId)
-  if (isQuickMaterialSelecting(row)) {
-    delete quickMaterialSelectors.value[key]
-    delete materialDrafts.value[key]
-  } else {
-    quickMaterialSelectors.value[key] = true
-  }
-}
-// 仅保留常规模式的行内录入方式，不随明细保存；未关联行（包括新空行）默认直接输入原文。
-const rawMaterialRows = ref<Record<string, boolean>>({})
-const isRawMaterialRow = (row: EngineeringBomItem): boolean =>
-  !row.materialId && (rawMaterialRows.value[String(row.itemId)] ?? true)
-
-function setRawMaterialMode(row: EngineeringBomItem, raw: boolean) {
-  if (props.readonly || quickMode.value || row.materialId) return
-  const key = String(row.itemId)
-  // 搜索文字只有显式选择「材料原文」后才成为行内容，避免误保存未确认的选料搜索。
-  if (raw && materialDrafts.value[key] !== undefined) {
-    row.materialName = materialDrafts.value[key]
-  }
-  delete materialDrafts.value[key]
-  rawMaterialRows.value[key] = raw
+/** 只有实际制造BOM草稿行才允许展开；空数组和普通行没有入口。 */
+const hasLayoutMaterialDraft = (row: EngineeringBomItem): boolean =>
+  (props.layoutMaterialDrafts[String(row.itemId)]?.length || 0) > 0
+const hasLayoutMaterialDrafts = computed(() => items.value.some(hasLayoutMaterialDraft))
+const expandedLayoutRows = ref<string[]>([])
+const visibleLayoutExpandKeys = computed(() => expandedLayoutRows.value.filter((key) =>
+  items.value.some((row) => String(row.itemId) === String(key) && hasLayoutMaterialDraft(row))
+))
+const layoutExpandCellStyle = ({ row, column }: { row: EngineeringBomItem; column: { type?: string } }) =>
+  column.type === 'expand' && !hasLayoutMaterialDraft(row)
+    ? { visibility: 'hidden' as const, pointerEvents: 'none' as const } : {}
+function handleLayoutExpand(_row: EngineeringBomItem, expanded: EngineeringBomItem[] | boolean) {
+  if (!Array.isArray(expanded)) return
+  expandedLayoutRows.value = expanded.filter(hasLayoutMaterialDraft).map((row) => String(row.itemId))
 }
 const specErrors = ref<Record<string, boolean>>({})
 const specRequests = new Map<string, Promise<void>>()
 const specVersions = new Map<string, number>()
-function handleMaterialDraft(row: EngineeringBomItem, draft: { text: string; pending: boolean }) {
-  const key = String(row.itemId)
-  // 切换为原文后，忽略已卸载搜索框迟到的输入事件（例如输入法 compositionend）。
-  if (quickMode.value ? !isQuickMaterialSelecting(row) : isRawMaterialRow(row)) {
-    delete materialDrafts.value[key]
-    return
+
+function handleMaterialNameInput(row: EngineeringBomItem, text: string) {
+  if (props.readonly || text === row.materialName) return
+  // 改写已关联名称即转为未关联原文，不能让新名称继续使用旧ID、档案规格或制造引用。
+  if (Number(row.materialId) > 0) {
+    resetMaterialConsumption(row, true)
+    handleMaterialClear(row)
   }
-  if (draft.pending) materialDrafts.value[key] = draft.text
-  else delete materialDrafts.value[key]
+  row.materialName = text
 }
 function setQuickMode(value: string | number | boolean) {
-  const pendingRow = items.value.find(
-    (row) => materialDrafts.value[String(row.itemId)] !== undefined && !isPendingRemove(row)
-  )
-  if (pendingRow) {
-    void markRowError(pendingRow, '请先选择候选物料或取消搜索修改，再切换模式')
-    return
-  }
-  quickMaterialSelectors.value = {}
   quickMode.value = Boolean(value)
   emit('quick-mode-change', quickMode.value)
 }
@@ -839,13 +776,31 @@ onUnmounted(() => {
 
 // ==================== 物料选择处理 ====================
 
+/** 换料/解除档案身份时旧定额失效；首次关联原文保留原始比例。 */
+function resetMaterialConsumption(row: EngineeringBomItem, identityChanged: boolean) {
+  row.baseQty = undefined
+  row.moduleQty = undefined
+  row.pitchMm = null
+  row.pcsPerPitch = 1
+  row.quantity = 0
+  row.appliedQty = undefined
+  row.actualIssueQty = undefined
+  row.minIssueQty = 0
+  if (identityChanged) {
+    row.subBomId = null
+    row.sourceType = undefined
+    row.split = ''
+  }
+  row.unitFactor = null
+  row.unitFactorBasis = ''
+  row.unitFactorSource = ''
+}
+
 /**
  * 物料选择处理
  */
 const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomItem) => {
   if (!material || props.readonly) return
-  delete materialDrafts.value[String(row.itemId)]
-  delete quickMaterialSelectors.value[String(row.itemId)]
   const identityChanged = Number(row.materialId) !== Number(material.materialId)
   // 首次关联只补齐物料档案，保留导入或手填的定额；已有物料换料/换单位才清理旧定额。
   if (
@@ -853,22 +808,7 @@ const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomIt
     (identityChanged ||
       String(row.unit).toUpperCase() !== String(material.unit || 'PCS').toUpperCase())
   ) {
-    row.baseQty = undefined
-    row.moduleQty = undefined
-    row.pitchMm = null
-    row.pcsPerPitch = 1
-    row.quantity = 0
-    row.appliedQty = undefined
-    row.actualIssueQty = undefined
-    row.minIssueQty = 0
-    if (identityChanged) {
-      row.subBomId = null
-      row.sourceType = undefined
-      row.split = ''
-    }
-    row.unitFactor = null
-    row.unitFactorBasis = ''
-    row.unitFactorSource = ''
+    resetMaterialConsumption(row, identityChanged)
   }
   row.archiveUnit = material.unit
 
@@ -982,9 +922,7 @@ watch(
     if (isUpdating) return
     if (JSON.stringify(newVal) !== JSON.stringify(toSubmitItems(items.value))) {
       items.value = toFlatItems(newVal)
-      materialDrafts.value = {}
-      quickMaterialSelectors.value = {}
-      rawMaterialRows.value = {}
+      expandedLayoutRows.value = []
       walkTree(items.value, matchProjectByName)
       // 初始化保留已保存快照；本次显示由只读试算接口返回。
     }
@@ -1298,7 +1236,6 @@ let creatingRow: EngineeringBomItem | null = null
 
 const handleMaterialClear = (row: EngineeringBomItem) => {
   if (props.readonly) return
-  delete materialDrafts.value[String(row.itemId)]
   row.materialId = 0
   row.materialCode = ''
   row.materialName = ''
@@ -1440,9 +1377,7 @@ defineExpose({
   showManufacturing,
   handleManufacturing,
   clearItems: () => {
-    materialDrafts.value = {}
-    quickMaterialSelectors.value = {}
-    rawMaterialRows.value = {}
+    expandedLayoutRows.value = []
     items.value = []
     selectedItems.value = []
   },
@@ -1460,13 +1395,6 @@ defineExpose({
         failures.push({
           item,
           message: `物料「${item.materialName}」物料档案尚未读取，请稍后或刷新重试`,
-        })
-        return
-      }
-      if (materialDrafts.value[String(item.itemId)] !== undefined) {
-        failures.push({
-          item,
-          message: `第${items.value.indexOf(item) + 1}行物料搜索尚未确认，请选择候选物料或取消修改`,
         })
         return
       }

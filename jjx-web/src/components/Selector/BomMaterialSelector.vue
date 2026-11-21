@@ -15,7 +15,7 @@
     placeholder="输入物料名称/编码搜索"
     size="small"
     :keep-text-on-blur="keepTextOnBlur"
-    :track-input="confirmSelection"
+    :track-input="confirmSelection || allowRawText"
     @focusin="onFocus"
     @draft="handleDraft"
     @search="search.search"
@@ -28,7 +28,7 @@
       <MaterialSearchOption :item="item" />
     </template>
     <template #footer>
-      <div v-if="pending" role="status" class="bom-search-pending">
+      <div v-if="pending && !allowRawText" role="status" class="bom-search-pending">
         搜索文字尚未确认，请选择候选物料，或取消修改
         <el-button link @click="cancelDraft">取消修改</el-button>
       </div>
@@ -60,12 +60,15 @@ const props = withDefaults(defineProps<{
   materialCode?: string
   showMaterialCode?: boolean
   confirmSelection?: boolean
+  /** BOM原文录入专用：输入同时搜索，未选候选时由调用方保存原文。其他入口默认仍只选档案。 */
+  allowRawText?: boolean
   keepTextOnBlur?: boolean
   browseOnFocus?: boolean
   allowCreate?: boolean
   createPermissions?: string[]
 }>(), {
   confirmSelection: false,
+  allowRawText: false,
   keepTextOnBlur: true,
   browseOnFocus: false,
   allowCreate: true,
@@ -77,6 +80,7 @@ const emit = defineEmits<{
   (e: 'clear'): void
   (e: 'create', keyword: string): void
   (e: 'draft-change', value: { text: string; pending: boolean }): void
+  (e: 'raw-input', text: string): void
 }>()
 
 const search = useMaterialSearch({
@@ -87,6 +91,11 @@ const search = useMaterialSearch({
 
 const pending = ref(false)
 function handleDraft(value: { text: string; composing: boolean }) {
+  if (props.allowRawText) {
+    pending.value = false
+    emit('raw-input', value.text)
+    return
+  }
   if (!props.confirmSelection) return
   pending.value = value.composing || value.text !== (props.materialName || '')
   emit('draft-change', { text: value.text, pending: pending.value })

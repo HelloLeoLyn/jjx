@@ -18,10 +18,11 @@ const sample = [
 ]
 
 describe('040 方案B：保留解析，父行保存与子料草稿分离', () => {
-  it('真实五行样例只生成五条产品父行，六条子料仅保留在草稿', () => {
+  it('真实五行样例只生成五条产品父行，仅带跳的三行有制造BOM投入明细', () => {
     const before = JSON.stringify(sample)
     const drafts = parseBomLayoutRows(sample)
     expect(drafts).toHaveLength(5)
+    expect(drafts.map((draft) => draft.materials.length)).toEqual([0, 2, 1, 0, 1])
     expect(drafts[1].materials.map((row) => row.materialName)).toEqual(['3M9080', '离型纸'])
     const items = productBomItemsFromLayout(drafts)
     expect(items).toHaveLength(5)
@@ -60,7 +61,7 @@ describe('040 方案B：保留解析，父行保存与子料草稿分离', () =>
   it('N个/PCS 使用基数N、模数1，不生成猜测的宽度或跳距', () => {
     const drafts = parseBomLayoutRows([['规格及模数'], ['6个/PCS']])
     expect(drafts[0]).toMatchObject({ specification: '', baseQty: 6, moduleQty: 1 })
-    expect(drafts[0].materials[0].pitchMm).toBeUndefined()
+    expect(drafts[0].materials).toEqual([])
   })
 
   it('板材宽长仅作尺寸，不把长度误判成耗用跳距', () => {
@@ -68,8 +69,8 @@ describe('040 方案B：保留解析，父行保存与子料草稿分离', () =>
       ['材料', '规格及模数'],
       ['PC', '450*225mm=6PCS'],
     ])
-    expect(drafts[0].materials[0]).toMatchObject({ widthMm: 450, lengthMm: 225 })
-    expect(drafts[0].materials[0].pitchMm).toBeUndefined()
+    expect(drafts[0].materials).toEqual([])
+    expect(drafts[0].materials).toEqual([])
     expect(productBomItemsFromLayout(drafts)[0]).toMatchObject({
       specification: '450*225mm',
       split: '',
@@ -93,7 +94,8 @@ describe('040 方案B：保留解析，父行保存与子料草稿分离', () =>
       ['1个/PCS', 'PCS', '贴膜', '易撕贴'],
     ])
     expect(drafts[0]).toMatchObject({ sourceRow: 3, processName: '贴膜' })
-    expect(drafts[0].materials[0].materialName).toBe('易撕贴')
+    expect(drafts[0].materialName).toBe('易撕贴')
+    expect(drafts[0].materials).toEqual([])
   })
 
   it('产品请求只带父行比例，不带子料、嵌套材料或children', () => {
@@ -148,9 +150,9 @@ describe('040 方案B：保留解析，父行保存与子料草稿分离', () =>
 
   it('子料未确认的档案搜索仅阻止另存，不阻止保存父行', () => {
     const drafts = parseBomLayoutRows(sample)
-    drafts[0].materials[0].searchPending = true
+    drafts[4].materials[0].searchPending = true
     expect(productBomItemsFromLayout(drafts)).toHaveLength(5)
-    expect(() => manufacturingItemsFromLayout(drafts[0].materials)).toThrow('搜索尚未确认')
+    expect(() => manufacturingItemsFromLayout(drafts[4].materials)).toThrow('搜索尚未确认')
   })
 
   it.each(['无法解析', '205宽跳0mm=6PCS', '205宽跳440mm=0PCS', '0个/PCS', '3M=0PCS'])(
@@ -170,10 +172,10 @@ describe('040 方案B：保留解析，父行保存与子料草稿分离', () =>
     drafts[0].moduleQty = 0
     expect(() => productBomItemsFromLayout(drafts)).toThrow('模数')
     drafts[0].moduleQty = 6
-    drafts[0].materials[0].widthMm = -1
-    expect(() => manufacturingItemsFromLayout(drafts[0].materials)).toThrow('宽度')
-    drafts[0].materials[0].widthMm = 450
-    Object.assign(drafts[0].materials[0], { pcsPerPitch: 2 })
-    expect(() => manufacturingItemsFromLayout(drafts[0].materials)).toThrow('每跳片数')
+    drafts[4].materials[0].widthMm = -1
+    expect(() => manufacturingItemsFromLayout(drafts[4].materials)).toThrow('宽度')
+    drafts[4].materials[0].widthMm = 205
+    Object.assign(drafts[4].materials[0], { pcsPerPitch: 2 })
+    expect(() => manufacturingItemsFromLayout(drafts[4].materials)).toThrow('每跳片数')
   })
 })

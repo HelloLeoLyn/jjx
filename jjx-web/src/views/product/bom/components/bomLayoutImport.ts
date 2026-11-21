@@ -92,7 +92,7 @@ export function parseBomLayoutRows(rows: unknown[][]): BomLayoutDraft[] {
         pitchMm = positive(Number(cut[2]), '跳距', 2)
         specification = `${widthMm}mm*${pitchMm}mm`
       } else {
-        // 普通宽×长仅记录几何尺寸，不从板材长度猜测跳距。
+        // 普通宽×长只校验尺寸，不从板材长度生成制造BOM投入明细。
         const size = specification.match(
           /^(\d+(?:\.\d+)?)\s*(?:mm)?\s*[*×x]\s*(\d+(?:\.\d+)?)\s*mm$/i
         )
@@ -112,13 +112,14 @@ export function parseBomLayoutRows(rows: unknown[][]): BomLayoutDraft[] {
         moduleQty,
         baseQty,
         unit: text(row[col.unit]) || 'PCS',
-        materials: names.map((materialName) => ({
+        // 只有“宽跳”行需要制造BOM投入明细；普通板材/计件行不复制同名子料。
+        materials: cut ? names.map((materialName) => ({
           materialName,
           widthMm,
           lengthMm,
           pitchMm,
           pcsPerPitch: 1,
-        })),
+        })) : [],
       })
     } catch (error) {
       throw new Error(`Excel第${index + 1}行：${(error as Error).message}`)

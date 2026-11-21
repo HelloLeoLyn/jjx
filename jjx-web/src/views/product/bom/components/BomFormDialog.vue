@@ -181,12 +181,14 @@
       append-to-body
       :close-on-click-modal="false"
     >
-      <p>产品 BOM 只保存父行。子料仅保留在本窗口，需另存为生产 BOM；本次另存支持 0 或 1 条子料。</p>
-      <el-table :data="layoutImportDrafts" row-key="sourceRow" default-expand-all border max-height="520">
-        <el-table-column type="expand">
+      <p>产品 BOM 只保存用料行；仅带“跳”的行显示制造 BOM 投入明细，需独立另存。</p>
+      <el-table :data="layoutImportDrafts" row-key="sourceRow" border max-height="520"
+        :expand-row-keys="layoutImportExpandedRows" :cell-style="layoutImportCellStyle"
+        @expand-change="handleLayoutImportExpand">
+        <el-table-column v-if="layoutImportDrafts.some((draft) => draft.materials.length > 0)" type="expand">
           <template #default="scope">
             <el-table :data="scope.row.materials" border>
-              <el-table-column label="材料名称（可暂空）" min-width="240">
+              <el-table-column label="制造BOM投入物料（可暂空）" min-width="240">
                 <template #default="child">
                   <el-input v-model="child.row.materialName" maxlength="200" placeholder="输入材料原文" />
                 </template>
@@ -196,7 +198,7 @@
                   <el-input-number v-model="child.row.widthMm" :min="0.01" :precision="2" :controls="false" />
                 </template>
               </el-table-column>
-              <el-table-column label="排版跳距(mm)" width="170">
+              <el-table-column label="制造跳距(mm)" width="170">
                 <template #default="child">
                   <el-input-number v-model="child.row.pitchMm" :min="0.01" :precision="2" :controls="false" />
                 </template>
@@ -208,7 +210,7 @@
           </template>
         </el-table-column>
         <el-table-column label="Excel行" prop="sourceRow" width="85" />
-        <el-table-column label="父行物料名称（可暂空）" min-width="200">
+        <el-table-column label="产品BOM用料名称（可暂空）" min-width="200">
           <template #default="scope"><el-input v-model="scope.row.materialName" maxlength="200" /></template>
         </el-table-column>
         <el-table-column label="规格" min-width="240">
@@ -342,6 +344,13 @@ const importUploadRef = ref<UploadInstance>()
 const quickImportMode = ref(false)
 const layoutImportVisible = ref(false)
 const layoutImportDrafts = ref<BomLayoutDraft[]>([])
+const layoutImportExpandedRows = ref<string[]>([])
+const layoutImportCellStyle = ({ row, column }: { row: BomLayoutDraft; column: { type?: string } }) =>
+  column.type === 'expand' && !row.materials.length
+    ? { visibility: 'hidden' as const, pointerEvents: 'none' as const } : {}
+const handleLayoutImportExpand = (_row: BomLayoutDraft, expanded: BomLayoutDraft[] | boolean) => {
+  if (Array.isArray(expanded)) layoutImportExpandedRows.value = expanded.filter((row) => row.materials.length).map((row) => String(row.sourceRow))
+}
 const isFullscreen = ref(false)
 
 // 切换全屏
@@ -809,6 +818,7 @@ const parseExcelFile = (file: File) => {
           return
         }
         layoutImportDrafts.value = drafts
+        layoutImportExpandedRows.value = drafts.filter((draft) => draft.materials.length > 0).map((draft) => String(draft.sourceRow))
         layoutImportVisible.value = true
         return
       }
@@ -863,7 +873,8 @@ const applyLayoutImport = () => {
     items.forEach((item, index) => {
       while (current.some((row: EngineeringBomItem) => row.itemId === layoutItemSeq)) layoutItemSeq--
       item.itemId = layoutItemSeq--
-      layoutMaterialDrafts.value[String(item.itemId)] = layoutImportDrafts.value[index].materials.map((material) => ({ ...material }))
+      const materials = layoutImportDrafts.value[index].materials
+      if (materials.length > 0) layoutMaterialDrafts.value[String(item.itemId)] = materials.map((material) => ({ ...material }))
     })
     formData.items = [...current, ...items]
     layoutImportVisible.value = false
