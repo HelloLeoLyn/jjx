@@ -171,6 +171,7 @@
       @manufacturing="handleManufacturing"
       @save-manufacturing-draft="handleSaveManufacturingDraft"
       @remove-layout-material="removeLayoutMaterial"
+      @cleared="handleItemsCleared"
       ref="bomItemEditorRef"
     />
 
@@ -549,6 +550,22 @@ const handleSaveManufacturingDraft = (row: EngineeringBomItem) => {
 const removeLayoutMaterial = (row: EngineeringBomItem) => {
   if (!editSession.ensureEditable()) return
   layoutMaterialDrafts.value[String(row.itemId)] = []
+}
+
+/** 丢弃所清明细的前端关联草稿，表头与服务端主方案/版本基线保留。 */
+const handleItemsCleared = () => {
+  ++bomLoadGeneration // 同时作废清空前仍在读取的Excel及旧内容回调。
+  formData.items = []
+  layoutMaterialDrafts.value = {}
+  layoutImportDrafts.value = []
+  layoutImportExpandedRows.value = []
+  layoutImportVisible.value = false
+  manufacturingDraftItems.value = undefined
+  manufacturingDraftOrigin.value = null
+  manufacturingRow.value = null
+  manufacturingVisible.value = false
+  primaryChoices.value = {}
+  recomputeDirty()
 }
 
 const handleManufacturingDraftSaved = (payload: { materialId: number; bomId: number; originKey?: string }) => {

@@ -21,6 +21,12 @@
           添加物料
         </el-button>
         <el-button
+          type="danger"
+          plain
+          :disabled="readonly || !items.length || syncLoading || refreshLoading || clearConfirmPending"
+          @click="handleClearAllItems"
+        >清空明细</el-button>
+        <el-button
           type="info"
           :icon="Refresh"
           :loading="refreshLoading"
@@ -459,6 +465,7 @@ interface Emits {
   (e: 'manufacturing', row: EngineeringBomItem): void
   (e: 'save-manufacturing-draft', row: EngineeringBomItem): void
   (e: 'remove-layout-material', row: EngineeringBomItem): void
+  (e: 'cleared'): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -504,6 +511,7 @@ const selectedItems = ref<EngineeringBomItem[]>([])
 const tableLoading = ref(false)
 const refreshLoading = ref(false)
 const tableHeight = ref(400)
+const clearConfirmPending = ref(false)
 // 快速模式（dev-20261020-029）：直接录材料名称+规格，materialId 可空
 const quickMode = ref(false)
 /** 只有实际制造BOM草稿行才允许展开；空数组和普通行没有入口。 */
@@ -975,6 +983,54 @@ const handleAddItem = () => {
   })
 }
 
+/** 只重置编辑器草稿；不发业务删除请求，已有审核行由原保存流程处理。 */
+function clearEditorItems() {
+  emitChange.cancel()
+  for (const [key, version] of specVersions) specVersions.set(key, version + 1)
+  specRequests.clear()
+  specErrors.value = {}
+  syncFlags.value = {}
+  creatingRow = null
+  errorRowKey.value = null
+  currentRowKey.value = undefined
+  expandedLayoutRows.value = []
+  selectedItems.value = []
+  items.value = []
+}
+
+const handleClearAllItems = async () => {
+  if (props.readonly || !items.value.length || clearConfirmPending.value || syncLoading.value || refreshLoading.value) return
+  const keys = items.value.map((row) => row.itemId)
+  const approved = items.value.filter(isApprovedRow).length
+  const drafts = items.value.reduce((total, row) => total + (props.layoutMaterialDrafts[String(row.itemId)]?.length || 0), 0)
+  const message = `将清空当前 ${keys.length} 条明细，BOM表头保留。请重新录入或导入后再保存。`
+    + (drafts ? `同时丢弃 ${drafts} 条尚未另存的制造BOM投入草稿。` : '')
+    + (approved ? `其中 ${approved} 条已审核明细保存后仍走移除审核流程。` : '')
+  clearConfirmPending.value = true
+  try {
+    try {
+      await ElMessageBox.confirm(message, '清空BOM明细', {
+        confirmButtonText: '确认清空', cancelButtonText: '取消', type: 'warning',
+        closeOnClickModal: false,
+      })
+    } catch {
+      return
+    }
+    if (props.readonly) return
+    if (syncLoading.value || refreshLoading.value || keys.length !== items.value.length || items.value.some((row, index) => row.itemId !== keys[index])) {
+      ElMessage.warning('明细已变化或正在更新，请重新确认清空')
+      return
+    }
+    clearEditorItems()
+    emit('cleared')
+    await nextTick()
+    emitChange.flush()
+    ElMessage.success('已清空当前明细，请重新录入或导入后保存')
+  } finally {
+    clearConfirmPending.value = false
+  }
+}
+
 /**
  * 复制物料（平铺：复制为一行追加到末尾）
  */
@@ -1376,11 +1432,7 @@ defineExpose({
   },
   showManufacturing,
   handleManufacturing,
-  clearItems: () => {
-    expandedLayoutRows.value = []
-    items.value = []
-    selectedItems.value = []
-  },
+  clearItems: clearEditorItems,
   validateItems: (): boolean => {
     if (items.value.length === 0) {
       ElMessage.warning('请至少添加一个物料')

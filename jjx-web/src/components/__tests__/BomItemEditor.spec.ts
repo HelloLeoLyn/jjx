@@ -10,7 +10,8 @@ vi.mock('sortablejs', () => ({ default: { create: vi.fn(() => ({ destroy: vi.fn(
 vi.mock('@/directives', () => ({ hasPermi: vi.fn(() => true) }))
 import Sortable from 'sortablejs'
 import { hasPermi } from '@/directives'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { BomItemReviewStatusEnum } from '@/enums/product'
 import { materialApi } from '@/api/inventory/material'
 import { materialMasterApi } from '@/api/inventory/materialMaster'
 import BomItemEditor from '../BomItemEditor.vue'
@@ -35,7 +36,7 @@ function editor(row: any = original, props: Record<string, unknown> = {}, slotPr
       ElTableColumn: defineComponent({
         props: ['prop'],
         setup(props, { slots }) {
-          return () => props.prop === slotProp && renderedState.value
+          return () => props.prop === slotProp && renderedState.value?.items[0]
             ? h('div', { class: 'spec-cell' }, slots.default?.({ row: renderedState.value.items[0] })) : null
         },
       }),
@@ -474,5 +475,121 @@ describe('040返工：制造BOM投入明细按行展开', () => {
     expect(exposed.getItems().every((row: any) => !row.children && !row.materials)).toBe(true)
     await wrapper.setProps({ layoutMaterialDrafts: {} }); await flushPromises()
     expect(wrapper.findAll('.el-table__expand-icon')).toHaveLength(0)
+  })
+})
+
+describe('BOM明细一键清空（dev-20261121-002）', () => {
+  const clearButton = (wrapper: any) => wrapper.findAll('button').find((entry: any) => entry.text() === '清空明细')!
+  const pendingConfirm = () => {
+    let resolve!: (value: any) => void
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockImplementation(() => new Promise(done => { resolve = done }) as any)
+    return { confirm, resolve: (value: any = 'confirm') => resolve(value) }
+  }
+  it('点击后先确认数量，确认前不变；确认清空明细、选择和临时状态并同步父级', async () => {
+    const pending = pendingConfirm()
+    const rows = [
+      { ...original, reviewStatus: BomItemReviewStatusEnum.APPROVED.value },
+      { ...original, itemId: 2, materialId: 0 },
+    ]
+    const { wrapper, state, exposed } = editor(original, {
+      modelValue: rows, layoutMaterialDrafts: { '2': [{ materialName: '原料卷', pitchMm: 440, pcsPerPitch: 1 }] },
+    }, 'materialName', true)
+    const oldApproved = state.items[0]
+    state.selectedItems = [oldApproved]
+    state.errorRowKey = 1
+    state.specErrors = { '1': true }
+    state.syncFlags = { '1': 'AMBIGUOUS' }
+    await flushPromises()
+    await clearButton(wrapper).trigger('click')
+    expect(pending.confirm).toHaveBeenCalledWith(expect.stringContaining('2 条明细'), '清空BOM明细', expect.any(Object))
+    expect(pending.confirm.mock.calls[0][0]).toContain('1 条已审核明细')
+    expect(pending.confirm.mock.calls[0][0]).toContain('1 条尚未另存')
+    expect(exposed.getItems()).toHaveLength(2)
+    pending.resolve(); await flushPromises()
+    expect(exposed.getItems()).toEqual([])
+    expect(wrapper.emitted('cleared')).toHaveLength(1)
+    expect(wrapper.emitted('update:modelValue')!.at(-1)).toEqual([[]])
+    expect(state.selectedItems).toEqual([])
+    expect(state.specErrors).toEqual({})
+    expect(state.syncFlags).toEqual({})
+    expect(oldApproved.reviewStatus).toBe(BomItemReviewStatusEnum.APPROVED.value)
+    expect(clearButton(wrapper).element.disabled).toBe(true)
+    expect(materialApi.search).not.toHaveBeenCalled()
+    expect(materialMasterApi.detail).not.toHaveBeenCalled()
+  })
+  it.each(['cancel', 'close'])('确认框%s不清空、不通知父级', async (action) => {
+    vi.spyOn(ElMessageBox, 'confirm').mockRejectedValueOnce(action)
+    const { state, exposed, wrapper } = editor()
+    await state.handleClearAllItems()
+    expect(exposed.getItems()).toHaveLength(1)
+    expect(wrapper.emitted('cleared')).toBeUndefined()
+  })
+  it('空明细、只读、刷新或同步期间禁用清空，不弹确认框', async () => {
+    const confirm = vi.spyOn(ElMessageBox, 'confirm')
+    const empty = editor(original, { modelValue: [] }, 'materialName', true)
+    await flushPromises()
+    expect(clearButton(empty.wrapper).element.disabled).toBe(true)
+    await empty.state.handleClearAllItems()
+    const locked = editor(original, { readonly: true }, 'materialName', true)
+    await flushPromises()
+    expect(clearButton(locked.wrapper).element.disabled).toBe(true)
+    await locked.state.handleClearAllItems()
+    const busy = editor(original, {}, 'materialName', true)
+    busy.state.syncLoading = true; await flushPromises()
+    expect(clearButton(busy.wrapper).element.disabled).toBe(true)
+    await busy.state.handleClearAllItems()
+    busy.state.syncLoading = false; busy.state.refreshLoading = true
+    await busy.state.handleClearAllItems()
+    expect(confirm).not.toHaveBeenCalled()
+  })
+  it('确认期间编辑权变只读，确认后仍保留原明细', async () => {
+    const pending = pendingConfirm()
+    const { wrapper, state, exposed } = editor()
+    const cleared = state.handleClearAllItems()
+    await wrapper.setProps({ readonly: true })
+    pending.resolve(); await cleared
+    expect(exposed.getItems()).toHaveLength(1)
+    expect(wrapper.emitted('cleared')).toBeUndefined()
+  })
+  it('确认期间增加了明细则要求重新确认，防止清掉未确认的新行', async () => {
+    const pending = pendingConfirm()
+    const warning = vi.spyOn(ElMessage, 'warning').mockImplementation(() => ({} as any))
+    const { state, exposed, wrapper } = editor()
+    const cleared = state.handleClearAllItems()
+    state.handleAddItem()
+    pending.resolve(); await cleared
+    expect(exposed.getItems()).toHaveLength(2)
+    expect(wrapper.emitted('cleared')).toBeUndefined()
+    expect(warning).toHaveBeenCalledWith('明细已变化或正在更新，请重新确认清空')
+  })
+  it('重复触发只弹一次确认，清空后仍可重新添加；空数组保存仍被拦截', async () => {
+    const pending = pendingConfirm()
+    vi.spyOn(ElMessage, 'warning').mockImplementation(() => ({} as any))
+    const { state, exposed, wrapper } = editor()
+    const first = state.handleClearAllItems()
+    await state.handleClearAllItems()
+    expect(pending.confirm).toHaveBeenCalledTimes(1)
+    pending.resolve(); await first
+    expect(wrapper.emitted('cleared')).toHaveLength(1)
+    expect(exposed.validateItems()).toBe(false)
+    state.handleAddItem()
+    state.setQuickMode(true)
+    await flushPromises()
+    expect(exposed.getItems()).toHaveLength(1)
+    expect(exposed.validateItems()).toBe(true)
+  })
+  it('清空后迟到的档案详情不复活旧行或污染新行', async () => {
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValueOnce('confirm' as any)
+    let resolve!: (value: any) => void
+    vi.mocked(materialMasterApi.detail).mockReturnValueOnce(new Promise(done => { resolve = done }))
+    const { state, exposed, row } = editor()
+    state.handleMaterialSelect(replacement, row)
+    await state.handleClearAllItems()
+    expect(exposed.getItems()).toEqual([])
+    state.handleAddItem()
+    resolve(detail('迟到的档案')); await flushPromises()
+    expect(exposed.getItems()[0]).toMatchObject({ materialId: 0, materialName: '', specification: '' })
+    expect(state.specErrors).toEqual({})
+    expect(await exposed.prepareSpecifications()).toBe(true)
   })
 })
