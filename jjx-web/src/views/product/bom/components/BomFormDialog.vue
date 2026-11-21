@@ -126,6 +126,7 @@
         :limit="1"
         :on-change="handleImportFileChange"
         :on-exceed="handleImportExceed"
+        :disabled="editSession.readOnly.value"
       >
         <el-icon class="upload-icon" :size="32"><UploadFilled /></el-icon>
         <div class="upload-text">
@@ -144,6 +145,12 @@
           <el-icon><Download /></el-icon>下载导入模板（.xlsx）
         </el-button>
         <span class="template-hint"
+          v-if="quickImportMode"
+          >快速模式支持「材料」「规格及模数」表头；材料可暂空，组合材料用 + 分隔。
+          导入后核对父行规格、模数和基数及各材料的宽度、跳距。跳距作为排版资料，按模数/基数计算。</span
+        >
+        <span class="template-hint"
+          v-else
           >必填：材料名称、规格（乘/跳）、模数；其余列可空。也支持单列「规格及模数」（如
           340*305mm=8PCS、315宽跳75mm=2PCS、6个/PCS；基数缺省
           1），此时不需要单独的规格/模数列。列顺序：序号｜项目名称｜材料名称｜单位｜宽度｜规格（乘/跳）｜长度｜模数｜基数｜预计不良｜最低投料｜实际投料（首行表头，数据从第
@@ -158,10 +165,65 @@
       :bom-id="formData.bomId"
       :output-unit="bomOutputUnit"
       :readonly="editSession.readOnly.value"
+      @quick-mode-change="quickImportMode = $event"
       @change="handleItemsChange"
       @manufacturing="handleManufacturing"
       ref="bomItemEditorRef"
     />
+
+    <el-dialog
+      v-model="layoutImportVisible"
+      title="快速模式排版导入草稿"
+      width="1000px"
+      append-to-body
+      :close-on-click-modal="false"
+    >
+      <p>核对后加入 BOM 草稿。父行模数/基数用于计算；子明细跳距仅记录排版信息，每跳片数固定为 1。</p>
+      <el-table :data="layoutImportDrafts" row-key="sourceRow" default-expand-all border max-height="520">
+        <el-table-column type="expand">
+          <template #default="scope">
+            <el-table :data="scope.row.materials" border>
+              <el-table-column label="材料名称（可暂空）" min-width="240">
+                <template #default="child">
+                  <el-input v-model="child.row.materialName" maxlength="200" placeholder="输入材料原文" />
+                </template>
+              </el-table-column>
+              <el-table-column label="宽度(mm)" width="170">
+                <template #default="child">
+                  <el-input-number v-model="child.row.widthMm" :min="0.01" :precision="2" :controls="false" />
+                </template>
+              </el-table-column>
+              <el-table-column label="排版跳距(mm)" width="170">
+                <template #default="child">
+                  <el-input-number v-model="child.row.pitchMm" :min="0.01" :precision="2" :controls="false" />
+                </template>
+              </el-table-column>
+              <el-table-column label="每跳片数" width="100">
+                <template #default="child">{{ child.row.pcsPerPitch }}</template>
+              </el-table-column>
+            </el-table>
+          </template>
+        </el-table-column>
+        <el-table-column label="Excel行" prop="sourceRow" width="85" />
+        <el-table-column label="规格" min-width="240">
+          <template #default="scope"><el-input v-model="scope.row.specification" maxlength="500" /></template>
+        </el-table-column>
+        <el-table-column label="模数" width="170">
+          <template #default="scope">
+            <el-input-number v-model="scope.row.moduleQty" :min="0.0001" :precision="4" :controls="false" />
+          </template>
+        </el-table-column>
+        <el-table-column label="基数" width="170">
+          <template #default="scope">
+            <el-input-number v-model="scope.row.baseQty" :min="0.0001" :precision="4" :controls="false" />
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button @click="layoutImportVisible = false">取消导入</el-button>
+        <el-button type="primary" :disabled="editSession.readOnly.value" @click="applyLayoutImport">加入 BOM 草稿</el-button>
+      </template>
+    </el-dialog>
 
     <template #footer>
       <div class="dialog-footer">
@@ -226,6 +288,12 @@ import { useBomEditSession, isContentConflict } from '../composables/useBomEditS
 import type { ProductItem, ProductVo } from '@/types/product'
 import * as XLSX from 'xlsx'
 import { parseSpecModule } from './bomSpecImport'
+import {
+  parseBomLayoutRows,
+  flattenBomLayoutDrafts,
+  hasBomLayoutHeader,
+  type BomLayoutDraft,
+} from './bomLayoutImport'
 
 
 interface Props {
@@ -259,6 +327,9 @@ const activeTab = ref('basic')
 const bomFormRef = ref<FormInstance>()
 const bomItemEditorRef = ref()
 const importUploadRef = ref<UploadInstance>()
+const quickImportMode = ref(false)
+const layoutImportVisible = ref(false)
+const layoutImportDrafts = ref<BomLayoutDraft[]>([])
 const isFullscreen = ref(false)
 
 // 切换全屏
@@ -593,6 +664,21 @@ const handleImportExceed = () => {
  * 下载导入模板（前端直接生成，列顺序与 parseRows 解析器对齐）
  */
 const downloadImportTemplate = () => {
+  if (quickImportMode.value) {
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ['序号', '项目', '材料', '规格及模数'],
+      [1, '', '加硬浅茶0.8PC', '450*225mm=6PCS'],
+      [2, '', '3M9080+离型纸', '195宽跳80mm=1PCS'],
+      [3, '', '020# PE低粘保护膜', '110宽跳215mm=3PCS'],
+      [4, '', '透明易撕贴', '1个/PCS'],
+      [5, '', 'T4901PET保护膜', '205宽跳440mm=6PCS'],
+    ])
+    sheet['!cols'] = [{ wch: 8 }, { wch: 16 }, { wch: 30 }, { wch: 30 }]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, sheet, '排版导入')
+    XLSX.writeFile(wb, 'BOM快速排版导入模板.xlsx')
+    return
+  }
   const header = [
     '序号',
     '项目名称',
@@ -623,9 +709,17 @@ const downloadImportTemplate = () => {
  * 解析 Excel 文件
  */
 const parseExcelFile = (file: File) => {
+  if (!editSession.ensureEditable()) return
+  const generation = bomLoadGeneration
+  const importMode = quickImportMode.value
   const reader = new FileReader()
 
   reader.onload = (e) => {
+    if (!props.modelValue || generation !== bomLoadGeneration || !editSession.ensureEditable()) return
+    if (importMode !== quickImportMode.value) {
+      ElMessage.warning('录入模式已切换，请重新选择导入文件')
+      return
+    }
     try {
       const data = e.target?.result
       if (!data) {
@@ -642,6 +736,17 @@ const parseExcelFile = (file: File) => {
 
       const worksheet = workbook.Sheets[firstSheetName]
       const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
+
+      if (quickImportMode.value && hasBomLayoutHeader(rows)) {
+        const drafts = parseBomLayoutRows(rows)
+        if (!drafts.length) {
+          ElMessage.warning('未解析到有效的排版数据')
+          return
+        }
+        layoutImportDrafts.value = drafts
+        layoutImportVisible.value = true
+        return
+      }
 
       const items = parseRows(rows)
       if (items.length === 0) {
@@ -664,7 +769,7 @@ const parseExcelFile = (file: File) => {
       }
     } catch (error) {
       console.error('解析 Excel 失败:', error)
-      ElMessage.error('解析 Excel 文件失败，请检查文件格式')
+      ElMessage.error(`解析 Excel 文件失败：${(error as Error).message || '请检查文件格式'}`)
     }
   }
 
@@ -673,6 +778,30 @@ const parseExcelFile = (file: File) => {
   }
 
   reader.readAsArrayBuffer(file)
+}
+
+/** 导入父子结构仅在前端预览；这里只追加拍平的现有明细 DTO。 */
+const applyLayoutImport = () => {
+  if (!editSession.ensureEditable()) return
+  if (!quickImportMode.value) {
+    ElMessage.warning('请切回快速模式后再加入排版草稿')
+    return
+  }
+  try {
+    const items = flattenBomLayoutDrafts(layoutImportDrafts.value)
+    if (!items.length) return
+    const current = bomItemEditorRef.value?.getItems() || formData.items
+    if (current.length + items.length > 500) {
+      ElMessage.warning('物料明细最多500行，请减少本次导入内容')
+      return
+    }
+    formData.items = [...current, ...items]
+    layoutImportVisible.value = false
+    layoutImportDrafts.value = []
+    ElMessage.success(`已加入 ${items.length} 条材料明细，可继续编辑后保存`)
+  } catch (error) {
+    ElMessage.warning((error as Error).message || '请检查排版草稿内容')
+  }
 }
 
 /**
@@ -939,7 +1068,7 @@ const doSave = async (): Promise<boolean> => {
       !(await bomItemEditorRef.value.prepareSpecifications())
     )
       return false
-    // 保存统一由编辑器校验：材料名称必填，常规模式的原文行允许不关联物料档案。
+    // 常规模式材料名称必填；快速模式允许名称和物料档案暂空保存草稿。
     if (!bomItemEditorRef.value?.validateItems()) return false
     // 直接读取编辑器，避免选料后立即保存遗漏防抖中的回填。
     formData.items = bomItemEditorRef.value.getItems()
@@ -1141,6 +1270,8 @@ watch(
   async (newVal) => {
     if (!newVal) {
       ++bomLoadGeneration
+      layoutImportVisible.value = false
+      layoutImportDrafts.value = []
       // 关闭/取消：compare-token 释放编辑权（保存成功不在此释放）
       await editSession.release()
       return

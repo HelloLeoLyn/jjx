@@ -4,7 +4,7 @@
     <div class="editor-header">
       <div class="header-left">
         <el-tooltip
-          content="快速模式：材料名称必填，规格型号选填，允许未建档先提交审核；审核员再匹配或新建物料"
+          content="快速模式：允许材料名称和物料档案暂空保存草稿；提交前须补齐名称并关联物料档案"
           placement="bottom"
         >
           <el-switch
@@ -441,6 +441,7 @@ interface Emits {
   (e: 'update:modelValue', value: EngineeringBomItem[]): void
   (e: 'change', value: EngineeringBomItem[]): void
   (e: 'validate', valid: boolean): void
+  (e: 'quick-mode-change', value: boolean): void
   /** 打开独立生产BOM窗口（dev-20261111-005）：只传行，不在这里改分组或制造关系 */
   (e: 'manufacturing', row: EngineeringBomItem): void
 }
@@ -507,6 +508,7 @@ function setQuickMode(value: string | number | boolean) {
     return
   }
   quickMode.value = Boolean(value)
+  emit('quick-mode-change', quickMode.value)
 }
 
 /** 行审核状态（历史数据缺省按草稿展示） */
@@ -729,6 +731,7 @@ const calculateTableHeight = () => {
 }
 
 onMounted(() => {
+  emit('quick-mode-change', quickMode.value)
   calculateTableHeight()
   window.addEventListener('resize', calculateTableHeight)
   nextTick(() => {
@@ -1366,7 +1369,7 @@ defineExpose({
         })
         return
       }
-      if (!item.materialName?.trim()) {
+      if (!quickMode.value && !item.materialName?.trim()) {
         failures.push({ item, message: '材料名称不能为空' })
         return
       }
