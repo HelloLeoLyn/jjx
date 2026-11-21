@@ -939,7 +939,7 @@ const doSave = async (): Promise<boolean> => {
       !(await bomItemEditorRef.value.prepareSpecifications())
     )
       return false
-    // 保存前按当前模式校验（快速模式材料名称必填；常规模式必须选物料）
+    // 保存统一由编辑器校验：材料名称必填，常规模式的原文行允许不关联物料档案。
     if (!bomItemEditorRef.value?.validateItems()) return false
     // 直接读取编辑器，避免选料后立即保存遗漏防抖中的回填。
     formData.items = bomItemEditorRef.value.getItems()

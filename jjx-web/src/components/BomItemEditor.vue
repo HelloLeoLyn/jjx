@@ -99,7 +99,7 @@
             />
           </template>
         </el-table-column>
-        <!-- 物料名称：常规模式选物料；快速模式直接录材料原文（dev-20261020-029 A） -->
+        <!-- 常规模式可选档案或录入材料原文；快速模式保持原有录入方式。 -->
         <el-table-column label="物料名称" prop="materialName" min-width="140">
           <template #default="scope">
             <div class="material-name-cell">
@@ -112,6 +112,13 @@
                 maxlength="200"
               />
               <span v-else-if="readonly || quickMode">{{ scope.row.materialName }}</span>
+              <el-input
+                v-else-if="isRawMaterialRow(scope.row)"
+                v-model="scope.row.materialName"
+                placeholder="输入材料原文（必填）"
+                size="small"
+                maxlength="200"
+              />
               <BomMaterialSelector
                 v-else
                 :material-id="scope.row.materialId"
@@ -122,6 +129,15 @@
                 @clear="handleMaterialClear(scope.row)"
                 @create="(keyword) => handleCreateMaterial(scope.row, keyword)"
               />
+              <el-button
+                v-if="!readonly && !quickMode && !scope.row.materialId"
+                link
+                type="primary"
+                size="small"
+                @click="setRawMaterialMode(scope.row, !isRawMaterialRow(scope.row))"
+              >
+                {{ isRawMaterialRow(scope.row) ? '选择档案物料' : '直接输入材料原文' }}
+              </el-button>
               <!-- <el-tag
               v-if="quickMode && !scope.row.materialId"
               size="small"
@@ -454,6 +470,21 @@ const tableHeight = ref(400)
 // 快速模式（dev-20261020-029）：直接录材料名称+规格，materialId 可空
 const quickMode = ref(false)
 const materialDrafts = ref<Record<string, string>>({})
+// 仅保留常规模式的行内录入方式，不随明细保存；未关联的已有原文默认直接编辑。
+const rawMaterialRows = ref<Record<string, boolean>>({})
+const isRawMaterialRow = (row: EngineeringBomItem): boolean =>
+  !row.materialId && (rawMaterialRows.value[String(row.itemId)] ?? Boolean(row.materialName))
+
+function setRawMaterialMode(row: EngineeringBomItem, raw: boolean) {
+  if (props.readonly || quickMode.value || row.materialId) return
+  const key = String(row.itemId)
+  // 搜索文字只有显式选择「材料原文」后才成为行内容，避免误保存未确认的选料搜索。
+  if (raw && materialDrafts.value[key] !== undefined) {
+    row.materialName = materialDrafts.value[key]
+  }
+  delete materialDrafts.value[key]
+  rawMaterialRows.value[key] = raw
+}
 const specErrors = ref<Record<string, boolean>>({})
 const specRequests = new Map<string, Promise<void>>()
 const specVersions = new Map<string, number>()
@@ -852,6 +883,7 @@ watch(
     if (JSON.stringify(newVal) !== JSON.stringify(toSubmitItems(items.value))) {
       items.value = toFlatItems(newVal)
       materialDrafts.value = {}
+      rawMaterialRows.value = {}
       walkTree(items.value, matchProjectByName)
       // 初始化保留已保存快照；本次显示由只读试算接口返回。
     }
@@ -1301,6 +1333,7 @@ defineExpose({
   handleManufacturing,
   clearItems: () => {
     materialDrafts.value = {}
+    rawMaterialRows.value = {}
     items.value = []
     selectedItems.value = []
   },
@@ -1341,14 +1374,7 @@ defineExpose({
         failures.push({ item, message: '规格与物料档案不一致，请在物料名称列重新选料' })
         return
       }
-      // 规格型号不必填（dev-20261022-020）；其余校验保留并定位到行。
-      if (!quickMode.value && (!item.materialId || Number(item.materialId) <= 0)) {
-        failures.push({
-          item,
-          message: `请为材料 "${item.materialName}" 选择物料，或切换快速模式`,
-        })
-        return
-      }
+      // 常规模式也允许未关联档案的材料原文；名称必填与其余校验仍在上方统一执行。
     })
 
     if (failures.length) {
