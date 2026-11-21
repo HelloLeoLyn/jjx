@@ -2,7 +2,7 @@
   <el-dialog
     :model-value="modelValue"
     :title="dialogTitle"
-    width="860px"
+    width="1200px"
     append-to-body
     class="pick-preview-dialog"
     @update:model-value="(v: boolean) => emit('update:modelValue', v)"
@@ -29,7 +29,11 @@
         <div v-if="isSupplement" class="supplement-fields">
           <el-form label-width="110px" size="small">
             <el-form-item label="补料来源">
-              <el-select v-model="reasonType" style="width: 260px" @change="onSupplementReasonChange">
+              <el-select
+                v-model="reasonType"
+                style="width: 260px"
+                @change="onSupplementReasonChange"
+              >
                 <el-option label="生产超耗/现场缺料" value="PRODUCTION_OVERUSE" />
                 <el-option label="报废后补产" value="SCRAP_REPLENISHMENT" />
                 <!-- dev-20260923-025：补料来源三类补齐（原因口径与「不良原因」分开，各管一段） -->
@@ -59,7 +63,11 @@
               <el-input-number
                 v-model="supplementQuantity"
                 :min="0.01"
-                :max="reasonType === 'SCRAP_REPLENISHMENT' ? selectedNcr?.remainingReplacementQuantity : undefined"
+                :max="
+                  reasonType === 'SCRAP_REPLENISHMENT'
+                    ? selectedNcr?.remainingReplacementQuantity
+                    : undefined
+                "
                 :precision="2"
                 @change="onSupplementQuantityChange"
               />
@@ -71,7 +79,9 @@
         </div>
         <div class="group-head">
           <el-checkbox v-model="groupView" @change="onGroupViewChange">按组合查看</el-checkbox>
-          <span class="group-hint">组合 = 连续相同项目；半成品按项目名匹配档案（匹配不到需先建档）</span>
+          <span class="group-hint"
+            >组合 = 连续相同项目；半成品按项目名匹配档案（匹配不到需先建档）</span
+          >
         </div>
         <table v-if="groupView" class="doc-items group-summary">
           <thead>
@@ -103,9 +113,15 @@
         <div class="doc-info">
           <div class="info-item"><span class="info-label">工单号</span>{{ orderNo }}</div>
           <div class="info-item"><span class="info-label">产品</span>{{ productName || '-' }}</div>
-          <div class="info-item"><span class="info-label">产品编码</span>{{ productCode || '-' }}</div>
-          <div class="info-item"><span class="info-label">计划数量</span>{{ fmtNum(plannedQuantity) }}</div>
-          <div class="info-item"><span class="info-label">物料种类</span>{{ mainRows.length }} 项</div>
+          <div class="info-item">
+            <span class="info-label">产品编码</span>{{ productCode || '-' }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">计划数量</span>{{ fmtNum(plannedQuantity) }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">物料种类</span>{{ mainRows.length }} 项
+          </div>
         </div>
         <table class="doc-items">
           <thead>
@@ -113,6 +129,8 @@
               <th style="width: 5%">序号</th>
               <th style="width: 14%">物料编码</th>
               <th>物料名称</th>
+              <th>规格</th>
+              <th style="width: 10%">模数/基数</th>
               <th style="width: 10%">单位</th>
               <th style="width: 9%">需求</th>
               <th style="width: 9%">可用</th>
@@ -121,13 +139,23 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(r, i) in previewRows" :key="i" :class="{ 'row-sub': r.substitute, 'row-insufficient': r.insufficient }">
+            <tr
+              v-for="(r, i) in previewRows"
+              :key="i"
+              :class="{ 'row-sub': r.substitute, 'row-insufficient': r.insufficient }"
+            >
               <td class="col-center">{{ i + 1 }}</td>
               <td>{{ r.materialCode }}</td>
               <td>
                 {{ r.materialName }}
-                <el-tag v-if="r.substitute" type="warning" size="small" style="margin-left: 6px">替代 {{ r.substituteOf }}</el-tag>
+                <el-tag v-if="r.substitute" type="warning" size="small" style="margin-left: 6px"
+                  >替代 {{ r.substituteOf }}</el-tag
+                >
               </td>
+              <td>
+                {{ r.specification || '-' }}
+              </td>
+              <td class="col-center">{{ formatPickRatio(r) }}</td>
               <td class="col-center">{{ r.unit || '-' }}</td>
               <td class="col-center">{{ fmtNum(r.qtyNeeded) }}</td>
               <td class="col-center">{{ fmtNum(r.available) }}</td>
@@ -150,7 +178,7 @@
               </td>
             </tr>
             <tr v-if="previewRows.length === 0 && !loading && !errorMsg">
-              <td colspan="8" class="col-center">暂无领料明细</td>
+              <td colspan="10" class="col-center">暂无领料明细</td>
             </tr>
           </tbody>
         </table>
@@ -158,13 +186,38 @@
           <span>💡 实领数量可调整（0 ~ 可用量）；主料领不足时，替代料由系统按短缺自动补足。</span>
         </div>
         <div class="doc-signs">
-          <div class="sign-item"><div class="sign-line">领料人：</div><div class="sign-underline"></div></div>
-          <div class="sign-item"><div class="sign-line">仓管员：</div><div class="sign-underline"></div></div>
-          <div class="sign-item"><div class="sign-line">日期：</div><div class="sign-underline"></div></div>
+          <div class="sign-item">
+            <div class="sign-line">领料人：</div>
+            <div class="sign-underline"></div>
+          </div>
+          <div class="sign-item">
+            <div class="sign-line">仓管员：</div>
+            <div class="sign-underline"></div>
+          </div>
+          <div class="sign-item">
+            <div class="sign-line">日期：</div>
+            <div class="sign-underline"></div>
+          </div>
         </div>
       </div>
     </div>
+    <PickPreviewPrintDialog
+      v-if="printVisible"
+      v-model="printVisible"
+      :order-no="orderNo"
+      :product-code="productCode"
+      :product-name="productName"
+      :planned-quantity="plannedQuantity"
+      :rows="previewRows"
+      :supplement-quantity="isSupplement ? supplementQuantity : undefined"
+    />
     <template #footer>
+      <el-button
+        :disabled="loading || submitting || !!errorMsg || !previewRows.length"
+        @click="printVisible = true"
+      >
+        打印预览
+      </el-button>
       <el-button
         v-if="!isSupplement"
         plain
@@ -185,6 +238,8 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import PickPreviewPrintDialog from './PickPreviewPrintDialog.vue'
+import { formatPickRatio } from './pickPreviewPrint'
 
 const props = withDefaults(
   defineProps<{
@@ -201,7 +256,7 @@ const props = withDefaults(
     presetNcrId?: number
     presetProductionQuantity?: number
   }>(),
-  { mode: 'first' },
+  { mode: 'first' }
 )
 
 const emit = defineEmits<{
@@ -218,7 +273,9 @@ const ncrId = ref<number>()
 const supplementQuantity = ref<number>()
 /** 未结不良单选项（报废补产必选）—— dev-20260923-025 */
 const ncrOptions = ref<any[]>([])
-const selectedNcr = computed(() => ncrOptions.value.find((n) => Number(n.ncrId) === Number(ncrId.value)))
+const selectedNcr = computed(() =>
+  ncrOptions.value.find((n) => Number(n.ncrId) === Number(ncrId.value))
+)
 const loadNcrOptions = async () => {
   try {
     const { qualityNcrApi } = await import('@/api/quality/lot')
@@ -231,7 +288,10 @@ const loadNcrOptions = async () => {
         ncrId.value = undefined
         supplementQuantity.value = undefined
       } else if (supplementQuantity.value) {
-        supplementQuantity.value = Math.min(Number(supplementQuantity.value), Number(selected.remainingReplacementQuantity))
+        supplementQuantity.value = Math.min(
+          Number(supplementQuantity.value),
+          Number(selected.remainingReplacementQuantity)
+        )
       }
     }
   } catch {
@@ -249,13 +309,18 @@ const onNcrChange = () => {
   }
 }
 const dialogTitle = computed(() =>
-  isSupplement.value ? '申请补料 - 超耗/报废补产' : isAppend.value ? '追加领料单 - 按剩余需求补领（预览确认）' : '生成领料单 - 预览确认',
+  isSupplement.value
+    ? '申请补料 - 超耗/报废补产'
+    : isAppend.value
+      ? '追加领料单 - 按剩余需求补领（预览确认）'
+      : '生成领料单 - 预览确认'
 )
 
 const loading = ref(false)
 const submitting = ref(false)
 const errorMsg = ref('')
 const rows = ref<any[]>([])
+const printVisible = ref(false)
 /** dev-20261022-019：按组合查看（汇总），仅展示，不改变平铺领料的扣账口径 */
 const groupView = ref(false)
 const groups = ref<any[]>([])
@@ -270,7 +335,7 @@ async function loadGroups() {
     const res: any = await materialPickApi.pickPreview(
       props.workOrderId,
       isSupplement.value && supplementQuantity.value ? Number(supplementQuantity.value) : undefined,
-      'GROUP',
+      'GROUP'
     )
     groups.value = (res?.data || []) as any[]
   } catch (error) {
@@ -287,13 +352,8 @@ let previewRequestId = 0
 
 // 主料行（可调整）
 const mainRows = computed(() => rows.value.filter((r) => !r.substitute))
-// 预览行：主料（带调整上限）+ 替代料（只读）
-const previewRows = computed(() =>
-  rows.value.map((r) => ({
-    ...r,
-    qtyPickMax: r.substitute ? r.qtyPick : Number(r.qtyPick),
-  })),
-)
+// 编辑、打印和提交读取同一行；上限保留接口初始值，不随输入变化。
+const previewRows = computed(() => rows.value)
 
 function fmtNum(v: any): string {
   if (v === null || v === undefined || v === '') return '-'
@@ -314,7 +374,7 @@ async function loadPreview(preserveEditedQuantities = false) {
   const previousQtyByMaterial = new Map<number, number>(
     rows.value
       .filter((r) => !r.substitute && Number.isFinite(Number(r.materialId)))
-      .map((r) => [Number(r.materialId), Number(r.qtyPick)]),
+      .map((r) => [Number(r.materialId), Number(r.qtyPick)])
   )
   loading.value = true
   errorMsg.value = ''
@@ -322,11 +382,12 @@ async function loadPreview(preserveEditedQuantities = false) {
     const { materialPickApi } = await import('@/api/inventory/materialPick')
     const res: any = await materialPickApi.pickPreview(
       props.workOrderId,
-      supplementPreview ? Number(supplementQuantity.value) : undefined,
+      supplementPreview ? Number(supplementQuantity.value) : undefined
     )
     if (requestId !== previewRequestId) return
     rows.value = (res?.data || []).map((r: any) => ({
       ...r,
+      qtyPickMax: Number(r.qtyPick),
       qtyPick: isSupplement.value
         ? preserveEditedQuantities && previousQtyByMaterial.has(Number(r.materialId))
           ? previousQtyByMaterial.get(Number(r.materialId))
@@ -357,6 +418,7 @@ const onSupplementReasonChange = async (value: string) => {
 watch(
   () => props.modelValue,
   async (v) => {
+    printVisible.value = false
     if (v) {
       // dev-20260923-025：处置行发起时预填来源/不良单/建议补产数量
       if (isSupplement.value) {
@@ -382,7 +444,7 @@ watch(
     }
   },
   // 2026-08-18：immediate——组件首次挂载时 modelValue 已是 true，无变化事件，不加会漏首次加载
-  { immediate: true },
+  { immediate: true }
 )
 
 async function handleConfirm() {
@@ -404,7 +466,12 @@ async function handleConfirm() {
       }
       const items = mainRows.value
         .filter((r) => Number(r.qtyPick) > 0)
-        .map((r) => ({ materialId: Number(r.materialId), quantity: Number(r.qtyPick), materialCode: r.materialCode, materialName: r.materialName }))
+        .map((r) => ({
+          materialId: Number(r.materialId),
+          quantity: Number(r.qtyPick),
+          materialCode: r.materialCode,
+          materialName: r.materialName,
+        }))
       if (!items.length) {
         ElMessage.warning('请至少填写一种补料物料和数量')
         return
@@ -459,10 +526,22 @@ async function handleConfirm() {
 </script>
 
 <style scoped>
-.group-head { display: flex; align-items: center; gap: 10px; margin: 6px 0 8px; }
-.group-hint { color: var(--el-text-color-secondary); font-size: 12px; }
-.group-summary { margin-bottom: 10px; }
-.group-summary td { vertical-align: middle; }
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 8px;
+}
+.group-hint {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+.group-summary {
+  margin-bottom: 10px;
+}
+.group-summary td {
+  vertical-align: middle;
+}
 </style>
 <style scoped>
 .preview-body {
