@@ -45,6 +45,7 @@
       </div>
     </div>
     <template #footer>
+      <el-button v-if="fatalError" :loading="loading" @click="reload">重新读取</el-button>
       <el-button @click="visible = false">关闭</el-button>
     </template>
   </el-dialog>
@@ -57,12 +58,13 @@ import type { BomCheckIssue } from '@/types/product/bom'
 import {
   buildPendingCheckView,
   buildSubmitCheckView,
+  describeIssueLocation,
   loadSchemeDetails,
   mergeSubmitIssues,
 } from './bomSubmitCheck'
 import type {
+  MergedOtherIssue,
   MergedSubBomIssue,
-  OtherBlock,
   SchemeBlock,
   SchemeDetailFetcher,
   SchemeNavigateTarget,
@@ -89,7 +91,24 @@ const visible = computed({
 const loading = ref(false)
 const fatalError = ref('')
 const schemeItems = ref<SchemeBlock[]>([])
-const otherItems = ref<OtherBlock[]>([])
+// 完整性问题直接取后端本轮结果，不依赖下层方案详情读取是否成功。
+const otherItems = computed(() => {
+  if (!props.modelValue) return []
+  return mergeSubmitIssues(props.issues)
+    .filter((item): item is MergedOtherIssue => item.kind === 'other')
+    .map(({ key, issue }) => ({
+      key,
+      location: [
+        issue.bomCode,
+        issue.bomVersion,
+        describeIssueLocation({ ...issue, itemId: undefined }),
+        issue.itemId != null ? `行#${issue.itemId}` : '主表',
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      message: issue.message || '预检返回了未描述的问题，请刷新后重试。',
+    }))
+})
 let buildRequest = 0
 
 /** 只读详情：读取失败必须抛出，让阻断项显示具体原因，不能当通过。 */
@@ -102,7 +121,6 @@ const fetchDetail: SchemeDetailFetcher = async (bomId: number) => {
 
 const applyView = (view: SubmitCheckView) => {
   schemeItems.value = view.schemeItems
-  otherItems.value = view.otherItems
 }
 
 const build = async () => {
@@ -122,8 +140,7 @@ const build = async () => {
   } catch (error: any) {
     if (requestId !== buildRequest) return
     fatalError.value = error?.message || '提交预检问题读取失败，请刷新后重试'
-    schemeItems.value = []
-    otherItems.value = []
+    // 详情读取失败仍保留本轮阻断项与后端完整性问题。
   } finally {
     if (requestId === buildRequest) loading.value = false
   }
@@ -139,7 +156,6 @@ const reset = () => {
   loading.value = false
   fatalError.value = ''
   schemeItems.value = []
-  otherItems.value = []
 }
 
 const navigate = (item: SchemeBlock) => {

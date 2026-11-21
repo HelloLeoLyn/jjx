@@ -3,20 +3,37 @@
     <BomBasicInfo :detail="detail" />
 
     <el-alert
-      v-if="blockingIssues.length && !itemsOnly"
+      v-if="blockingIssues.length"
       type="warning"
       :closable="false"
       show-icon
       class="blocking-alert"
       :title="`暂不能批准：${blockingIssues.length} 项待处理`"
     >
-      <div v-for="(issue, idx) in blockingIssues.slice(0, 5)" :key="idx" class="blocking-line">
-        · {{ issueLocation(issue) }} {{ issue.message }}
-      </div>
-      <div v-if="blockingIssues.length > 5" class="blocking-line">
-        … 共 {{ blockingIssues.length }} 项
+      <div class="blocking-list">
+        <div v-for="(issue, idx) in blockingIssues" :key="idx" class="blocking-line">
+          · {{ issueLocation(issue) }}：{{ issue.message || '体检返回了未描述的问题，请重新检查' }}
+        </div>
       </div>
     </el-alert>
+
+    <el-alert
+      v-if="approveCheckError"
+      :title="approveCheckError"
+      type="error"
+      :closable="false"
+      show-icon
+      class="blocking-alert"
+    />
+    <el-button
+      v-if="blockingIssues.length || approveCheckError"
+      class="blocking-retry"
+      :loading="!approveCheckReady"
+      :disabled="submitting || batchBusy || busyItemId != null"
+      @click="refreshApproveCheck"
+    >
+      重新检查
+    </el-button>
 
     <BomItemReviewTable
       :items="bomDetailList"
@@ -247,6 +264,7 @@ const handleBatchConfirm = async (links: Array<{ itemId: number; materialId: num
   }
 }
 const blockingIssues = ref<BomCheckIssue[]>([])
+const approveCheckError = ref('')
 const batchBusy = ref(false)
 const batchFailures = ref<BomItemBatchReviewResult['failed']>([])
 const approveCheckReady = ref(false)
@@ -262,8 +280,28 @@ const materialFormVisible = ref(false)
 const materialPreset = ref({ materialName: '', specification: '', unit: 'PCS' })
 let linkingItemId: number | undefined
 
-const issueLocation = (issue: BomCheckIssue) =>
-  issue.materialCode || (issue.itemId != null ? `行#${issue.itemId}` : '主表')
+const issueLocation = (issue: BomCheckIssue) => {
+  const row =
+    issue.itemId != null
+      ? bomDetailList.value.find((item) => item.itemId === issue.itemId)
+      : undefined
+  return [
+    issue.bomCode,
+    issue.bomVersion,
+    issue.materialName || row?.materialName,
+    issue.materialCode || row?.materialCode,
+    issue.itemId != null ? `行#${issue.itemId}` : '主表',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+/** request 保留业务异常 data；HTTP 异常仍从 response.data 读取。 */
+const errorIssues = (error: any): BomCheckIssue[] | undefined => {
+  const payload = error?.data ?? error?.response?.data
+  const issues = payload?.issues ?? payload?.data?.issues ?? payload?.data ?? payload
+  return Array.isArray(issues) ? issues : undefined
+}
 
 // 加载BOM详情 + 批准条件体检
 const loadBomDetail = async () => {
@@ -291,11 +329,16 @@ const refreshApproveCheck = async () => {
   approveCheckReady.value = false
   try {
     const res = await productBomApi.checkBomForApprove(props.bomId)
-    blockingIssues.value = res.data || []
+    if (!Array.isArray(res.data)) throw new Error('批准条件体检返回异常，请重新检查')
+    blockingIssues.value = res.data
+    approveCheckError.value = ''
     approveCheckReady.value = true
-  } catch (error) {
+  } catch (error: any) {
     console.error('BOM批准条件体检失败:', error)
-    blockingIssues.value = []
+    const issues = errorIssues(error)
+    if (issues?.length) blockingIssues.value = issues
+    approveCheckError.value =
+      error?.response?.data?.msg || error?.message || '批准条件体检失败，请重新检查'
     // 体检接口抖动不能让批准按钮永久禁用：真正的不合规仍由后端 approveEngineeringBom 拦截（dev-20261031-004）
     approveCheckReady.value = true
   }
@@ -341,19 +384,12 @@ const applyRowPatchLocally = (itemIds: number[], patch: (row: EngineeringBomItem
   }
 }
 
-/** 把已处理行从"待处理清单"里移除，避免整单批准按钮被过期体检结果一直卡住 */
-const dropBlockingIssuesFor = (itemIds: number[]) => {
-  if (!blockingIssues.value.length) return
-  blockingIssues.value = blockingIssues.value.filter(
-    (issue) => issue.itemId == null || !itemIds.includes(issue.itemId),
-  )
-}
-
 const resetData = () => {
   Object.assign(detail, createEmptyDetail())
   bomDetailList.value = []
   contentRevision.value = null
   blockingIssues.value = []
+  approveCheckError.value = ''
   busyItemId.value = undefined
   batchFailures.value = []
   approveCheckReady.value = false
@@ -451,7 +487,7 @@ const handleRowReview = async (row: EngineeringBomItem, action: RowAction) => {
         { confirmButtonText: '确认移除', cancelButtonText: '取消', type: 'warning' }
       )
     } else if (!row.materialId) {
-      ElMessage.warning('请先为该行关联物料，再审核通过')
+      ElMessage.warning('未匹配物料，请先关联已有物料或新建')
       return
     }
   } catch {
@@ -481,7 +517,7 @@ const handleRowReview = async (row: EngineeringBomItem, action: RowAction) => {
       else if (action === 'REJECT') target.reviewStatus = BomItemReviewStatusEnum.REJECTED.value
       else target.removeConfirmed = true
     })
-    dropBlockingIssuesFor([rowId])
+    // 保留后端问题清单，处理后通过“重新检查”更新，不按行号直接删掉其他问题。
     if (action === 'REJECT') {
       // 行驳回会整单退回工程修改，关闭审核窗并刷新列表
       emit('success', {
@@ -522,7 +558,7 @@ const handleLinkMaterial = async (row: EngineeringBomItem, material: InventoryMa
       target.materialName = material.materialName ?? ''
       target.specification = material.specification ?? ''
     })
-    dropBlockingIssuesFor([row.itemId])
+    // 关联成功不代表该行全部问题已解决，保留问题，待用户重新检查。
   } catch (error: any) {
     console.error('关联物料失败:', error)
     if (isContentConflict(error)) {
@@ -660,7 +696,12 @@ const handleSubmit = async () => {
       await reloadAfterConflict('BOM 内容已被保存修改，审批未生效；已重新加载最新内容，请重新审核')
       return
     }
-    ElMessage.error(error?.message || '提交审核失败')
+    const issues = errorIssues(error)
+    if (issues?.length) blockingIssues.value = issues
+    else await refreshApproveCheck()
+    approveCheckError.value =
+      error?.response?.data?.msg || error?.message || '提交审核失败，请查看完整性问题后重试'
+    ElMessage.error(approveCheckError.value)
   } finally {
     submitting.value = false
   }
@@ -687,6 +728,14 @@ watch(
   margin-top: 16px;
 }
 .blocking-alert {
+  margin-bottom: 12px;
+  white-space: pre-wrap;
+}
+.blocking-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+.blocking-retry {
   margin-bottom: 12px;
 }
 .blocking-line {
