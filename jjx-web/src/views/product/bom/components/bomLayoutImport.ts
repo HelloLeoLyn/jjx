@@ -3,16 +3,22 @@ import { parseSpecModule } from './bomSpecImport'
 
 export interface BomLayoutMaterial {
   materialId?: number
+  materialCode?: string
   materialName: string
+  unit?: string
+  specification?: string
+  searchPending?: boolean
   widthMm?: number
   lengthMm?: number
   pitchMm?: number
-  /** 排版资料；比例计算模式下不启用耗用跳距组。 */
+  /** 生产BOM子料原始参数，与父行比例分开保存。 */
   pcsPerPitch: 1
 }
 
 export interface BomLayoutDraft {
   sourceRow: number
+  materialId?: number
+  materialName: string
   processName: string
   specification: string
   moduleQty: number
@@ -100,6 +106,7 @@ export function parseBomLayoutRows(rows: unknown[][]): BomLayoutDraft[] {
       if (names.some((part) => !part) && name) throw new Error('组合材料名称中有空项')
       drafts.push({
         sourceRow: index + 1,
+        materialName: name,
         processName: text(row[col.process]),
         specification,
         moduleQty,
@@ -120,42 +127,53 @@ export function parseBomLayoutRows(rows: unknown[][]): BomLayoutDraft[] {
   return drafts
 }
 
-/**
- * 父行只属导入草稿；每个子明细生成一条现有 DTO，不向后端传嵌套数据。
- * 用户确认：比例是计算输入，排版跳距存 lengthMm/split，不启用 pitchMm 计算组。
- */
-export function flattenBomLayoutDrafts(drafts: BomLayoutDraft[]): EngineeringBomItem[] {
-  const items: EngineeringBomItem[] = []
-  for (const draft of drafts) {
+/** 方案B：每个Excel父行只生成一条产品BOM材料行，子料及其几何参数一律不复制。 */
+export function productBomItemsFromLayout(drafts: BomLayoutDraft[]): EngineeringBomItem[] {
+  return drafts.map((draft, index) => {
     positive(draft.moduleQty, '模数', 4)
     positive(draft.baseQty, '基数', 4)
-    if (!draft.materials.length) throw new Error(`Excel第${draft.sourceRow}行没有材料明细`)
-    for (const material of draft.materials) {
-      if (material.widthMm != null) positive(material.widthMm, '宽度', 2)
-      if (material.pitchMm != null) positive(material.pitchMm, '跳距', 2)
-      if (material.lengthMm != null) positive(material.lengthMm, '长度', 2)
-      if (material.pcsPerPitch !== 1) throw new Error('排版每跳片数固定为1，不启用跳距计算组')
-      items.push({
-        materialId: material.materialId || 0,
-        materialCode: '',
-        materialName: material.materialName,
-        parentMaterialId: null,
-        processName: draft.processName,
-        isCommon: !draft.processName.trim(),
-        specification: draft.specification,
-        moduleQty: draft.moduleQty,
-        baseQty: draft.baseQty,
-        widthMm: material.widthMm,
-        lengthMm: material.pitchMm ?? material.lengthMm,
-        split: material.pitchMm != null ? `${material.pitchMm}mm` : '',
-        pitchMm: null,
-        pcsPerPitch: 1,
-        unit: draft.unit || 'PCS',
-        quantity: 0,
-        lossRate: 0,
-        sortOrder: items.length + 1,
-      })
+    return {
+      materialId: draft.materialId || 0,
+      materialCode: '',
+      materialName: draft.materialName,
+      parentMaterialId: null,
+      processName: draft.processName,
+      isCommon: !draft.processName.trim(),
+      specification: draft.specification,
+      moduleQty: draft.moduleQty,
+      baseQty: draft.baseQty,
+      split: '',
+      pitchMm: null,
+      pcsPerPitch: 1,
+      unit: draft.unit || 'PCS',
+      quantity: 0,
+      lossRate: 0,
+      sortOrder: index + 1,
     }
-  }
-  return items
+  })
+}
+
+/** 仅在用户显式另存时传给独立生产BOM窗口；本卡只承接0或1条子料。 */
+export function manufacturingItemsFromLayout(materials: BomLayoutMaterial[]): EngineeringBomItem[] {
+  if (materials.length > 1) throw new Error('多条子料的生产BOM口径待确定，本次仅支持0或1条子料')
+  return materials.map((material, index) => {
+    if (material.searchPending) throw new Error('子料搜索尚未确认，请先选择候选物料或取消修改')
+    if (material.widthMm != null) positive(material.widthMm, '宽度', 2)
+    if (material.pitchMm != null) positive(material.pitchMm, '跳距', 2)
+    if (material.pcsPerPitch !== 1) throw new Error('每跳片数本次固定为1')
+    return {
+      materialId: material.materialId || 0,
+      materialCode: material.materialCode || '',
+      materialName: material.materialName,
+      specification: material.specification || '',
+      widthMm: material.widthMm,
+      lengthMm: material.lengthMm,
+      pitchMm: material.pitchMm ?? null,
+      pcsPerPitch: material.pcsPerPitch,
+      unit: material.unit || (material.pitchMm != null ? 'M' : 'PCS'),
+      quantity: 0,
+      lossRate: 0,
+      sortOrder: index + 1,
+    }
+  })
 }

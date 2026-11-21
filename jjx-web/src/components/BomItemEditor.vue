@@ -87,6 +87,40 @@
             </div>
           </template>
         </el-table-column>
+        <el-table-column v-if="Object.keys(layoutMaterialDrafts).length" type="expand">
+          <template #default="scope">
+            <div v-if="layoutMaterialDrafts[String(scope.row.itemId)]" style="padding: 12px">
+              <p>子料仅保留在本窗口，需另存为生产BOM；本次支持0或1条子料，多条请保留待后续处理。</p>
+              <el-button v-if="!readonly && layoutMaterialDrafts[String(scope.row.itemId)]?.length === 1" link type="danger" @click="emit('remove-layout-material', scope.row)">移除此子料草稿</el-button>
+              <el-table :data="layoutMaterialDrafts[String(scope.row.itemId)]" border>
+                <el-table-column label="子料档案 / 材料原文" min-width="200">
+                  <template #default="child">
+                    <BomMaterialSelector
+                      v-if="!readonly"
+                      :material-id="child.row.materialId"
+                      :material-name="child.row.materialName"
+                      :allow-create="false"
+                      confirm-selection
+                      @draft-change="(draft) => { if (!readonly) child.row.searchPending = draft.pending }"
+                      @select="(material) => selectLayoutMaterial(child.row, material)"
+                      @clear="clearLayoutMaterial(child.row)"
+                    />
+                    <span v-else>{{ child.row.materialName }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="宽度(mm)" width="170">
+                  <template #default="child"><el-input-number v-model="child.row.widthMm" :disabled="readonly" :min="0.01" :precision="2" :controls="false" /></template>
+                </el-table-column>
+                <el-table-column label="跳距(mm)" width="170">
+                  <template #default="child"><el-input-number v-model="child.row.pitchMm" :disabled="readonly" :min="0.01" :precision="2" :controls="false" /></template>
+                </el-table-column>
+                <el-table-column label="每跳片数" width="100">
+                  <template #default="child">{{ child.row.pcsPerPitch }}</template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="项目" prop="processName" width="80">
           <template #default="scope">
             <StandardProcessSelector
@@ -370,7 +404,7 @@
               >删除</el-button
             >
             <el-button
-              v-if="showManufacturing(scope.row)"
+              v-if="showManufacturing(scope.row) && !layoutMaterialDrafts[String(scope.row.itemId)]"
               link
               type="primary"
               size="small"
@@ -378,6 +412,11 @@
               @click="handleManufacturing(scope.row)"
               >{{ manufacturingLabel(scope.row) }}</el-button
             >
+            <el-button
+              v-if="layoutMaterialDrafts[String(scope.row.itemId)] && !isPendingRemove(scope.row)"
+              link type="primary" size="small" :disabled="readonly"
+              @click="emit('save-manufacturing-draft', scope.row)"
+            >另存为生产BOM</el-button>
             <el-button
               v-if="!scope.row.materialId && !isPendingRemove(scope.row)"
               link
@@ -414,6 +453,7 @@ import {
 } from '@element-plus/icons-vue'
 import { debounce } from 'lodash-es'
 import type { EngineeringBomItem, BomMaterialMatchItem } from '@/types/product/bom'
+import type { BomLayoutMaterial } from '@/views/product/bom/components/bomLayoutImport'
 import { BomItemReviewStatusEnum } from '@/enums/product'
 import BomEntryTools from '@/components/bom/BomEntryTools.vue'
 import { bomGroupRows } from '@/utils/bomGroups'
@@ -446,6 +486,8 @@ interface Props {
   maxItems?: number
   /** 是否显示「生产BOM」入口（权限/只读由父级判定；默认显示） */
   canManufacturing?: boolean
+  /** 临时子料草稿，独立于产品BOM明细，不由getItems返回。 */
+  layoutMaterialDrafts?: Record<string, BomLayoutMaterial[]>
 }
 
 interface Emits {
@@ -455,6 +497,8 @@ interface Emits {
   (e: 'quick-mode-change', value: boolean): void
   /** 打开独立生产BOM窗口（dev-20261111-005）：只传行，不在这里改分组或制造关系 */
   (e: 'manufacturing', row: EngineeringBomItem): void
+  (e: 'save-manufacturing-draft', row: EngineeringBomItem): void
+  (e: 'remove-layout-material', row: EngineeringBomItem): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -465,9 +509,30 @@ const props = withDefaults(defineProps<Props>(), {
   outputLengthMm: null,
   maxItems: 500,
   canManufacturing: true,
+  layoutMaterialDrafts: () => ({}),
 })
 
 const emit = defineEmits<Emits>()
+
+function selectLayoutMaterial(child: BomLayoutMaterial, material: InventoryMaterial) {
+  if (props.readonly) return
+  child.materialId = material.materialId
+  child.materialCode = material.materialCode || ''
+  child.materialName = material.materialName || ''
+  child.specification = material.specification || ''
+  child.unit = material.unit || ''
+  child.searchPending = false
+}
+
+function clearLayoutMaterial(child: BomLayoutMaterial) {
+  if (props.readonly) return
+  child.materialId = 0
+  child.materialCode = ''
+  child.materialName = ''
+  child.specification = ''
+  child.unit = undefined
+  child.searchPending = false
+}
 
 // ==================== 响应式数据 ====================
 

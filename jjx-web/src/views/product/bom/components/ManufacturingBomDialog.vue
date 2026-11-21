@@ -308,6 +308,9 @@ interface Props {
   /** 本产品该物料已保存的主方案 */
   primaryBomId?: number | null
   readonly?: boolean
+  /** 显式另存入口的前端子料草稿；只用于新建根方案，不自动保存或选择已有方案。 */
+  initialItems?: EngineeringBomItem[]
+  draftOriginKey?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -327,6 +330,7 @@ const emit = defineEmits<{
   (e: 'adopt', payload: { materialId: number; bomId: number; scheme: ManufacturingScheme | null }): void
   /** 用户显式设置主方案：随产品 BOM 保存提交 */
   (e: 'primary-change', payload: { materialId: number; bomId: number }): void
+  (e: 'draft-saved', payload: { materialId: number; bomId: number; originKey?: string }): void
 }>()
 
 const visible = computed({
@@ -450,6 +454,30 @@ const stack = ref<Frame[]>([fallbackFrame])
  */
 const activeIndex = ref(0)
 const current = computed<Frame>(() => stack.value[activeIndex.value] ?? fallbackFrame)
+
+// 另存预填的未关联子料首次选档案时，保留导入参数；真正换料仍走原有清理规则。
+const seededItems = new WeakMap<EngineeringBomItem, Partial<EngineeringBomItem>>()
+const seedParameters = (item: EngineeringBomItem): Partial<EngineeringBomItem> => ({
+  widthMm: item.widthMm, lengthMm: item.lengthMm, pitchMm: item.pitchMm,
+  pcsPerPitch: item.pcsPerPitch, moduleQty: item.moduleQty, baseQty: item.baseQty,
+})
+watch(
+  () => current.value.draft.items.map((row) => ({ row, materialId: row.materialId, parameters: seedParameters(row) })),
+  (rows, previous = []) => {
+    if (props.initialItems === undefined || current.value.draft.bomId || activeIndex.value !== 0) return
+    rows.forEach(({ row, materialId, parameters }) => {
+      const old = previous.find((entry) => entry.row === row)
+      const seed = seededItems.get(row)
+      if (seed && !(Number(materialId) > 0)) {
+        seededItems.set(row, parameters)
+        return
+      }
+      if (!seed || !old || Number(old.materialId) > 0 || !(Number(materialId) > 0)) return
+      Object.assign(row, seed)
+      seededItems.delete(row)
+    })
+  }
+)
 
 // 编辑占用（dev-20261111-018）：只占当前打开的这一层 bomId；父/子方案各有 bomId 时分别占用
 const editSession = useBomEditSession(() => current.value?.draft.bomId ?? null)
@@ -977,6 +1005,8 @@ const saveScheme = async (): Promise<boolean> => {
   if (!editSession.ensureEditable()) return false
   const frame = current.value
   const isNewScheme = !Number(frame.draft.bomId)
+  const fromInitialDraft = isNewScheme && activeIndex.value === 0 && props.initialItems !== undefined
+  const draftOriginKey = props.draftOriginKey
   const message = validateDraft()
   if (message) {
     ElMessage.warning(message)
@@ -1032,6 +1062,12 @@ const saveScheme = async (): Promise<boolean> => {
       console.error('刷新生产BOM候选失败:', error)
     }
     flushPendingPrimary()
+    if (fromInitialDraft) {
+      emit('draft-saved', {
+        materialId: Number(frame.material.materialId), bomId: Number(detail.bomId),
+        ...(draftOriginKey ? { originKey: draftOriginKey } : {}),
+      })
+    }
     return true
   } catch (error) {
     console.error('保存生产BOM失败:', error)
@@ -1155,7 +1191,27 @@ watch(
       return
     }
     resetStack()
-    await loadFrame(current.value)
+    if (props.initialItems !== undefined && !props.subBomId) {
+      const frame = current.value
+      resetDraft(frame)
+      frame.draft.items = props.initialItems.map((item) => normalizeItem({ ...item }))
+      frame.draft.items.forEach((item) => {
+        if (Number(item.materialId) > 0) return
+        seededItems.set(item, seedParameters(item))
+      })
+      loading.value = true
+      try {
+        await refreshOptions(frame)
+        await loadArchive(frame)
+      } catch (error) {
+        console.error('加载生产BOM候选失败，保留另存草稿:', error)
+        ElMessage.warning('候选加载失败，另存草稿已保留')
+      } finally {
+        loading.value = false
+      }
+    } else {
+      await loadFrame(current.value)
+    }
   },
   { immediate: true }
 )

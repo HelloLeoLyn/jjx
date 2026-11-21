@@ -147,7 +147,7 @@
         <span class="template-hint"
           v-if="quickImportMode"
           >快速模式支持「材料」「规格及模数」表头；材料可暂空，组合材料用 + 分隔。
-          导入后核对父行规格、模数和基数及各材料的宽度、跳距。跳距作为排版资料，按模数/基数计算。</span
+          父行保存为产品BOM明细；子料仅作生产BOM草稿，需显式另存。</span
         >
         <span class="template-hint"
           v-else
@@ -165,9 +165,12 @@
       :bom-id="formData.bomId"
       :output-unit="bomOutputUnit"
       :readonly="editSession.readOnly.value"
+      :layout-material-drafts="layoutMaterialDrafts"
       @quick-mode-change="quickImportMode = $event"
       @change="handleItemsChange"
       @manufacturing="handleManufacturing"
+      @save-manufacturing-draft="handleSaveManufacturingDraft"
+      @remove-layout-material="removeLayoutMaterial"
       ref="bomItemEditorRef"
     />
 
@@ -178,7 +181,7 @@
       append-to-body
       :close-on-click-modal="false"
     >
-      <p>核对后加入 BOM 草稿。父行模数/基数用于计算；子明细跳距仅记录排版信息，每跳片数固定为 1。</p>
+      <p>产品 BOM 只保存父行。子料仅保留在本窗口，需另存为生产 BOM；本次另存支持 0 或 1 条子料。</p>
       <el-table :data="layoutImportDrafts" row-key="sourceRow" default-expand-all border max-height="520">
         <el-table-column type="expand">
           <template #default="scope">
@@ -205,6 +208,9 @@
           </template>
         </el-table-column>
         <el-table-column label="Excel行" prop="sourceRow" width="85" />
+        <el-table-column label="父行物料名称（可暂空）" min-width="200">
+          <template #default="scope"><el-input v-model="scope.row.materialName" maxlength="200" /></template>
+        </el-table-column>
         <el-table-column label="规格" min-width="240">
           <template #default="scope"><el-input v-model="scope.row.specification" maxlength="500" /></template>
         </el-table-column>
@@ -262,7 +268,11 @@
       :product-name="formData.productName"
       :sub-bom-id="manufacturingSubBomId"
       :primary-bom-id="manufacturingPrimaryBomId"
+      :initial-items="manufacturingDraftItems"
+      :draft-origin-key="manufacturingDraftOrigin?.key"
+      :readonly="editSession.readOnly.value"
       @adopt="handleSchemeAdopt"
+      @draft-saved="handleManufacturingDraftSaved"
       @primary-change="handlePrimaryChange"
     />
   </el-dialog>
@@ -290,9 +300,11 @@ import * as XLSX from 'xlsx'
 import { parseSpecModule } from './bomSpecImport'
 import {
   parseBomLayoutRows,
-  flattenBomLayoutDrafts,
+  productBomItemsFromLayout,
+  manufacturingItemsFromLayout,
   hasBomLayoutHeader,
   type BomLayoutDraft,
+  type BomLayoutMaterial,
 } from './bomLayoutImport'
 
 
@@ -438,6 +450,12 @@ const handleProductChange = (productId: number | null, product: any) => {
 
 const manufacturingVisible = ref(false)
 const manufacturingRow = ref<EngineeringBomItem | null>(null)
+// 子料草稿独立存放，不进入 formData/items 或产品BOM请求。
+const layoutMaterialDrafts = ref<Record<string, BomLayoutMaterial[]>>({})
+const manufacturingDraftItems = ref<EngineeringBomItem[] | undefined>()
+let layoutItemSeq = -1000000
+const manufacturingDraftOrigin = ref<{ key: string; itemId: number | undefined; materialId: number; generation: number } | null>(null)
+let manufacturingDraftSequence = 0
 /** getBomDetail 返回的 product.scheme_revision（提交主方案时用于乐观锁，防并发覆盖） */
 const schemeRevision = ref<number | null>(null)
 /** 新建 BOM 时用 GET /product/{id} 读到的产品主方案版本（首次设主必带真实值，不能默认 0） */
@@ -493,8 +511,52 @@ const mergeSavedChoices = (
 }
 
 const handleManufacturing = (row: EngineeringBomItem) => {
+  manufacturingDraftOrigin.value = null
+  manufacturingDraftItems.value = undefined
   manufacturingRow.value = row
   manufacturingVisible.value = true
+}
+
+const handleSaveManufacturingDraft = (row: EngineeringBomItem) => {
+  if (!editSession.ensureEditable()) return
+  if (Number(row.subBomId) > 0) {
+    ElMessage.info('该父行已关联生产BOM，请使用已有方案，不能重复另存')
+    return
+  }
+  if (!(Number(row.materialId) > 0)) {
+    ElMessage.warning('请先为父行关联或新建产出物料，再另存生产BOM')
+    return
+  }
+  try {
+    manufacturingDraftItems.value = manufacturingItemsFromLayout(layoutMaterialDrafts.value[String(row.itemId)] || [])
+    manufacturingDraftOrigin.value = { key: `${bomLoadGeneration}:${++manufacturingDraftSequence}:${row.itemId}`, itemId: row.itemId, materialId: Number(row.materialId), generation: bomLoadGeneration }
+    manufacturingRow.value = row
+    manufacturingVisible.value = true
+  } catch (error) {
+    ElMessage.warning((error as Error).message)
+  }
+}
+
+const removeLayoutMaterial = (row: EngineeringBomItem) => {
+  if (!editSession.ensureEditable()) return
+  layoutMaterialDrafts.value[String(row.itemId)] = []
+}
+
+const handleManufacturingDraftSaved = (payload: { materialId: number; bomId: number; originKey?: string }) => {
+  const origin = manufacturingDraftOrigin.value
+  if (!props.modelValue || !manufacturingVisible.value || !origin || origin.generation !== bomLoadGeneration || payload.originKey !== origin.key) return
+  const row = manufacturingRow.value
+  if (row?.itemId !== origin.itemId || Number(payload.materialId) !== origin.materialId) return
+  const current = bomItemEditorRef.value?.getItems?.().find((item: EngineeringBomItem) => item.itemId === row?.itemId)
+  if (!row || !current || Number(current.materialId) !== Number(payload.materialId) || Number(current.subBomId) > 0 || editSession.readOnly.value) {
+    ElMessage.warning('生产BOM已保存，但父行已变化或不可编辑，请重新选择该方案后采用')
+    return
+  }
+  handleSchemeAdopt(payload)
+  delete layoutMaterialDrafts.value[String(row.itemId)]
+  manufacturingDraftItems.value = undefined
+  manufacturingDraftOrigin.value = null
+  ElMessage.success('生产BOM已另存并回填父行，请保存产品BOM以持久化关联')
 }
 
 /**
@@ -531,6 +593,9 @@ const handlePrimaryChange = (payload: { materialId: number; bomId: number }) => 
 
 /** 清除本任务引入的制造方案上下文（重置/换产品时必须清空，避免产品之间串选择）。 */
 const resetSchemeContext = () => {
+  layoutMaterialDrafts.value = {}
+  manufacturingDraftItems.value = undefined
+  manufacturingDraftOrigin.value = null
   manufacturingRow.value = null
   manufacturingVisible.value = false
   schemeRevision.value = null
@@ -780,7 +845,7 @@ const parseExcelFile = (file: File) => {
   reader.readAsArrayBuffer(file)
 }
 
-/** 导入父子结构仅在前端预览；这里只追加拍平的现有明细 DTO。 */
+/** 仅将父行追加到产品BOM；子料按稳定临时行号暂存，须显式另存生产BOM。 */
 const applyLayoutImport = () => {
   if (!editSession.ensureEditable()) return
   if (!quickImportMode.value) {
@@ -788,17 +853,22 @@ const applyLayoutImport = () => {
     return
   }
   try {
-    const items = flattenBomLayoutDrafts(layoutImportDrafts.value)
+    const items = productBomItemsFromLayout(layoutImportDrafts.value)
     if (!items.length) return
     const current = bomItemEditorRef.value?.getItems() || formData.items
     if (current.length + items.length > 500) {
       ElMessage.warning('物料明细最多500行，请减少本次导入内容')
       return
     }
+    items.forEach((item, index) => {
+      while (current.some((row: EngineeringBomItem) => row.itemId === layoutItemSeq)) layoutItemSeq--
+      item.itemId = layoutItemSeq--
+      layoutMaterialDrafts.value[String(item.itemId)] = layoutImportDrafts.value[index].materials.map((material) => ({ ...material }))
+    })
     formData.items = [...current, ...items]
     layoutImportVisible.value = false
     layoutImportDrafts.value = []
-    ElMessage.success(`已加入 ${items.length} 条材料明细，可继续编辑后保存`)
+    ElMessage.success(`已加入 ${items.length} 条父行；子料仅作前端草稿，需显式另存生产BOM`)
   } catch (error) {
     ElMessage.warning((error as Error).message || '请检查排版草稿内容')
   }
@@ -1191,6 +1261,10 @@ const doSave = async (): Promise<boolean> => {
 const submitForm = async () => {
   const ok = await doSave()
   if (!ok) return
+  if (hasPendingLayoutDrafts()) {
+    ElMessage.info('产品BOM已保存；子料草稿未另存，请在关闭前另存为生产BOM或明确放弃')
+    return
+  }
   recomputeDirty()
   if (isDirty.value) return
   suppressGuard.value = true
@@ -1198,8 +1272,22 @@ const submitForm = async () => {
 }
 
 /** 未保存离开拦截：true=允许离开，false=继续编辑。 */
+const hasPendingLayoutDrafts = (): boolean => {
+  const rows: EngineeringBomItem[] = bomItemEditorRef.value?.getItems?.() || formData.items
+  return rows.some((row) => !Number(row.subBomId) && (layoutMaterialDrafts.value[String(row.itemId)]?.length || 0) > 0)
+}
+
 const resolveLeave = async (): Promise<boolean> => {
   if (suppressGuard.value) return true
+  if (hasPendingLayoutDrafts()) {
+    try {
+      await ElMessageBox.confirm('子料草稿仅保留在本窗口，尚未另存为生产BOM；关闭后将丢失。', '未另存子料草稿', {
+        confirmButtonText: '放弃子料草稿并继续', cancelButtonText: '返回另存', type: 'warning',
+      })
+    } catch {
+      return false
+    }
+  }
   // 明细在编辑器内部防抖回传，关闭前重新取一次 getItems()，避免 300ms 内关闭漏判。
   recomputeDirty()
   if (!isDirty.value) return true
@@ -1244,7 +1332,7 @@ const handleCancel = async () => {
 /** 浏览器刷新/关闭标签页原生提示（仅确有未保存修改时） */
 const handleBeforeUnload = (e: BeforeUnloadEvent) => {
   if (props.modelValue) recomputeDirty()
-  if (props.modelValue && isDirty.value) {
+  if (props.modelValue && (isDirty.value || hasPendingLayoutDrafts())) {
     e.preventDefault()
     e.returnValue = ''
   }
