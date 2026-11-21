@@ -7,6 +7,23 @@
     destroy-on-close
     @update:model-value="emit('update:modelValue', $event)"
   >
+    <div class="print-columns">
+      <el-popover placement="bottom-start" :width="320" trigger="click">
+        <template #reference><el-button>列设置</el-button></template>
+        <el-button link type="primary" @click="selectedColumns = allPickPrintColumns()"
+          >全选</el-button
+        >
+        <el-button link type="primary" @click="selectedColumns = allPickPrintColumns()"
+          >恢复默认</el-button
+        >
+        <el-checkbox-group v-model="selectedColumns" class="column-options">
+          <el-checkbox v-for="column in PICK_PRINT_COLUMNS" :key="column.key" :value="column.key">{{
+            column.label
+          }}</el-checkbox>
+        </el-checkbox-group>
+      </el-popover>
+      <span v-if="!selectedColumns.length">请至少选择一列打印内容</span>
+    </div>
     <iframe
       ref="printFrame"
       class="pick-print-frame"
@@ -16,32 +33,62 @@
     />
     <template #footer>
       <el-button @click="emit('update:modelValue', false)">关闭</el-button>
-      <el-button type="primary" :disabled="!ready" @click="handlePrint">打印</el-button>
+      <el-button type="primary" :disabled="!ready || !selectedColumns.length" @click="handlePrint"
+        >打印</el-button
+      >
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { buildPickPreviewHtml, type PickPreviewPrintData } from './pickPreviewPrint'
+import {
+  buildPickPreviewHtml,
+  type PickPreviewPrintData,
+  PICK_PRINT_COLUMNS,
+  PICK_PRINT_STORAGE_KEY,
+  allPickPrintColumns,
+  readPickPrintColumns,
+  normalizePickPrintColumns,
+} from './pickPreviewPrint'
 
 const props = defineProps<PickPreviewPrintData & { modelValue: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 const printFrame = ref<HTMLIFrameElement>()
 const ready = ref(false)
-const printHtml = computed(() => buildPickPreviewHtml(props))
+const selectedColumns = ref<string[]>(readPickPrintColumns())
+watch(selectedColumns, (keys) => {
+  try {
+    localStorage.setItem(PICK_PRINT_STORAGE_KEY, JSON.stringify(normalizePickPrintColumns(keys)))
+  } catch {
+    // 浏览器禁用存储时，仅不记忆；本次列选择仍然生效。
+  }
+})
+const printHtml = computed(() =>
+  buildPickPreviewHtml({ ...props, visibleColumns: selectedColumns.value })
+)
 watch(printHtml, () => {
   ready.value = false
 })
 
 function handlePrint() {
-  if (!ready.value || !printFrame.value?.contentWindow) return
+  if (!ready.value || !selectedColumns.value.length || !printFrame.value?.contentWindow) return
   printFrame.value.contentWindow.focus()
   printFrame.value.contentWindow.print()
 }
 </script>
 
 <style scoped>
+.print-columns {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.column-options {
+  display: flex;
+  flex-direction: column;
+}
 .pick-print-frame {
   display: block;
   width: 100%;

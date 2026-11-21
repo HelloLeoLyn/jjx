@@ -24,6 +24,15 @@
         :title="errorMsg"
         style="margin-bottom: 12px"
       />
+      <el-alert
+        v-if="treeWarning"
+        type="warning"
+        :closable="false"
+        :title="treeWarning"
+        style="margin-bottom: 12px"
+      >
+        <el-button link :disabled="treeLoading" @click="loadTreeDetails()">重试加载明细</el-button>
+      </el-alert>
       <!-- A4 打印页样式预览 -->
       <div class="a4-preview">
         <div v-if="isSupplement" class="supplement-fields">
@@ -127,27 +136,45 @@
           <thead>
             <tr>
               <th style="width: 5%">序号</th>
-              <th style="width: 14%">物料编码</th>
-              <th>物料名称</th>
-              <th>规格</th>
-              <th style="width: 10%">模数/基数</th>
-              <th style="width: 10%">单位</th>
-              <th style="width: 9%">需求</th>
-              <th style="width: 9%">可用</th>
-              <th style="width: 12%">实领</th>
-              <th style="width: 10%">状态</th>
+              <th style="width: 12%">物料编码</th>
+              <th style="width: 22%">物料名称</th>
+              <th style="width: 14%">规格</th>
+              <th style="width: 9%">模数/基数</th>
+              <th style="width: 5%">单位</th>
+              <th style="width: 7%">需求</th>
+              <th style="width: 7%">可用</th>
+              <th style="width: 11%">实领</th>
+              <th style="width: 8%">状态</th>
             </tr>
           </thead>
           <tbody>
             <tr
-              v-for="(r, i) in previewRows"
-              :key="i"
-              :class="{ 'row-sub': r.substitute, 'row-insufficient': r.insufficient }"
+              v-for="{ node, row: r, depth, sequence } in visibleTreeRows"
+              :key="node.key"
+              :class="{
+                'row-sub': r.substitute,
+                'row-insufficient': r.insufficient,
+                'row-bom-detail': r.isBomDetail,
+              }"
             >
-              <td class="col-center">{{ i + 1 }}</td>
+              <td class="col-center">{{ sequence }}</td>
               <td>{{ r.materialCode }}</td>
               <td>
-                {{ r.materialName }}
+                <div class="tree-material" :style="{ paddingLeft: `${depth * 16}px` }">
+                  <button
+                    v-if="node.children.length"
+                    type="button"
+                    class="tree-toggle"
+                    :aria-expanded="!collapsedRows.has(node.key)"
+                    :aria-label="`${collapsedRows.has(node.key) ? '展开' : '收起'}${r.materialName}制造BOM明细`"
+                    @click="toggleTreeRow(node.key)"
+                  >
+                    {{ collapsedRows.has(node.key) ? '▸' : '▾' }}
+                  </button>
+                  <span v-else class="tree-spacer" aria-hidden="true"></span>
+                  <span>{{ r.materialName }}</span>
+                </div>
+                <div v-if="node.error" class="tree-error">{{ node.error }}</div>
                 <el-tag v-if="r.substitute" type="warning" size="small" style="margin-left: 6px"
                   >替代 {{ r.substituteOf }}</el-tag
                 >
@@ -161,7 +188,7 @@
               <td class="col-center">{{ fmtNum(r.available) }}</td>
               <td class="col-center">
                 <el-input-number
-                  v-if="!r.substitute"
+                  v-if="!r.substitute && !r.isBomDetail"
                   v-model="r.qtyPick"
                   :min="0"
                   :max="isSupplement ? undefined : Number(r.qtyPickMax)"
@@ -169,10 +196,12 @@
                   controls-position="right"
                   style="width: 96px"
                 />
-                <span v-else class="auto-sub">自动补足</span>
+                <span v-else-if="r.substitute" class="auto-sub">自动补足</span>
+                <span v-else>-</span>
               </td>
               <td class="col-center">
-                <el-tag v-if="r.substitute" type="warning" size="small">替代料</el-tag>
+                <el-tag v-if="r.isBomDetail" type="info" size="small">BOM明细</el-tag>
+                <el-tag v-else-if="r.substitute" type="warning" size="small">替代料</el-tag>
                 <el-tag v-else-if="r.insufficient" type="danger" size="small">库存不足</el-tag>
                 <el-tag v-else type="success" size="small">充足</el-tag>
               </td>
@@ -208,12 +237,13 @@
       :product-code="productCode"
       :product-name="productName"
       :planned-quantity="plannedQuantity"
-      :rows="previewRows"
+      :rows="printRows"
+      :detail-warning="treeWarning"
       :supplement-quantity="isSupplement ? supplementQuantity : undefined"
     />
     <template #footer>
       <el-button
-        :disabled="loading || submitting || !!errorMsg || !previewRows.length"
+        :disabled="loading || treeLoading || submitting || !!errorMsg || !previewRows.length"
         @click="printVisible = true"
       >
         打印预览
@@ -240,6 +270,15 @@ import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import PickPreviewPrintDialog from './PickPreviewPrintDialog.vue'
 import { formatPickRatio } from './pickPreviewPrint'
+import { getProductionOrderDetail } from '@/api/production/order'
+import { OrderType } from '@/types/production/order'
+import { productBomApi } from '@/api/product/bom'
+import {
+  buildPickPreviewTree,
+  flatPickPreviewNodes,
+  flattenPickPreviewTree,
+  type PickPreviewTreeNode,
+} from './pickPreviewTree'
 
 const props = withDefaults(
   defineProps<{
@@ -321,6 +360,61 @@ const submitting = ref(false)
 const errorMsg = ref('')
 const rows = ref<any[]>([])
 const printVisible = ref(false)
+const treeNodes = ref<PickPreviewTreeNode[]>([])
+const collapsedRows = ref(new Set<string>())
+const treeWarning = ref('')
+const treeLoading = ref(false)
+let treeGeneration = 0
+const visibleTreeRows = computed(() => flattenPickPreviewTree(treeNodes.value, collapsedRows.value))
+// 打印始终包含全部明细，不受屏幕上临时折叠影响。
+const printRows = computed(() =>
+  flattenPickPreviewTree(treeNodes.value).map(({ row, node, depth, sequence }) => ({
+    ...row,
+    depth,
+    sequence,
+    detailNote: node.error,
+  }))
+)
+
+function toggleTreeRow(key: string) {
+  if (collapsedRows.value.has(key)) collapsedRows.value.delete(key)
+  else collapsedRows.value.add(key)
+}
+
+async function loadTreeDetails(requestId = previewRequestId) {
+  const generation = ++treeGeneration
+  const currentRows = rows.value
+  treeNodes.value = flatPickPreviewNodes(currentRows)
+  collapsedRows.value = new Set()
+  treeWarning.value = ''
+  if (!currentRows.length) return
+  treeLoading.value = true
+  const current = () =>
+    generation === treeGeneration && requestId === previewRequestId && props.modelValue
+  try {
+    const response = await getProductionOrderDetail(String(props.workOrderId), OrderType.WORK_ORDER)
+    if (!current()) return
+    const bomId = Number(response.data?.bomId)
+    if (!Number.isSafeInteger(bomId) || bomId <= 0) {
+      treeWarning.value = '工单未绑定 BOM，当前仅展示本层领料明细'
+      return
+    }
+    const nodes = await buildPickPreviewTree(currentRows, bomId, async (id) => {
+      const result = await productBomApi.getEngineeringBomInfo(id)
+      return result.data
+    })
+    if (!current()) return
+    treeNodes.value = nodes
+    if (flattenPickPreviewTree(nodes).some(({ node }) => node.error)) {
+      treeWarning.value = '部分制造 BOM 明细未能展开，原因见对应材料行'
+    }
+  } catch (error) {
+    if (current()) treeWarning.value = '制造 BOM 明细加载失败，当前仅展示本层领料明细'
+    console.warn('读取领料制造 BOM 明细失败:', error)
+  } finally {
+    if (generation === treeGeneration) treeLoading.value = false
+  }
+}
 /** dev-20261022-019：按组合查看（汇总），仅展示，不改变平铺领料的扣账口径 */
 const groupView = ref(false)
 const groups = ref<any[]>([])
@@ -366,6 +460,10 @@ async function loadPreview(preserveEditedQuantities = false) {
   if (supplementPreview && (!supplementQuantity.value || supplementQuantity.value <= 0)) {
     previewRequestId += 1
     rows.value = []
+    treeNodes.value = []
+    treeWarning.value = ''
+    treeGeneration += 1
+    treeLoading.value = false
     errorMsg.value = ''
     loading.value = false
     return
@@ -394,6 +492,7 @@ async function loadPreview(preserveEditedQuantities = false) {
           : Number(r.qtyNeeded) || 0
         : Number(r.qtyPick),
     }))
+    await loadTreeDetails(requestId)
   } catch (e: any) {
     if (requestId === previewRequestId) errorMsg.value = e?.message || '领料预览加载失败'
   } finally {
@@ -419,6 +518,8 @@ watch(
   () => props.modelValue,
   async (v) => {
     printVisible.value = false
+    treeGeneration += 1
+    treeLoading.value = false
     if (v) {
       // dev-20260923-025：处置行发起时预填来源/不良单/建议补产数量
       if (isSupplement.value) {
@@ -603,6 +704,34 @@ async function handleConfirm() {
 .auto-sub {
   color: #e6a23c;
   font-size: 12px;
+}
+.tree-material {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.tree-toggle {
+  flex-shrink: 0;
+  width: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.tree-toggle:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+}
+.tree-spacer {
+  width: 22px;
+  flex-shrink: 0;
+}
+.tree-error {
+  color: var(--el-color-danger);
+  font-size: 12px;
+}
+.row-bom-detail {
+  background: var(--el-fill-color-light);
 }
 .doc-tip {
   margin-top: 8px;
