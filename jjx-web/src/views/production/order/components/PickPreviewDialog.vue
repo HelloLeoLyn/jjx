@@ -67,6 +67,7 @@
                   :value="n.ncrId"
                 />
               </el-select>
+              <div v-if="ncrError" class="tree-error">{{ ncrError }}</div>
             </el-form-item>
             <el-form-item label="补产数量" required>
               <el-input-number
@@ -91,6 +92,7 @@
           <span class="group-hint"
             >组合 = 连续相同项目；半成品按项目名匹配档案（匹配不到需先建档）</span
           >
+          <el-button size="small" @click="resetPickQuantities">恢复建议数量</el-button>
         </div>
         <table v-if="groupView" class="doc-items group-summary">
           <thead>
@@ -219,6 +221,9 @@
             </tr>
           </tbody>
         </table>
+        <div class="doc-summary">
+          共 {{ previewRows.length }} 行 · 缺料 {{ shortageCount }} 行 · 替代 {{ substituteCount }} 行
+        </div>
         <div class="doc-tip">
           <span>💡 实发数量可调整（0 ~ 库存数量）；主料领不足时，替代料由系统按短缺自动补足。</span>
         </div>
@@ -325,6 +330,7 @@ const ncrId = ref<number>()
 const supplementQuantity = ref<number>()
 /** 未结不良单选项（报废补产必选）—— dev-20260923-025 */
 const ncrOptions = ref<any[]>([])
+const ncrError = ref('')
 const selectedNcr = computed(() =>
   ncrOptions.value.find((n) => Number(n.ncrId) === Number(ncrId.value))
 )
@@ -348,6 +354,7 @@ const loadNcrOptions = async () => {
     }
   } catch {
     ncrOptions.value = []
+    ncrError.value = '未能加载未结不良单，请稍后重试'
   }
 }
 const onNcrChange = () => {
@@ -461,6 +468,15 @@ let previewRequestId = 0
 const mainRows = computed(() => rows.value.filter((r) => !r.substitute))
 // 编辑、打印和提交读取同一行；上限保留接口初始值，不随输入变化。
 const previewRows = computed(() => rows.value)
+const shortageCount = computed(() => previewRows.value.filter((r) => r.insufficient).length)
+const substituteCount = computed(() => previewRows.value.filter((r) => r.substitute).length)
+
+function resetPickQuantities() {
+  for (const r of rows.value) {
+    if (r.substitute || r.isBomDetail) continue
+    r.qtyPick = Number(r.qtyPickMax)
+  }
+}
 
 function fmtNum(v: any): string {
   if (v === null || v === undefined || v === '') return '-'
@@ -760,6 +776,11 @@ async function handleConfirm() {
 }
 .row-bom-detail {
   background: var(--el-fill-color-light);
+}
+.doc-summary {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--el-text-color-regular);
 }
 .doc-tip {
   margin-top: 8px;
