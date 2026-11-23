@@ -148,8 +148,7 @@
               <th style="width: 8%">实发数量</th>
               <th style="width: 7%">需求</th>
               <th style="width: 8%">库存数量</th>
-              <th style="width: 7%">备注</th>
-              <th style="width: 6%">状态</th>
+              <th style="width: 9%">备注</th>
             </tr>
           </thead>
           <tbody>
@@ -159,6 +158,7 @@
               :class="{
                 'row-sub': r.substitute,
                 'row-insufficient': r.insufficient,
+                'row-sufficient': !r.insufficient && !r.substitute,
                 'row-bom-detail': r.isBomDetail,
               }"
             >
@@ -178,8 +178,6 @@
                   </button>
                   <span v-else class="tree-spacer" aria-hidden="true"></span>
                   <span>{{ r.materialName }}</span>
-                  <el-tag v-if="r.level === 2" size="small" type="info">制造用原料</el-tag>
-                  <el-tag v-else-if="node.children.length" size="small" type="success">半成品</el-tag>
                 </div>
                 <span v-if="collapsedRows.has(node.key) && node.children.length" class="tree-note"
                   >含 {{ node.children.length }} 条原料</span
@@ -209,29 +207,20 @@
                 <span v-else>-</span>
               </td>
               <td class="col-center">
-                <div>{{ fmtNum(r.qtyNeeded) }}</div>
-                <div v-if="r.level === 1 && node.children.length" class="tree-note">
-                  缺口 {{ fmtNum(Number(r.qtyNeeded) - Number(r.qtyPick)) }}
-                </div>
-                <div v-else-if="r.level === 2" class="tree-note">{{ childFormula(r) }}</div>
+                <el-tooltip
+                  v-if="r.level === 2 && childFormula(r)"
+                  :content="childFormula(r)"
+                  placement="top"
+                >
+                  <span class="demand-qty">{{ fmtNum(r.qtyNeeded) }}</span>
+                </el-tooltip>
+                <span v-else>{{ fmtNum(r.qtyNeeded) }}</span>
               </td>
               <td class="col-center">{{ fmtNum(r.available) }}</td>
               <td>{{ node.error || '-' }}</td>
-              <td class="col-center">
-                <el-tag v-if="r.isBomDetail" type="info" size="small">BOM明细</el-tag>
-                <el-tag v-else-if="r.substitute" type="warning" size="small">替代料</el-tag>
-                <el-tag
-                  v-else-if="Number(r.qtyPick) > Number(r.qtyNeeded)"
-                  type="warning"
-                  size="small"
-                  >超领</el-tag
-                >
-                <el-tag v-else-if="r.insufficient" type="danger" size="small">库存不足</el-tag>
-                <el-tag v-else type="success" size="small">充足</el-tag>
-              </td>
             </tr>
             <tr v-if="previewRows.length === 0 && !loading && !errorMsg">
-              <td colspan="12" class="col-center">{{
+              <td colspan="11" class="col-center">{{
                 isSupplement && (!supplementQuantity || supplementQuantity <= 0)
                   ? '请先填写补产数量'
                   : '暂无领料明细'
@@ -256,11 +245,10 @@
           />
         </div>
         <div class="doc-summary">
-          共 {{ previewRows.length }} 行 · 缺料 {{ shortageCount }} 行 · 替代 {{ substituteCount }} 行
+          共 {{ previewRows.length }} 行 · 替代 {{ substituteCount }} 行
         </div>
         <div class="doc-tip">
           <span>💡 实发数量可调整（0 ~ 库存数量）；主料领不足时，替代料由系统按短缺自动补足。</span>
-          <div class="tree-note">二级原料需求 =（上级需求 − 上级实发）× 制造BOM单耗</div>
         </div>
         <div class="doc-signs">
           <div class="sign-item">
@@ -566,7 +554,6 @@ function childFormula(r: PickPreviewRow): string {
   const ratioText = Number(ratio.toFixed(4)).toString()
   return `(${fmtNum(parent.qtyNeeded)} − ${fmtNum(parent.qtyPick)}) × ${ratioText} = ${fmtNum(r.qtyNeeded)} ${r.unit || ''}`
 }
-const shortageCount = computed(() => previewRows.value.filter((r) => r.insufficient).length)
 const substituteCount = computed(() => previewRows.value.filter((r) => r.substitute).length)
 
 function resetPickQuantities() {
@@ -875,6 +862,13 @@ async function handleConfirm() {
 }
 .row-insufficient td {
   color: #f56c6c;
+}
+.row-sufficient td {
+  background: var(--el-color-success-light-9) !important;
+}
+.demand-qty {
+  cursor: help;
+  border-bottom: 1px dotted var(--el-text-color-secondary);
 }
 .auto-sub {
   color: #e6a23c;
