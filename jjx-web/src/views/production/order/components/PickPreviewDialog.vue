@@ -178,7 +178,12 @@
                   </button>
                   <span v-else class="tree-spacer" aria-hidden="true"></span>
                   <span>{{ r.materialName }}</span>
+                  <el-tag v-if="r.level === 2" size="small" type="info">制造用原料</el-tag>
+                  <el-tag v-else-if="node.children.length" size="small" type="success">半成品</el-tag>
                 </div>
+                <span v-if="collapsedRows.has(node.key) && node.children.length" class="tree-note"
+                  >含 {{ node.children.length }} 条原料</span
+                >
                 <div v-if="node.error" class="tree-error">{{ node.error }}</div>
                 <el-tag v-if="r.substitute" type="warning" size="small" style="margin-left: 6px"
                   >替代 {{ r.substituteOf }}</el-tag
@@ -203,7 +208,13 @@
                 <span v-else-if="r.substitute" class="auto-sub">自动补足</span>
                 <span v-else>-</span>
               </td>
-              <td class="col-center">{{ fmtNum(r.qtyNeeded) }}</td>
+              <td class="col-center">
+                <div>{{ fmtNum(r.qtyNeeded) }}</div>
+                <div v-if="r.level === 1 && node.children.length" class="tree-note">
+                  缺口 {{ fmtNum(Number(r.qtyNeeded) - Number(r.qtyPick)) }}
+                </div>
+                <div v-else-if="r.level === 2" class="tree-note">{{ childFormula(r) }}</div>
+              </td>
               <td class="col-center">{{ fmtNum(r.available) }}</td>
               <td>{{ node.error || '-' }}</td>
               <td class="col-center">
@@ -249,6 +260,7 @@
         </div>
         <div class="doc-tip">
           <span>💡 实发数量可调整（0 ~ 库存数量）；主料领不足时，替代料由系统按短缺自动补足。</span>
+          <div class="tree-note">二级原料需求 =（上级需求 − 上级实发）× 制造BOM单耗</div>
         </div>
         <div class="doc-signs">
           <div class="sign-item">
@@ -432,6 +444,7 @@ const printRows = computed(() =>
     depth,
     sequence,
     detailNote: node.error,
+    remark: (row as any).level === 2 ? childFormula(row) : row.remark,
   }))
 )
 
@@ -532,6 +545,27 @@ const overIssueCount = computed(
 )
 // 编辑、打印和提交读取同一行；上限保留接口初始值，不随输入变化。
 const previewRows = computed(() => rows.value)
+const rowMap = computed(() => {
+  const map = new Map<string, PickPreviewRow>()
+  for (const r of rows.value) {
+    const key = (r as any).rowKey
+    if (key) map.set(String(key), r)
+  }
+  return map
+})
+function parentOf(r: PickPreviewRow): PickPreviewRow | undefined {
+  const key = (r as any).parentRowKey
+  return key ? rowMap.value.get(String(key)) : undefined
+}
+function childFormula(r: PickPreviewRow): string {
+  const parent = parentOf(r)
+  if (!parent) return ''
+  const shortage = Number(parent.qtyNeeded) - Number(parent.qtyPick)
+  if (!(shortage > 0)) return ''
+  const ratio = Number(r.qtyNeeded) / shortage
+  const ratioText = Number(ratio.toFixed(4)).toString()
+  return `(${fmtNum(parent.qtyNeeded)} − ${fmtNum(parent.qtyPick)}) × ${ratioText} = ${fmtNum(r.qtyNeeded)} ${r.unit || ''}`
+}
 const shortageCount = computed(() => previewRows.value.filter((r) => r.insufficient).length)
 const substituteCount = computed(() => previewRows.value.filter((r) => r.substitute).length)
 
@@ -869,6 +903,10 @@ async function handleConfirm() {
 }
 .tree-error {
   color: var(--el-color-danger);
+  font-size: 12px;
+}
+.tree-note {
+  color: var(--el-text-color-secondary);
   font-size: 12px;
 }
 .row-bom-detail {

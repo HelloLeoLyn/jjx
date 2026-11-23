@@ -20,6 +20,11 @@ export interface PickPreviewRow {
   depth?: number
   sequence?: string
   detailNote?: string
+  remark?: string
+  rowKey?: string
+  level?: number
+  parentRowKey?: string | null
+  rowType?: string
 }
 
 export interface PickPreviewPrintData {

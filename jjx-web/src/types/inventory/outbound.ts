@@ -228,6 +228,11 @@ export interface PickPreviewRow {
   remark?: string
   /** 项目/工序名称（可选） */
   processName?: string
+  /** 接口展开行标识（可选） */
+  rowKey?: string
+  level?: number
+  parentRowKey?: string | null
+  rowType?: string
 }
 
 /** 工单剩余可领料行 */
