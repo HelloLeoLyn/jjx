@@ -224,6 +224,10 @@ export interface PickPreviewRow {
   substituteOf?: string
   /** 库存是否不足 */
   insufficient: boolean
+  /** 行备注（可选） */
+  remark?: string
+  /** 项目/工序名称（可选） */
+  processName?: string
 }
 
 /** 工单剩余可领料行 */

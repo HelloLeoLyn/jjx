@@ -135,16 +135,18 @@
         <table class="doc-items">
           <thead>
             <tr>
-              <th style="width: 5%">序号</th>
-              <th style="width: 12%">物料编码</th>
-              <th style="width: 22%">物料名称</th>
-              <th style="width: 14%">规格</th>
-              <th style="width: 9%">模数/基数</th>
+              <th style="width: 4%">序号</th>
+              <th style="width: 11%">材料编码</th>
+              <th style="width: 16%">材料名称</th>
+              <th style="width: 9%">项目名称</th>
+              <th style="width: 11%">规格</th>
               <th style="width: 5%">单位</th>
+              <th style="width: 8%">模数/基数</th>
+              <th style="width: 8%">实发数量</th>
               <th style="width: 7%">需求</th>
-              <th style="width: 7%">可用</th>
-              <th style="width: 11%">实领</th>
-              <th style="width: 8%">状态</th>
+              <th style="width: 8%">库存数量</th>
+              <th style="width: 7%">备注</th>
+              <th style="width: 6%">状态</th>
             </tr>
           </thead>
           <tbody>
@@ -179,13 +181,12 @@
                   >替代 {{ r.substituteOf }}</el-tag
                 >
               </td>
+              <td class="col-center">{{ r.processName || '-' }}</td>
               <td>
                 {{ r.specification || '-' }}
               </td>
-              <td class="col-center">{{ formatPickRatio(r) }}</td>
               <td class="col-center">{{ r.unit || '-' }}</td>
-              <td class="col-center">{{ fmtNum(r.qtyNeeded) }}</td>
-              <td class="col-center">{{ fmtNum(r.available) }}</td>
+              <td class="col-center">{{ formatPickRatio(r) }}</td>
               <td class="col-center">
                 <el-input-number
                   v-if="!r.substitute && !r.isBomDetail"
@@ -199,6 +200,9 @@
                 <span v-else-if="r.substitute" class="auto-sub">自动补足</span>
                 <span v-else>-</span>
               </td>
+              <td class="col-center">{{ fmtNum(r.qtyNeeded) }}</td>
+              <td class="col-center">{{ fmtNum(r.available) }}</td>
+              <td>{{ node.error || '-' }}</td>
               <td class="col-center">
                 <el-tag v-if="r.isBomDetail" type="info" size="small">BOM明细</el-tag>
                 <el-tag v-else-if="r.substitute" type="warning" size="small">替代料</el-tag>
@@ -207,7 +211,7 @@
               </td>
             </tr>
             <tr v-if="previewRows.length === 0 && !loading && !errorMsg">
-              <td colspan="10" class="col-center">{{
+              <td colspan="12" class="col-center">{{
                 isSupplement && (!supplementQuantity || supplementQuantity <= 0)
                   ? '请先填写补产数量'
                   : '暂无领料明细'
@@ -216,7 +220,7 @@
           </tbody>
         </table>
         <div class="doc-tip">
-          <span>💡 实领数量可调整（0 ~ 可用量）；主料领不足时，替代料由系统按短缺自动补足。</span>
+          <span>💡 实发数量可调整（0 ~ 库存数量）；主料领不足时，替代料由系统按短缺自动补足。</span>
         </div>
         <div class="doc-signs">
           <div class="sign-item">
