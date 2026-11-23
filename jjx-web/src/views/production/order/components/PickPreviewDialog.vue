@@ -92,6 +92,7 @@
           <span class="group-hint"
             >组合 = 连续相同项目；半成品按项目名匹配档案（匹配不到需先建档）</span
           >
+          <el-checkbox v-model="onlyShortage">只看缺料</el-checkbox>
           <el-button size="small" @click="resetPickQuantities">恢复建议数量</el-button>
         </div>
         <table v-if="groupView" class="doc-items group-summary">
@@ -408,7 +409,22 @@ const collapsedRows = ref(new Set<string>())
 const treeWarning = ref('')
 const treeLoading = ref(false)
 let treeGeneration = 0
-const visibleTreeRows = computed(() => flattenPickPreviewTree(treeNodes.value, collapsedRows.value))
+const displayTreeNodes = computed(() => {
+  if (!onlyShortage.value) return treeNodes.value
+  const prune = (nodes: PickPreviewTreeNode[]): PickPreviewTreeNode[] => {
+    const kept: PickPreviewTreeNode[] = []
+    for (const node of nodes) {
+      const children = prune(node.children || [])
+      const isShortage = !!node.row?.insufficient || !!node.row?.substitute
+      if (isShortage || children.length) kept.push({ ...node, children })
+    }
+    return kept
+  }
+  return prune(treeNodes.value)
+})
+const visibleTreeRows = computed(() =>
+  flattenPickPreviewTree(displayTreeNodes.value, collapsedRows.value),
+)
 // 打印始终包含全部明细，不受屏幕上临时折叠影响。
 const printRows = computed(() =>
   flattenPickPreviewTree(treeNodes.value).map(({ row, node, depth, sequence }) => ({
@@ -460,6 +476,7 @@ async function loadTreeDetails(requestId = previewRequestId) {
 }
 /** dev-20261022-019：按组合查看（汇总），仅展示，不改变平铺领料的扣账口径 */
 const groupView = ref(false)
+const onlyShortage = ref(false)
 const groups = ref<any[]>([])
 
 async function loadGroups() {
