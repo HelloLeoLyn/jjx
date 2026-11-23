@@ -27,4 +27,16 @@ public class OutboundItemVO {
     private String locationName;
     private Integer sortOrder;
     private String remark;
+    /** 领料行对应的 BOM 明细（产品BOM或制造BOM） */
+    private Long sourceBomItemId;
+    private BigDecimal coverageQuantity;
+    private String processName;
+    private BigDecimal moduleQty;
+    private BigDecimal baseQty;
+    private BigDecimal pitchMm;
+    private BigDecimal qtyNeeded;
+    private BigDecimal availableQuantity;
+    private Integer level;
+    private String parentRowKey;
+    private String rowKey;
 }

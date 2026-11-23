@@ -192,6 +192,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         List<InventoryOutboundItem> items = outboundItemMapper.selectByOutboundId(outboundId);
         if (items != null && !items.isEmpty()) {
             vo.setItems(convertToItemVOList(items, storageLocationMapper));
+            enrichPickDetailItems(vo, order);
         }
         return vo;
     }
@@ -2922,6 +2923,84 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         return vo.getOutboundNo() != null && vo.getOutboundNo().startsWith("PICK");
     }
 
+    /** 领料单详情：按产品BOM+制造BOM补展示字段，并补出未领用的半成品父行。 */
+    private void enrichPickDetailItems(OutboundVO vo, InventoryOutboundOrder order) {
+        if (!"work_order".equals(order.getSourceType()) || order.getSourceId() == null) return;
+        com.jjx.production.domain.entity.ProductionOrder prodOrder =
+                productionOrderMapper.selectById(order.getSourceId());
+        if (prodOrder == null) return;
+        com.jjx.engineering.domain.entity.EngineeringBom bom = productionBomResolver.resolve(prodOrder);
+        if (bom == null) return;
+        java.util.List<com.jjx.engineering.domain.entity.EngineeringBomItem> productItems =
+                productBomItemMapper.selectList(
+                        new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBomItem>()
+                                .eq(com.jjx.engineering.domain.entity.EngineeringBomItem::getBomId, bom.getBomId()));
+        java.util.Map<Long, java.util.List<com.jjx.engineering.domain.entity.EngineeringBomItem>> childrenByParent =
+                new java.util.HashMap<>();
+        for (com.jjx.engineering.domain.entity.EngineeringBomItem bi : productItems) {
+            if ("make".equals(bi.getSourceType()) && bi.getSubBomId() != null) {
+                childrenByParent.put(bi.getItemId(), productBomItemMapper.selectList(
+                        new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBomItem>()
+                                .eq(com.jjx.engineering.domain.entity.EngineeringBomItem::getBomId, bi.getSubBomId())));
+            }
+        }
+        java.util.Map<com.jjx.engineering.domain.entity.EngineeringBomItem, BigDecimal> demands =
+                stockDemandsByItem(productItems, prodOrder.getPlannedQuantity());
+        java.util.Map<Long, OutboundItemVO> byBom = new java.util.HashMap<>();
+        java.util.List<OutboundItemVO> others = new java.util.ArrayList<>();
+        for (OutboundItemVO item : vo.getItems()) {
+            if (item.getSourceBomItemId() != null) byBom.put(item.getSourceBomItemId(), item);
+            else others.add(item);
+        }
+        java.util.List<OutboundItemVO> result = new java.util.ArrayList<>();
+        for (com.jjx.engineering.domain.entity.EngineeringBomItem bi : productItems) {
+            if (!isStockPickable(bi)) continue;
+            OutboundItemVO parent = byBom.remove(bi.getItemId());
+            if (parent == null) parent = newDetailItemVO(bi);
+            String parentKey = bom.getBomId() + ":" + bi.getItemId();
+            fillDetailBomFields(parent, bi, parentKey, null, 1, demands.getOrDefault(bi, BigDecimal.ZERO));
+            result.add(parent);
+            for (com.jjx.engineering.domain.entity.EngineeringBomItem child :
+                    childrenByParent.getOrDefault(bi.getItemId(), java.util.Collections.emptyList())) {
+                OutboundItemVO childVO = byBom.remove(child.getItemId());
+                if (childVO == null) continue;
+                String childKey = parentKey + "/" + child.getBomId() + ":" + child.getItemId();
+                BigDecimal need = childVO.getCoverageQuantity() != null
+                        ? childVO.getCoverageQuantity() : child.getQuantity();
+                fillDetailBomFields(childVO, child, childKey, parentKey, 2, need);
+                result.add(childVO);
+            }
+        }
+        result.addAll(byBom.values());
+        result.addAll(others);
+        vo.setItems(result);
+    }
+
+    private OutboundItemVO newDetailItemVO(com.jjx.engineering.domain.entity.EngineeringBomItem bi) {
+        OutboundItemVO vo = new OutboundItemVO();
+        vo.setMaterialId(bi.getMaterialId());
+        vo.setMaterialCode(bi.getMaterialCode());
+        vo.setMaterialName(bi.getMaterialName());
+        vo.setSpecification(bi.getSpecification());
+        vo.setUnit(bi.getUnit());
+        vo.setSourceBomItemId(bi.getItemId());
+        return vo;
+    }
+
+    private void fillDetailBomFields(OutboundItemVO vo,
+                                     com.jjx.engineering.domain.entity.EngineeringBomItem bi,
+                                     String rowKey, String parentRowKey, int level, BigDecimal qtyNeeded) {
+        vo.setProcessName(bi.getProcessName());
+        vo.setModuleQty(bi.getModuleQty());
+        vo.setBaseQty(bi.getBaseQty());
+        vo.setPitchMm(bi.getPitchMm());
+        vo.setQtyNeeded(qtyNeeded);
+        vo.setAvailableQuantity(fifoAvailable(bi.getMaterialId()));
+        vo.setLevel(level);
+        vo.setParentRowKey(parentRowKey);
+        vo.setRowKey(rowKey);
+    }
+
     private static List<OutboundItemVO> convertToItemVOList(List<InventoryOutboundItem> items, com.jjx.inventory.mapper.InventoryStorageLocationMapper locMapper) {
         if (items == null || items.isEmpty()) return new ArrayList<>();
         List<OutboundItemVO> result = new ArrayList<>();
@@ -2956,6 +3035,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             }
         }
         vo.setSortOrder(item.getSortOrder());
+        vo.setSourceBomItemId(item.getSourceBomItemId());
+        vo.setCoverageQuantity(item.getCoverageQuantity());
         return vo;
     }
 
