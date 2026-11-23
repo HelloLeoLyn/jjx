@@ -207,7 +207,11 @@
               </td>
             </tr>
             <tr v-if="previewRows.length === 0 && !loading && !errorMsg">
-              <td colspan="10" class="col-center">暂无领料明细</td>
+              <td colspan="10" class="col-center">{{
+                isSupplement && (!supplementQuantity || supplementQuantity <= 0)
+                  ? '请先填写补产数量'
+                  : '暂无领料明细'
+              }}</td>
             </tr>
           </tbody>
         </table>
@@ -258,7 +262,12 @@
         用料计算（缺料或需平替）
       </el-button>
       <el-button @click="emit('update:modelValue', false)">取消</el-button>
-      <el-button type="primary" :loading="submitting" :disabled="!!errorMsg" @click="handleConfirm">
+      <el-button
+        type="primary"
+        :loading="submitting"
+        :disabled="loading || treeLoading || submitting || !previewRows.length || !!errorMsg"
+        @click="handleConfirm"
+      >
         {{ isSupplement ? '提交补料申请' : isAppend ? '确认追加领料单' : '确认生成领料单' }}
       </el-button>
     </template>
@@ -500,8 +509,14 @@ async function loadPreview(preserveEditedQuantities = false) {
   }
 }
 
+let supplementQtyTimer: ReturnType<typeof setTimeout> | null = null
 const onSupplementQuantityChange = () => {
-  if (isSupplement.value && props.modelValue) loadPreview()
+  if (supplementQtyTimer) clearTimeout(supplementQtyTimer)
+  if (!(isSupplement.value && props.modelValue)) return
+  supplementQtyTimer = setTimeout(() => {
+    supplementQtyTimer = null
+    loadPreview()
+  }, 400)
 }
 
 const onSupplementReasonChange = async (value: string) => {
@@ -517,6 +532,10 @@ const onSupplementReasonChange = async (value: string) => {
 watch(
   () => props.modelValue,
   async (v) => {
+    if (supplementQtyTimer) {
+      clearTimeout(supplementQtyTimer)
+      supplementQtyTimer = null
+    }
     printVisible.value = false
     treeGeneration += 1
     treeLoading.value = false
@@ -610,7 +629,12 @@ async function handleConfirm() {
       emit('success', res?.data)
       return
     }
-    // 首张领料单：仅传有调整的主料行（数量 ≠ 默认实领）
+    // 全为 0 时后端会抛“库存不足”，这里先拦下并说明是未填写实领
+    if (mainRows.value.length && mainRows.value.every((r) => Number(r.qtyPick) <= 0)) {
+      ElMessage.warning('未填写实领数量，未生成领料单')
+      return
+    }
+    // 首张领料单：仅传有调整的主料行（数量 ≠ 默认实领）；传 0 表示该行本次不领
     const adjusted = mainRows.value
       .filter((r) => Number(r.qtyPick) !== Number(r.qtyPickMax))
       .map((r) => ({ materialId: Number(r.materialId), quantity: Number(r.qtyPick) }))
