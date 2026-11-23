@@ -2946,50 +2946,44 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
         java.util.Map<com.jjx.engineering.domain.entity.EngineeringBomItem, BigDecimal> demands =
                 stockDemandsByItem(productItems, prodOrder.getPlannedQuantity());
-        java.util.Map<Long, OutboundItemVO> byBom = new java.util.HashMap<>();
-        java.util.List<OutboundItemVO> others = new java.util.ArrayList<>();
-        for (OutboundItemVO item : vo.getItems()) {
-            if (item.getSourceBomItemId() != null) byBom.put(item.getSourceBomItemId(), item);
-            else others.add(item);
-        }
-        java.util.List<OutboundItemVO> result = new java.util.ArrayList<>();
+        java.util.Map<Long, com.jjx.engineering.domain.entity.EngineeringBomItem> byItemId = new java.util.HashMap<>();
+        java.util.Map<Long, Long> parentOfChild = new java.util.HashMap<>();
+        java.util.Set<Long> productItemIds = new java.util.HashSet<>();
         for (com.jjx.engineering.domain.entity.EngineeringBomItem bi : productItems) {
-            if (!isStockPickable(bi)) continue;
-            OutboundItemVO parent = byBom.remove(bi.getItemId());
-            if (parent == null) parent = newDetailItemVO(bi);
-            String parentKey = bom.getBomId() + ":" + bi.getItemId();
-            fillDetailBomFields(parent, bi, parentKey, null, 1, demands.getOrDefault(bi, BigDecimal.ZERO));
-            result.add(parent);
-            for (com.jjx.engineering.domain.entity.EngineeringBomItem child :
-                    childrenByParent.getOrDefault(bi.getItemId(), java.util.Collections.emptyList())) {
-                OutboundItemVO childVO = byBom.remove(child.getItemId());
-                if (childVO == null) continue;
-                String childKey = parentKey + "/" + child.getBomId() + ":" + child.getItemId();
-                BigDecimal need = childVO.getCoverageQuantity() != null
-                        ? childVO.getCoverageQuantity() : child.getQuantity();
-                fillDetailBomFields(childVO, child, childKey, parentKey, 2, need);
-                result.add(childVO);
+            byItemId.put(bi.getItemId(), bi);
+            productItemIds.add(bi.getItemId());
+        }
+        for (java.util.Map.Entry<Long, java.util.List<com.jjx.engineering.domain.entity.EngineeringBomItem>> entry
+                : childrenByParent.entrySet()) {
+            for (com.jjx.engineering.domain.entity.EngineeringBomItem child : entry.getValue()) {
+                byItemId.put(child.getItemId(), child);
+                parentOfChild.put(child.getItemId(), entry.getKey());
             }
         }
-        result.addAll(byBom.values());
-        result.addAll(others);
-        vo.setItems(result);
-    }
-
-    private OutboundItemVO newDetailItemVO(com.jjx.engineering.domain.entity.EngineeringBomItem bi) {
-        OutboundItemVO vo = new OutboundItemVO();
-        vo.setMaterialId(bi.getMaterialId());
-        vo.setMaterialCode(bi.getMaterialCode());
-        vo.setMaterialName(bi.getMaterialName());
-        vo.setSpecification(bi.getSpecification());
-        vo.setUnit(bi.getUnit());
-        vo.setSourceBomItemId(bi.getItemId());
-        return vo;
+        // 领料单只展示实际领料明细：不补未领用的 BOM 父行
+        for (OutboundItemVO item : vo.getItems()) {
+            Long bomItemId = item.getSourceBomItemId();
+            if (bomItemId == null) continue;
+            com.jjx.engineering.domain.entity.EngineeringBomItem bi = byItemId.get(bomItemId);
+            if (bi == null) continue;
+            boolean child = !productItemIds.contains(bomItemId);
+            BigDecimal need = child
+                    ? (item.getCoverageQuantity() != null ? item.getCoverageQuantity() : bi.getQuantity())
+                    : demands.getOrDefault(bi, BigDecimal.ZERO);
+            String rowKey = child
+                    ? bom.getBomId() + ":" + parentOfChild.get(bomItemId) + "/" + bi.getBomId() + ":" + bi.getItemId()
+                    : bom.getBomId() + ":" + bi.getItemId();
+            fillDetailBomFields(item, bi, rowKey, null, child ? 2 : 1, need);
+        }
     }
 
     private void fillDetailBomFields(OutboundItemVO vo,
                                      com.jjx.engineering.domain.entity.EngineeringBomItem bi,
                                      String rowKey, String parentRowKey, int level, BigDecimal qtyNeeded) {
+        if (vo.getMaterialCode() == null || vo.getMaterialCode().isBlank()) vo.setMaterialCode(bi.getMaterialCode());
+        if (vo.getMaterialName() == null || vo.getMaterialName().isBlank()) vo.setMaterialName(bi.getMaterialName());
+        if (vo.getSpecification() == null || vo.getSpecification().isBlank()) vo.setSpecification(bi.getSpecification());
+        if (vo.getUnit() == null || vo.getUnit().isBlank()) vo.setUnit(bi.getUnit());
         vo.setProcessName(bi.getProcessName());
         vo.setModuleQty(bi.getModuleQty());
         vo.setBaseQty(bi.getBaseQty());
