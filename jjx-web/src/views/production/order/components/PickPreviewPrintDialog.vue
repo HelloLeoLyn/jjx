@@ -8,6 +8,10 @@
     @update:model-value="emit('update:modelValue', $event)"
   >
     <div class="print-columns">
+      <el-radio-group v-model="printMode" size="small">
+        <el-radio-button value="mode1">模式一：一级汇总</el-radio-button>
+        <el-radio-button value="mode2">模式二：一级+二级</el-radio-button>
+      </el-radio-group>
       <el-popover placement="bottom-start" :width="320" trigger="click">
         <template #reference><el-button>列设置</el-button></template>
         <el-button link type="primary" @click="selectedColumns = allPickPrintColumns()"
@@ -64,8 +68,15 @@ watch(selectedColumns, (keys) => {
     // 浏览器禁用存储时，仅不记忆；本次列选择仍然生效。
   }
 })
+const printMode = ref<'mode1' | 'mode2'>('mode2')
+const printRows = computed(() => {
+  const rows = props.rows || []
+  if (printMode.value === 'mode2') return rows
+  // 模式一：只打一级汇总；没有层级信息时按全部处理
+  return rows.filter((row) => !row.level || row.level === 1)
+})
 const printHtml = computed(() =>
-  buildPickPreviewHtml({ ...props, visibleColumns: selectedColumns.value })
+  buildPickPreviewHtml({ ...props, rows: printRows.value, visibleColumns: selectedColumns.value })
 )
 watch(printHtml, () => {
   ready.value = false

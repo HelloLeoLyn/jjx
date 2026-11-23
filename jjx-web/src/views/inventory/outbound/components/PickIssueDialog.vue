@@ -26,33 +26,7 @@
           <div class="info-item info-item-full"><span class="info-label">备注</span>{{ detail.remark || '-' }}</div>
         </div>
 
-        <table class="doc-items">
-          <thead>
-            <tr>
-              <th style="width: 6%">序号</th>
-              <th style="width: 14%">物料编码</th>
-              <th>物料名称</th>
-              <th style="width: 9%">单位</th>
-              <th style="width: 13%">批次</th>
-              <th style="width: 13%">库位</th>
-              <th style="width: 12%">数量</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(item, index) in items" :key="item.itemId || index">
-              <td class="col-center">{{ index + 1 }}</td>
-              <td>{{ item.materialCode || '-' }}</td>
-              <td>{{ item.materialName || '-' }}</td>
-              <td class="col-center">{{ item.unit || '-' }}</td>
-              <td>{{ item.batchNo || '-' }}</td>
-              <td>{{ locationName(item) }}</td>
-              <td class="col-right">{{ fmtNum(item.quantity) }}</td>
-            </tr>
-            <tr v-if="!items.length">
-              <td colspan="7" class="col-center">无明细</td>
-            </tr>
-          </tbody>
-        </table>
+        <PickDetailTable :rows="items" empty-text="无明细" />
 
         <div class="doc-total-row">
           <span>物料种类：{{ items.length }} 项</span>
@@ -81,6 +55,7 @@ import { ElMessage } from 'element-plus'
 import { outboundApi } from '@/api/inventory/outbound'
 import { useUserStore } from '@/store/modules/user'
 import type { OutboundItemVO, OutboundVO } from '@/types/inventory/outbound'
+import PickDetailTable from './PickDetailTable.vue'
 
 type TagType = 'success' | 'warning' | 'info' | 'danger' | undefined
 

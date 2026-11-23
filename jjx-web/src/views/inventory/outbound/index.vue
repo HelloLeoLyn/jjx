@@ -200,8 +200,13 @@
     <!-- 查看流水（DEV-569） -->
     <TraceTimeline v-model="traceDrawerVisible" :traceId="currentTraceId" />
 
-    <!-- 出库单详情抽屉（DEV-661：含基本信息/明细/库存流水） -->
-    <el-drawer v-model="detailVisible" :title="`出库单详情 - ${detailNo}`" size="720px">
+    <!-- 出库单详情弹窗（DEV-661：含基本信息/明细/库存流水） -->
+    <el-dialog
+      v-model="detailVisible"
+      :title="`出库单详情 - ${detailNo}`"
+      width="1200px"
+      append-to-body
+    >
       <template v-if="currentDetail">
         <el-descriptions :column="2" border>
           <el-descriptions-item label="单据号">{{ currentDetail.outboundNo }}</el-descriptions-item>
@@ -217,20 +222,7 @@
         </el-descriptions>
 
         <el-divider content-position="left">出库明细</el-divider>
-        <el-table :data="currentDetail.items || []" border size="small" style="width: 100%">
-          <el-table-column label="物料编码" prop="materialCode" width="110" />
-          <el-table-column label="物料名称" prop="materialName" min-width="140" show-overflow-tooltip />
-          <el-table-column label="规格" prop="specification" min-width="100" show-overflow-tooltip />
-          <el-table-column label="数量" prop="quantity" width="80" align="right" />
-          <el-table-column label="单位" prop="unit" width="60" align="center" />
-          <el-table-column label="批次" prop="batchNo" width="110" />
-          <el-table-column label="库位" prop="locationName" width="110">
-            <template #default="{ row }">
-              <span v-if="row.locationName">{{ row.locationName }}</span>
-              <span v-else style="color: #999">-</span>
-            </template>
-          </el-table-column>
-        </el-table>
+        <PickDetailTable :rows="currentDetail.items || []" />
 
         <el-divider content-position="left">库存流水（DEV-661）</el-divider>
         <el-table v-loading="txLoading" :data="detailTransactions" border size="small" style="width: 100%">
@@ -252,7 +244,7 @@
         </el-table>
         <el-empty v-if="!txLoading && detailTransactions.length === 0" description="暂无库存流水" :image-size="60" />
       </template>
-    </el-drawer>
+    </el-dialog>
 
     <!-- 操作预览器 -->
     <OperationPreviewDialog
@@ -290,6 +282,7 @@ import { getTransactionsByDocNo } from '@/api/inventory/transaction'
 import type { TransactionVO } from '@/api/inventory/transaction'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import PickIssueDialog from './components/PickIssueDialog.vue'
+import PickDetailTable from './components/PickDetailTable.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { formatCurrency, formatNumber, download } from '@/utils/format'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
