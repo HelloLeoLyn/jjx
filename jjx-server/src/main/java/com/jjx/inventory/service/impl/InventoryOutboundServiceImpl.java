@@ -1225,11 +1225,19 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
     }
 
-    /**
-     * 2026-08-18：支持领料预览调整（adjustedItems：materialId→quantity，仅可少领，替代料自动按新短缺补）
-     */
-    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    /** 兼容旧调用：不传超领原因。 */
+    @Override
     public Long createFromProduction(Long workOrderId, java.util.List<java.util.Map<String, Object>> adjustedItems) {
+        return createFromProduction(workOrderId, adjustedItems, null);
+    }
+
+    /**
+     * 2026-08-18：支持领料预览调整（adjustedItems：materialId→quantity）；允许超领（上限=可用库存），超领必须填原因并走审批。
+     */
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    public Long createFromProduction(Long workOrderId, java.util.List<java.util.Map<String, Object>> adjustedItems,
+                                     String overIssueReason) {
         log.info("从生产工单创建出库单: workOrderId={}", workOrderId);
 
         // 1. 查询生产工单
@@ -1288,6 +1296,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         // 5. 创建出库单明细
         int sort = 1;
         BigDecimal totalQty = BigDecimal.ZERO;
+        BigDecimal overIssueQty = BigDecimal.ZERO;
         // 045定稿：领料预检按本次领料数量查可用量，不足允许部分领料开工（不再全量拦截）
         // 首领单按可用量部分领，剩余靠追加领料(033 createProductionPick)补
         java.util.Map<Long, BigDecimal> availableMap = new java.util.HashMap<>();
@@ -1318,16 +1327,19 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             String pickSpec = bomItem.getSpecification();
             String pickUnit = materialMapper.selectById(bomItem.getMaterialId()).getUnit();
             BigDecimal qtyPick = qtyNeeded.min(available);
-            // 2026-08-18：预览调整（仅可少领：0 ≤ 调整 ≤ min(需求,可用)），替代料按新短缺自动补
+            // 预览调整：0 ≤ 调整 ≤ 可用库存；超过需求的部分为超领，需填原因并走审批
             if (adjustedItems != null) {
                 for (java.util.Map<String, Object> adj : adjustedItems) {
                     if (adj.get("materialId") == null || adj.get("quantity") == null) continue;
                     if (bomItem.getMaterialId().longValue() == ((Number) adj.get("materialId")).longValue()) {
                         BigDecimal adjQty = new BigDecimal(String.valueOf(adj.get("quantity")));
-                        qtyPick = adjQty.min(qtyPick).max(BigDecimal.ZERO);
+                        qtyPick = adjQty.max(BigDecimal.ZERO).min(available);
                         break;
                     }
                 }
+            }
+            if (qtyPick.compareTo(qtyNeeded) > 0) {
+                overIssueQty = overIssueQty.add(qtyPick.subtract(qtyNeeded));
             }
             if (qtyPick.compareTo(qtyNeeded) < 0) {
                 // 首选料不足 → 尝试替代料（034：A料缺货用B料替代，按模数换算）
@@ -1430,6 +1442,14 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             }
             totalQty = totalQty.add(qtyPick);
             outboundItemMapper.insert(outItem);
+        }
+
+        // 超领：必须填写原因；单据保持待审批，审批通过后才能发料
+        if (overIssueQty.signum() > 0) {
+            if (overIssueReason == null || overIssueReason.isBlank()) {
+                throw new BusinessException("存在超领，必须填写超领原因");
+            }
+            order.setRemark("超领原因：" + overIssueReason.trim());
         }
 
         // 6. 2026-08-18：明细为空（所有物料可用量 0，库存不足）→ 不建空壳单，回滚并明确提示

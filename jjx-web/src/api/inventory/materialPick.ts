@@ -4,11 +4,16 @@ import type { AxiosPromise } from 'axios'
 // 领料单（生产出库）
 export const materialPickApi = {
   // 从生产工单创建领料单（2026-08-18：支持预览调整明细，仅可少领）
-  createFromProduction(workOrderId: number, adjustedItems?: any[]): AxiosPromise<number> {
+  createFromProduction(
+    workOrderId: number,
+    adjustedItems?: any[],
+    overIssueReason?: string,
+  ): AxiosPromise<number> {
     return request({
       url: `/inventory/outbound/create-from-production/${workOrderId}`,
       method: 'post',
       data: adjustedItems || [],
+      params: overIssueReason ? { overIssueReason } : undefined,
     })
   },
 

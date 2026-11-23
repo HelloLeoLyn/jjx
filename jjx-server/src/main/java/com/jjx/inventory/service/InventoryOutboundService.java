@@ -67,6 +67,10 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
      */
     Long createFromProduction(Long workOrderId, java.util.List<java.util.Map<String, Object>> adjustedItems);
 
+    /** 超领：允许调整量超过需求（上限=可用库存），需填写超领原因并走审批。 */
+    Long createFromProduction(Long workOrderId, java.util.List<java.util.Map<String, Object>> adjustedItems,
+                              String overIssueReason);
+
     /**
      * 2026-08-18：领料预览（BOM展开+可用量+替代料）
      */

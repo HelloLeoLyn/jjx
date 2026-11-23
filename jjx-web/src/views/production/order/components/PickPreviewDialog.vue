@@ -194,7 +194,7 @@
                   v-if="!r.substitute && !r.isBomDetail"
                   v-model="r.qtyPick"
                   :min="0"
-                  :max="isSupplement ? undefined : Number(r.qtyPickMax)"
+                  :max="isSupplement ? undefined : Number(r.available)"
                   size="small"
                   controls-position="right"
                   style="width: 96px"
@@ -208,6 +208,12 @@
               <td class="col-center">
                 <el-tag v-if="r.isBomDetail" type="info" size="small">BOM明细</el-tag>
                 <el-tag v-else-if="r.substitute" type="warning" size="small">替代料</el-tag>
+                <el-tag
+                  v-else-if="Number(r.qtyPick) > Number(r.qtyNeeded)"
+                  type="warning"
+                  size="small"
+                  >超领</el-tag
+                >
                 <el-tag v-else-if="r.insufficient" type="danger" size="small">库存不足</el-tag>
                 <el-tag v-else type="success" size="small">充足</el-tag>
               </td>
@@ -221,6 +227,22 @@
             </tr>
           </tbody>
         </table>
+        <div v-if="overIssueCount" class="over-issue-box">
+          <el-alert
+            type="warning"
+            :closable="false"
+            show-icon
+            :title="`有 ${overIssueCount} 行超领，提交后需审批，请填写原因`"
+          />
+          <el-input
+            v-model="overIssueReason"
+            type="textarea"
+            :rows="2"
+            maxlength="200"
+            show-word-limit
+            placeholder="超领原因（必填）"
+          />
+        </div>
         <div class="doc-summary">
           共 {{ previewRows.length }} 行 · 缺料 {{ shortageCount }} 行 · 替代 {{ substituteCount }} 行
         </div>
@@ -328,6 +350,7 @@ const reasonType = ref<string>('PRODUCTION_OVERUSE')
 const supplementReason = ref('')
 const ncrId = ref<number>()
 const supplementQuantity = ref<number>()
+const overIssueReason = ref('')
 /** 未结不良单选项（报废补产必选）—— dev-20260923-025 */
 const ncrOptions = ref<any[]>([])
 const ncrError = ref('')
@@ -466,6 +489,9 @@ let previewRequestId = 0
 
 // 主料行（可调整）
 const mainRows = computed(() => rows.value.filter((r) => !r.substitute))
+const overIssueCount = computed(
+  () => mainRows.value.filter((r) => Number(r.qtyPick) > Number(r.qtyNeeded)).length,
+)
 // 编辑、打印和提交读取同一行；上限保留接口初始值，不随输入变化。
 const previewRows = computed(() => rows.value)
 const shortageCount = computed(() => previewRows.value.filter((r) => r.insufficient).length)
@@ -649,6 +675,10 @@ async function handleConfirm() {
       emit('success', res?.data)
       return
     }
+    if (overIssueCount.value > 0 && !overIssueReason.value.trim()) {
+      ElMessage.warning('有超领行，请填写超领原因')
+      return
+    }
     // 全为 0 时后端会抛“库存不足”，这里先拦下并说明是未填写实领
     if (mainRows.value.length && mainRows.value.every((r) => Number(r.qtyPick) <= 0)) {
       ElMessage.warning('未填写实领数量，未生成领料单')
@@ -658,7 +688,11 @@ async function handleConfirm() {
     const adjusted = mainRows.value
       .filter((r) => Number(r.qtyPick) !== Number(r.qtyPickMax))
       .map((r) => ({ materialId: Number(r.materialId), quantity: Number(r.qtyPick) }))
-    const res: any = await materialPickApi.createFromProduction(props.workOrderId, adjusted)
+    const res: any = await materialPickApi.createFromProduction(
+      props.workOrderId,
+      adjusted,
+      overIssueCount.value > 0 ? overIssueReason.value.trim() : undefined,
+    )
     ElMessage.success(`领料单已生成（出库单 ${res?.data}）`)
     emit('update:modelValue', false)
     emit('success', res?.data)
@@ -776,6 +810,12 @@ async function handleConfirm() {
 }
 .row-bom-detail {
   background: var(--el-fill-color-light);
+}
+.over-issue-box {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 .doc-summary {
   margin-top: 8px;

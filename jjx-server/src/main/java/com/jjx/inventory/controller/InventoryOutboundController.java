@@ -123,8 +123,9 @@ public class InventoryOutboundController {
     @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#workOrderId", action = LogActions.OUTBOUND_FROM_PRODUCTION)
     @SaCheckPermission("inventory:outbound:add")
     public Result<Long> createFromProduction(@PathVariable Long workOrderId,
-                                             @RequestBody(required = false) java.util.List<java.util.Map<String, Object>> adjustedItems) {
-        return Result.success(outboundService.createFromProduction(workOrderId, adjustedItems));
+                                             @RequestBody(required = false) java.util.List<java.util.Map<String, Object>> adjustedItems,
+                                             @RequestParam(required = false) String overIssueReason) {
+        return Result.success(outboundService.createFromProduction(workOrderId, adjustedItems, overIssueReason));
     }
 
     @GetMapping("/pick-count/{workOrderId}")
