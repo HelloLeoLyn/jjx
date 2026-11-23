@@ -67,6 +67,10 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
      */
     Long createFromProduction(Long workOrderId, java.util.List<java.util.Map<String, Object>> adjustedItems);
 
+    /** 按制造 BOM 展开行创建领料单：items=[{rowKey,materialId,quantity,bomItemId}]。 */
+    Long createFromProductionExpanded(Long workOrderId, java.util.List<java.util.Map<String, Object>> items,
+                                      String overIssueReason);
+
     /** 超领：允许调整量超过需求（上限=可用库存），需填写超领原因并走审批。 */
     Long createFromProduction(Long workOrderId, java.util.List<java.util.Map<String, Object>> adjustedItems,
                               String overIssueReason);
@@ -80,6 +84,10 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
     /** dev-20261022-019：groupBy=GROUP 按组合聚合，null/FLAT 为原平铺 */
     java.util.List<java.util.Map<String, Object>> previewPick(Long workOrderId,
             java.math.BigDecimal supplementQuantity, String groupBy);
+
+    /** includeMfg=true 时按制造 BOM 展开二级原料行（level/parentRowKey/rowKey）。 */
+    java.util.List<java.util.Map<String, Object>> previewPick(Long workOrderId,
+            java.math.BigDecimal supplementQuantity, String groupBy, boolean includeMfg);
 
     java.util.List<java.util.Map<String, Object>> previewPick(Long workOrderId,
                                                               java.math.BigDecimal supplementQuantity);

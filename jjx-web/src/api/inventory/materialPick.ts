@@ -22,6 +22,7 @@ export const materialPickApi = {
     workOrderId: number,
     supplementQuantity?: number,
     groupBy?: string,
+    includeMfg?: boolean,
   ): AxiosPromise<any[]> {
     return request({
       url: `/inventory/outbound/pick-preview/${workOrderId}`,
@@ -29,7 +30,23 @@ export const materialPickApi = {
       params: {
         ...(supplementQuantity ? { supplementQuantity } : {}),
         ...(groupBy ? { groupBy } : {}),
+        ...(includeMfg ? { includeMfg } : {}),
       },
+    })
+  },
+
+  /** 按制造BOM展开行创建领料单（rowKey/materialId/quantity/bomItemId）。 */
+  createFromProductionExpanded(
+    workOrderId: number,
+    body: {
+      items: Array<{ rowKey?: string; materialId: number; quantity: number; bomItemId?: number }>
+      overIssueReason?: string
+    },
+  ): AxiosPromise<number> {
+    return request({
+      url: `/inventory/outbound/create-from-production-expanded/${workOrderId}`,
+      method: 'post',
+      data: body,
     })
   },
 

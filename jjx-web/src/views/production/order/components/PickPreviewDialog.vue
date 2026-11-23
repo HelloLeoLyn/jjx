@@ -310,7 +310,7 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import PickPreviewPrintDialog from './PickPreviewPrintDialog.vue'
-import { formatPickRatio } from './pickPreviewPrint'
+import { formatPickRatio, type PickPreviewRow } from './pickPreviewPrint'
 import { getProductionOrderDetail } from '@/api/production/order'
 import { OrderType } from '@/types/production/order'
 import { productBomApi } from '@/api/product/bom'
@@ -435,6 +435,22 @@ const printRows = computed(() =>
   }))
 )
 
+/** 接口已按 rowKey/parentRowKey 返回平铺行时，直接组树（含制造BOM二级行）。 */
+function buildTreeFromFlat(rows: PickPreviewRow[]): PickPreviewTreeNode[] {
+  const map = new Map<string, PickPreviewTreeNode>()
+  const roots: PickPreviewTreeNode[] = []
+  for (const row of rows) {
+    const key = String((row as any).rowKey || `row:${map.size}`)
+    const node: PickPreviewTreeNode = { key, row, children: [] }
+    map.set(key, node)
+    const parentKey = (row as any).parentRowKey ? String((row as any).parentRowKey) : ''
+    const parent = parentKey ? map.get(parentKey) : undefined
+    if (parent) parent.children.push(node)
+    else roots.push(node)
+  }
+  return roots
+}
+
 function toggleTreeRow(key: string) {
   if (collapsedRows.value.has(key)) collapsedRows.value.delete(key)
   else collapsedRows.value.add(key)
@@ -447,6 +463,11 @@ async function loadTreeDetails(requestId = previewRequestId) {
   collapsedRows.value = new Set()
   treeWarning.value = ''
   if (!currentRows.length) return
+  if (currentRows.some((row: any) => row.rowKey)) {
+    treeNodes.value = buildTreeFromFlat(currentRows)
+    treeLoading.value = false
+    return
+  }
   treeLoading.value = true
   const current = () =>
     generation === treeGeneration && requestId === previewRequestId && props.modelValue
@@ -552,7 +573,9 @@ async function loadPreview(preserveEditedQuantities = false) {
     const { materialPickApi } = await import('@/api/inventory/materialPick')
     const res: any = await materialPickApi.pickPreview(
       props.workOrderId,
-      supplementPreview ? Number(supplementQuantity.value) : undefined
+      supplementPreview ? Number(supplementQuantity.value) : undefined,
+      undefined,
+      true
     )
     if (requestId !== previewRequestId) return
     rows.value = (res?.data || []).map((r: any) => ({
@@ -701,7 +724,30 @@ async function handleConfirm() {
       ElMessage.warning('未填写实领数量，未生成领料单')
       return
     }
-    // 首张领料单：仅传有调整的主料行（数量 ≠ 默认实领）；传 0 表示该行本次不领
+    // 接口返回 rowKey 时走"制造BOM展开行"创建；二级原料行与一级行一起提交
+    if (rows.value.some((r) => (r as any).rowKey)) {
+      const items = rows.value
+        .filter((r) => Number(r.qtyPick) > 0)
+        .map((r) => ({
+          rowKey: (r as any).rowKey,
+          materialId: Number(r.materialId),
+          quantity: Number(r.qtyPick),
+          bomItemId: (r as any).bomItemId ? Number((r as any).bomItemId) : undefined,
+        }))
+      if (!items.length) {
+        ElMessage.warning('未填写实发数量，未生成领料单')
+        return
+      }
+      const res: any = await materialPickApi.createFromProductionExpanded(props.workOrderId, {
+        items,
+        overIssueReason: overIssueCount.value > 0 ? overIssueReason.value.trim() : undefined,
+      })
+      ElMessage.success(`领料单已生成（出库单 ${res?.data}）`)
+      emit('update:modelValue', false)
+      emit('success', res?.data)
+      return
+    }
+    // 回退：旧接口只传有调整的主料行（数量 ≠ 默认实领）；传 0 表示该行本次不领
     const adjusted = mainRows.value
       .filter((r) => Number(r.qtyPick) !== Number(r.qtyPickMax))
       .map((r) => ({ materialId: Number(r.materialId), quantity: Number(r.qtyPick) }))

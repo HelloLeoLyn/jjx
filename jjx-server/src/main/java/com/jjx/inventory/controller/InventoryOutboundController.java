@@ -128,6 +128,20 @@ public class InventoryOutboundController {
         return Result.success(outboundService.createFromProduction(workOrderId, adjustedItems, overIssueReason));
     }
 
+    @PostMapping("/create-from-production-expanded/{workOrderId}")
+    @Operation(summary = "按制造BOM展开行创建领料单")
+    @SaCheckPermission("inventory:outbound:add")
+    public Result<Long> createFromProductionExpanded(@PathVariable Long workOrderId,
+                                                     @RequestBody java.util.Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        java.util.List<java.util.Map<String, Object>> items =
+                body.get("items") instanceof java.util.List
+                        ? (java.util.List<java.util.Map<String, Object>>) body.get("items")
+                        : java.util.List.of();
+        String reason = body.get("overIssueReason") == null ? null : String.valueOf(body.get("overIssueReason"));
+        return Result.success(outboundService.createFromProductionExpanded(workOrderId, items, reason));
+    }
+
     @GetMapping("/pick-count/{workOrderId}")
     public Result<Long> countPickOrders(@PathVariable Long workOrderId) {
         return Result.success(outboundService.countPickOrders(workOrderId));
@@ -139,8 +153,9 @@ public class InventoryOutboundController {
     public Result<java.util.List<java.util.Map<String, Object>>> pickPreview(
             @PathVariable Long workOrderId,
             @RequestParam(required = false) java.math.BigDecimal supplementQuantity,
-            @RequestParam(required = false) String groupBy) {
-        return Result.success(outboundService.previewPick(workOrderId, supplementQuantity, groupBy));
+            @RequestParam(required = false) String groupBy,
+            @RequestParam(defaultValue = "false") boolean includeMfg) {
+        return Result.success(outboundService.previewPick(workOrderId, supplementQuantity, groupBy, includeMfg));
     }
 
     @GetMapping("/sample-pick/preview/{sampleOrderId}")
