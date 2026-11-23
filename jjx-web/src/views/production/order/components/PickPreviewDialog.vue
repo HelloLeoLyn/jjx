@@ -144,7 +144,7 @@
               <th style="width: 9%">项目名称</th>
               <th style="width: 11%">规格</th>
               <th style="width: 5%">单位</th>
-              <th style="width: 8%">模数/基数</th>
+              <th style="width: 10%">跳距/模数/基数</th>
               <th style="width: 8%">实发数量</th>
               <th style="width: 7%">需求</th>
               <th style="width: 8%">库存数量</th>

@@ -22,6 +22,7 @@ export interface PickPreviewRow {
   detailNote?: string
   remark?: string
   rowKey?: string
+  pitchMm?: number | null
   level?: number
   parentRowKey?: string | null
   rowType?: string
@@ -78,7 +79,10 @@ function formatNumber(value: unknown): string {
 }
 
 export function formatPickRatio(row: PickPreviewRow): string {
-  return `${formatNumber(row.moduleQty)} / ${formatNumber(row.baseQty)}`
+  if (row.level === 2 && row.pitchMm != null) {
+    return `${formatNumber(row.pitchMm)}mm`
+  }
+  return `${formatNumber(row.moduleQty ?? 1)}/${formatNumber(row.baseQty ?? 1)}`
 }
 
 function escapeHtml(value: unknown): string {

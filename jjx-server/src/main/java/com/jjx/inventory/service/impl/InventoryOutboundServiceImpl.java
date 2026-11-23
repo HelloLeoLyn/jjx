@@ -1192,6 +1192,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             row.put("processName", child.getProcessName());
             row.put("specification", child.getSpecification() != null ? child.getSpecification() : "");
             row.put("unit", child.getUnit());
+            row.put("pitchMm", child.getPitchMm());
+            row.put("baseQty", child.getBaseQty() != null ? child.getBaseQty() : BigDecimal.ONE);
+            row.put("moduleQty", child.getModuleQty());
             row.put("qtyNeeded", need);
             row.put("available", available);
             row.put("qtyPick", pick);
