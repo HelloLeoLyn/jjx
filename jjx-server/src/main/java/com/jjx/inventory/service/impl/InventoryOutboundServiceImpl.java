@@ -2292,12 +2292,41 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 remainingMap.put(((Number) rem.get("materialId")).longValue(), (BigDecimal) rem.get("remaining"));
             }
         }
+        // 制造BOM二级原料：不在产品BOM剩余量里，按自身可用库存校验（dev-20261123-010）
+        java.util.Set<Long> childMaterialIds = new java.util.HashSet<>();
+        com.jjx.engineering.domain.entity.EngineeringBom pickBom = productionBomResolver.resolve(prodOrder);
+        if (pickBom != null) {
+            java.util.List<com.jjx.engineering.domain.entity.EngineeringBomItem> pickBomItems =
+                    productBomItemMapper.selectList(
+                            new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBomItem>()
+                                    .eq(com.jjx.engineering.domain.entity.EngineeringBomItem::getBomId,
+                                            pickBom.getBomId()));
+            for (com.jjx.engineering.domain.entity.EngineeringBomItem bi : pickBomItems) {
+                if ("make".equals(bi.getSourceType()) && bi.getSubBomId() != null) {
+                    for (com.jjx.engineering.domain.entity.EngineeringBomItem child : productBomItemMapper.selectList(
+                            new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBomItem>()
+                                    .eq(com.jjx.engineering.domain.entity.EngineeringBomItem::getBomId,
+                                            bi.getSubBomId()))) {
+                        if (child.getMaterialId() != null) childMaterialIds.add(child.getMaterialId());
+                    }
+                }
+            }
+        }
         java.util.List<java.util.Map<String, Object>> validItems = new java.util.ArrayList<>();
         for (java.util.Map<String, Object> item : items) {
             Long materialId = ((Number) item.get("materialId")).longValue();
             BigDecimal qty = new BigDecimal(String.valueOf(item.get("quantity")));
             if (qty.compareTo(BigDecimal.ZERO) <= 0) continue;
             BigDecimal remaining = remainingMap.getOrDefault(materialId, BigDecimal.ZERO);
+            if (!supplement && remaining.compareTo(BigDecimal.ZERO) <= 0 && childMaterialIds.contains(materialId)) {
+                BigDecimal available = fifoAvailable(materialId);
+                if (qty.compareTo(available) > 0) {
+                    throw new BusinessException("物料[" + item.get("materialCode") + "]本次领料" + qty
+                            + "超过可用库存" + available);
+                }
+                validItems.add(item);
+                continue;
+            }
             if (supplement) {
                 validItems.add(item);
                 continue;
