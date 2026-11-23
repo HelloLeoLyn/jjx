@@ -25,6 +25,11 @@ export interface PickRow {
   baseQty?: number
   moduleQty?: number
   lossRate?: number
+  qtyPick?: number
+  rowKey?: string
+  level?: number
+  parentRowKey?: string | null
+  rowType?: string
 }
 export interface Material {
   id: string
@@ -49,6 +54,10 @@ export interface Allocation {
 export interface Demand {
   id: string
   bomItemId: string
+  rowKey?: string
+  level?: number
+  parentRowKey?: string
+  produceOnly?: boolean
   original: Material
   total: number
   opened: number
@@ -74,36 +83,46 @@ export function allocation(materialId: string, coverage: number): Allocation {
   }
 }
 export function buildDemands(rows: PickRow[]): Demand[] {
-  // 现有接口不返回BOM行ID：只作为本页分组键，不能当作落库需求ID。
+  // 制造BOM展开后：父行（半成品）只保留自身库存部分，缺口由二级原料行承接。
+  const parentKeys = new Set(
+    rows.map((row) => row.parentRowKey).filter(Boolean).map((key) => String(key))
+  )
   return rows
     .filter((row) => !row.substitute)
-    .map((row, index) => ({
-      id: `${row.bomItemId ?? row.materialId}-${index}`,
-      bomItemId: String(row.bomItemId ?? row.materialId),
-      original: {
-        id: String(row.materialId),
-        code: row.materialCode,
-        name: row.materialName,
-        spec: row.specification || '',
-        unit: row.unit,
-        available: Number(row.available),
-      },
-      total: Number(row.demand),
-      opened: Number(row.picked),
-      remaining: Number(row.qtyNeeded),
-      baseQty: Number(row.baseQty ?? 1),
-      moduleQty: Number(row.moduleQty ?? 1),
-      lossRate: Number(row.lossRate ?? 0),
-      allocations:
-        row.available > 0
-          ? [
-              allocation(
-                String(row.materialId),
-                Math.min(Number(row.available), Number(row.qtyNeeded))
-              ),
-            ]
-          : [],
-    }))
+    .map((row, index) => {
+      const rowKey = row.rowKey ? String(row.rowKey) : ''
+      const hasChildren = !!rowKey && parentKeys.has(rowKey)
+      const qtyNeeded = Number(row.qtyNeeded ?? row.demand ?? 0)
+      const remaining = hasChildren
+        ? Math.min(Number(row.available ?? 0), Number(row.qtyPick ?? 0))
+        : qtyNeeded
+      const allocQty = hasChildren
+        ? remaining
+        : Math.min(Number(row.available ?? 0), qtyNeeded)
+      return {
+        id: `${row.bomItemId ?? row.materialId}-${index}`,
+        bomItemId: String(row.bomItemId ?? row.materialId),
+        rowKey: rowKey || undefined,
+        level: Number(row.level ?? 1),
+        parentRowKey: row.parentRowKey ? String(row.parentRowKey) : undefined,
+        produceOnly: hasChildren,
+        original: {
+          id: String(row.materialId),
+          code: row.materialCode,
+          name: row.materialName,
+          spec: row.specification || '',
+          unit: row.unit,
+          available: Number(row.available),
+        },
+        total: Number(row.demand ?? qtyNeeded),
+        opened: Number(row.picked ?? 0),
+        remaining,
+        baseQty: Number(row.baseQty ?? 1),
+        moduleQty: Number(row.moduleQty ?? 1),
+        lossRate: Number(row.lossRate ?? 0),
+        allocations: allocQty > 0 ? [allocation(String(row.materialId), allocQty)] : [],
+      }
+    })
 }
 export function planned(d: Demand) {
   return d.allocations.reduce((sum, a) => sum + (Number(a.coverage) || 0), 0)

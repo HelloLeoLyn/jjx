@@ -2099,7 +2099,22 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                         .eq(com.jjx.engineering.domain.entity.EngineeringBomItem::getBomId, bom.getBomId()));
         Map<Long, com.jjx.engineering.domain.entity.EngineeringBomItem> bomById = new HashMap<>();
         Map<Long, BigDecimal> pickedCoverage = new HashMap<>();
+        java.util.Set<Long> childItemIds = new java.util.HashSet<>();
         for (com.jjx.engineering.domain.entity.EngineeringBomItem bi : bomItems) bomById.put(bi.getItemId(), bi);
+        // 制造BOM二级行：把 make 件的子 BOM 明细纳入可识别范围，供用料计算分配原料
+        for (com.jjx.engineering.domain.entity.EngineeringBomItem bi : bomItems) {
+            if ("make".equals(bi.getSourceType()) && bi.getSubBomId() != null) {
+                java.util.List<com.jjx.engineering.domain.entity.EngineeringBomItem> children =
+                        productBomItemMapper.selectList(
+                                new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBomItem>()
+                                        .eq(com.jjx.engineering.domain.entity.EngineeringBomItem::getBomId,
+                                                bi.getSubBomId()));
+                for (com.jjx.engineering.domain.entity.EngineeringBomItem child : children) {
+                    bomById.put(child.getItemId(), child);
+                    childItemIds.add(child.getItemId());
+                }
+            }
+        }
         List<InventoryOutboundOrder> previous = outboundOrderMapper.selectList(new LambdaQueryWrapper<InventoryOutboundOrder>()
                 .eq(InventoryOutboundOrder::getSourceType, "work_order").eq(InventoryOutboundOrder::getSourceId, workOrderId));
         for (InventoryOutboundOrder oldOrder : previous) {
@@ -2146,10 +2161,13 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             com.jjx.engineering.domain.entity.EngineeringBomItem bi = bomById.get(bomItemId);
             if (!isStockPickable(bi)) throw new BusinessException("BOM需求项已变化，请重新计算");
             requestedByMaterial.merge(materialId, qty, BigDecimal::add);
-            coverageByBom.merge(bomItemId, coverage, BigDecimal::add);
-            if (materialId.equals(bi.getMaterialId())
-                    && qty.subtract(coverage).abs().compareTo(new BigDecimal("0.0001")) > 0) {
-                throw new BusinessException("原 BOM 材料按 1:1 抵扣，领料量必须与抵扣需求一致");
+            // 二级原料行不属于产品BOM需求，不做产品BOM抵扣校验；库存仍统一校验
+            if (!childItemIds.contains(bomItemId)) {
+                coverageByBom.merge(bomItemId, coverage, BigDecimal::add);
+                if (materialId.equals(bi.getMaterialId())
+                        && qty.subtract(coverage).abs().compareTo(new BigDecimal("0.0001")) > 0) {
+                    throw new BusinessException("原 BOM 材料按 1:1 抵扣，领料量必须与抵扣需求一致");
+                }
             }
         }
         for (Map.Entry<Long, BigDecimal> e : coverageByBom.entrySet()) {

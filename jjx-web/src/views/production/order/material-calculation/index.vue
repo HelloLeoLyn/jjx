@@ -68,7 +68,11 @@
           <el-table :data="allocationRows" row-key="key" border class="allocation-table">
             <el-table-column label="BOM 原材料 / 规格" min-width="200">
             <template #default="{ row }">
-              <b>{{ row.kind === 'bom' ? row.demand.original.name : '↳ 平替 ' + row.demand.original.name }}</b>
+              <b :style="{ paddingLeft: (row.demand.level === 2 ? 16 : 0) + 'px' }">
+                <el-tag v-if="row.demand.produceOnly" size="small" type="success">半成品</el-tag>
+                <el-tag v-else-if="row.demand.level === 2" size="small" type="info">制造用原料</el-tag>
+                {{ row.kind === 'bom' ? row.demand.original.name : '↳ 平替 ' + row.demand.original.name }}
+              </b>
               <small>{{ row.demand.original.code }} · {{ row.demand.original.spec || '未填规格' }}</small>
             </template>
             </el-table-column>
@@ -516,7 +520,7 @@ async function load(id: string) {
     if (detail.orderType.toUpperCase() !== OrderType.WORK_ORDER.toUpperCase())
       throw new Error('请选择已经下达的生产工单；生产计划需先转工单')
     const [rows, parent] = await Promise.all([
-      get<PickRow[]>('/inventory/outbound/pick-preview/' + id),
+      get<PickRow[]>('/inventory/outbound/pick-preview/' + id + '?includeMfg=true'),
       detail.parentOrderId
         ? get<Order>('/production/order/' + detail.parentOrderId)
         : Promise.resolve(null),
