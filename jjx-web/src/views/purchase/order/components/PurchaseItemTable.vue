@@ -51,11 +51,20 @@
     <el-table-column label="序号" type="index" width="48" align="center" />
     <el-table-column label="品名 / 物料" min-width="220">
       <template #default="{ row, $index }">
-        <el-select v-model="row.materialId" filterable remote clearable :disabled="disabled || materialLocked || !supplierId" :loading="materialLoading" :remote-method="keyword => emit('search', keyword)" :placeholder="supplierId ? '搜索名称 / 编码 / 规格' : '请先选择供应商'" @visible-change="value => emit('dropdown', value)" @change="id => emit('materialChange', id, $index)">
-          <el-option v-for="material in materials" :key="material.materialId" :label="material.supplierMaterialName || material.materialName" :value="material.materialId">
-            <div class="material-option"><span>{{ material.supplierMaterialName || material.materialName }}</span><small>{{ material.materialCode }} · {{ material.specification }}</small></div>
-          </el-option>
-        </el-select>
+        <MaterialSelector
+          :model-value="row.materialId"
+          value-type="materialId"
+          :options="materials"
+          label-field="supplierMaterialName"
+          :disabled="disabled || materialLocked || !supplierId"
+          :loading="materialLoading"
+          clearable
+          size="small"
+          :min-keyword-length="0"
+          :placeholder="supplierId ? '搜索名称 / 编码 / 规格' : '请先选择供应商'"
+          @search="keyword => emit('search', keyword)"
+          @change="id => emit('materialChange', id === null ? undefined : id, $index)"
+        />
         <div v-if="row.materialId" class="material-subtitle"><el-button link type="primary" @click="emit('view', row)">{{ row.materialCode }}</el-button><span>{{ row.materialName }}</span></div>
         <p v-if="row.pricingError || row.defaultError" class="entry-error">{{ row.defaultError ? '采购约定读取失败，请展开明细重新读取' : row.pricingError }}</p>
       </template>
@@ -88,6 +97,7 @@
 </template>
 <script setup lang="ts">
 import PurchaseProcessingEditor from './PurchaseProcessingEditor.vue'
+import MaterialSelector from '@/components/Selector/MaterialSelector.vue'
 import type { PurchaseEntryItem, PurchaseUnitOption } from '@/api/purchase/orderEntry'
 import { entryNumber, entryPrice, entrySpecification } from '@/api/purchase/orderEntry'
 import type { InventoryMaterial } from '@/types/inventory/material'

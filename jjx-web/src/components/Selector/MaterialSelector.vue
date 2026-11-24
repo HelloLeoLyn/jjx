@@ -55,6 +55,8 @@ interface Props {
   minKeywordLength?: number
   autoSelectFirst?: boolean
   options?: InventoryMaterial[]
+  /** 选中项展示名优先取哪个字段（采购场景用供应商物料名） */
+  labelField?: 'materialName' | 'supplierMaterialName'
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -68,6 +70,7 @@ const props = withDefaults(defineProps<Props>(), {
   minKeywordLength: 2,
   autoSelectFirst: false,
   options: () => [],
+  labelField: 'materialName',
 })
 
 const emit = defineEmits<{
@@ -122,10 +125,13 @@ const selectedLabel = computed(() => {
   return String(props.modelValue)
 })
 
-const getOptionLabel = (item: InventoryMaterial) =>
-  [item.materialName || '', item.materialCode ? `(${item.materialCode})` : '']
-    .filter(Boolean)
-    .join(' ')
+const getOptionLabel = (item: InventoryMaterial) => {
+  const name =
+    props.labelField === 'supplierMaterialName'
+      ? ((item as any).supplierMaterialName || item.materialName || '')
+      : item.materialName || ''
+  return [name, item.materialCode ? `(${item.materialCode})` : ''].filter(Boolean).join(' ')
+}
 
 function onPick(material: InventoryMaterial) {
   if (!material) return
@@ -145,7 +151,11 @@ function onPick(material: InventoryMaterial) {
 }
 
 function handleRemoteSearch(query: string) {
-  if (props.options && props.options.length > 0) return
+  // 外部候选（如采购按供应商取料）时仍把关键词抛给父组件重新拉取
+  if (props.options && props.options.length > 0) {
+    emit('search', query)
+    return
+  }
   search.search(query)
 }
 
