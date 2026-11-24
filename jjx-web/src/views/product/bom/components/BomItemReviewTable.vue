@@ -76,7 +76,7 @@
       <el-table-column label="材料名称（匹配已有 / 新建）" min-width="250">
         <template #default="{ row }">
           <div class="material-cell">
-            <BomMaterialSelector
+            <MaterialSelector
               v-if="
                 canOperate &&
                 !batchBusy &&
@@ -199,7 +199,7 @@ import type {
 } from '@/types/product/bom'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import { BomItemReviewStatusEnum } from '@/enums/product'
-import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
+import MaterialSelector from '@/components/Selector/MaterialSelector.vue'
 import { bomGroupRows } from '@/utils/bomGroups'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
 import { hasPermi } from '@/directives'

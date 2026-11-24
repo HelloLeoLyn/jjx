@@ -106,7 +106,7 @@
           <template #default="scope">
             <div class="material-name-cell">
               <span v-if="readonly">{{ scope.row.materialName }}</span>
-              <BomMaterialSelector
+              <MaterialSelector
                 v-else
                 :material-id="scope.row.materialId"
                 :material-name="scope.row.materialName"
@@ -133,7 +133,7 @@
               <el-table :data="layoutMaterialDrafts[String(scope.row.itemId)]" border>
                 <el-table-column label="制造BOM投入物料" min-width="200">
                   <template #default="child">
-                    <BomMaterialSelector
+                    <MaterialSelector
                       v-if="!readonly"
                       :material-id="child.row.materialId"
                       :material-name="child.row.materialName"
@@ -477,7 +477,7 @@ import {
 } from '@/components/bom/consumptionMode'
 import { generateBomSpecification, specificationSource } from './bomSpecification'
 import type { InventoryMaterial } from '@/types/inventory/material'
-import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
+import MaterialSelector from '@/components/Selector/MaterialSelector.vue'
 import StandardProcessSelector from '@/components/Selector/StandardProcessSelector.vue'
 import { useEnabledProcesses } from '@/composables/useEnabledProcesses'
 import { productBomApi } from '@/api/product/bom'

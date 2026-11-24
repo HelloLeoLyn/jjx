@@ -8,7 +8,7 @@
     <el-table v-if="bomList.length > 0" :data="bomList" row-key="uid" size="small" border style="width: 100%">
       <el-table-column label="材料" min-width="170">
         <template #default="{ row }">
-          <BomMaterialSelector
+          <MaterialSelector
             v-if="!readonly"
             :material-id="row.materialId"
             :material-name="row.name"
@@ -152,7 +152,7 @@
 </template>
 
 <script setup lang="ts">
-import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
+import MaterialSelector from '@/components/Selector/MaterialSelector.vue'
 import { splitNumber, setMaterialSplit } from '../composables/sampleMaterials'
 import { confirmSampleMaterialRemoval } from '../composables/confirmSampleMaterialRemoval'
 /**

@@ -3,7 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { nextTick } from 'vue'
 const permission = vi.hoisted(() => ({ allowed: true }))
 vi.mock('@/directives', () => ({ hasPermi: () => permission.allowed }))
-vi.mock('@/components/Selector/BomMaterialSelector.vue', () => ({ default: { template: '<span class="material-selector" />' } }))
+vi.mock('@/components/Selector/MaterialSelector.vue', () => ({ default: { template: '<span class="material-selector" />' } }))
 import BomItemReviewTable from '../BomItemReviewTable.vue'
 import { BomItemReviewStatusEnum as Status } from '@/enums/product'
 import type { EngineeringBomItem } from '@/types/product/bom'

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('@/utils/request', () => ({ default: { get: vi.fn() } }))
 vi.mock('@/directives', () => ({ hasPermi: () => true }))
-vi.mock('@/components/Selector/BomMaterialSelector.vue', () => ({
+vi.mock('@/components/Selector/MaterialSelector.vue', () => ({
   default: { template: '<span class="material-selector" />' },
 }))
 import request from '@/utils/request'

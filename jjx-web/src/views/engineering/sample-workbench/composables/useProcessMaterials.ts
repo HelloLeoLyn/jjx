@@ -3,7 +3,7 @@ import { normalizeMaterial, projectIdsOf } from './sampleMaterials'
 import { createCardEditSessions } from './planDraft'
 import { ref, type Ref } from 'vue'
 
-/** 工序材料草稿、回填及建档；远程搜索与分页统一由 BomMaterialSelector 负责。 */
+/** 工序材料草稿、回填及建档；远程搜索与分页统一由 MaterialSelector 负责。 */
 export function useProcessMaterials(readonlyMode: Readonly<Ref<boolean>>, genUid: () => string) {
   const editSessions = createCardEditSessions()
   function cancelEdit(pc: any) { if (!readonlyMode.value) editSessions.cancel(pc) }

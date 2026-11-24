@@ -39,7 +39,7 @@ vi.mock('element-plus/es/components/tooltip/style/css', () => ({}))
 vi.mock('@/api/inventory/material', () => ({ materialApi: { search: vi.fn() } }))
 vi.mock('@/directives', () => ({ hasPermi: () => true }))
 import { materialApi } from '@/api/inventory/material'
-import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
+import MaterialSelector from '@/components/Selector/MaterialSelector.vue'
 import ProcessMaterialEditor from '../ProcessMaterialEditor.vue'
 import BomPanel from '../BomPanel.vue'
 import { ElInputNumber } from 'element-plus'
@@ -150,7 +150,7 @@ describe('ProcessMaterialEditor 材料可编辑搜索', () => {
     await input.trigger('focus')
     await input.setValue('PET  008')
     await vi.advanceTimersByTimeAsync(450)
-    expect(w.findComponent(BomMaterialSelector).exists()).toBe(true)
+    expect(w.findComponent(MaterialSelector).exists()).toBe(true)
     expect(materialApi.search).toHaveBeenCalledExactlyOnceWith({ keyword: 'PET 008', pageNum: 1, pageSize: 10 })
     expect(row.materialId).toBe(1)
     expect(row.name).toBe('铜箔A')

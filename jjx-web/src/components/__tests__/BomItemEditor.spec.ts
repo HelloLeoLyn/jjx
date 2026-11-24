@@ -47,7 +47,7 @@ function editor(row: any = original, props: Record<string, unknown> = {}, slotPr
         },
       }),
       ...(realMaterialSelector ? {
-        BomMaterialSelector: false, EditableSearchSelect: false, ElInput: false, ElButton: false,
+        MaterialSelector: false, EditableSearchSelect: false, ElInput: false, ElButton: false,
       } : {}),
       ...(realTable ? { ElTable: false, ElTableColumn: false } : {}),
     } },
@@ -236,9 +236,9 @@ describe('编辑权只读时禁用物料选择与拖拽', () => {
     const { wrapper, state } = editor(original, {}, 'materialName')
     state.setQuickMode(false)
     await flushPromises()
-    expect(wrapper.find('bom-material-selector-stub').exists()).toBe(true)
+    expect(wrapper.find('material-selector-stub').exists()).toBe(true)
     await wrapper.setProps({ readonly: true })
-    expect(wrapper.find('bom-material-selector-stub').exists()).toBe(false)
+    expect(wrapper.find('material-selector-stub').exists()).toBe(false)
     expect(wrapper.get('.spec-cell').text()).toContain(original.materialName)
   })
 

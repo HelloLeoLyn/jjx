@@ -23,7 +23,7 @@
       <el-table-column label="投入物料" min-width="190">
         <template #default="scope">
           <div class="material-cell">
-          <BomMaterialSelector
+          <MaterialSelector
             v-if="!readonly"
             :material-id="scope.row.materialId"
             :material-name="scope.row.materialName"
@@ -200,7 +200,7 @@ import type { EngineeringBomItem } from '@/types/product/bom'
 import type { ManufacturingSchemeLabel } from '@/types/product/bom'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import { BomItemReviewStatusEnum } from '@/enums/product'
-import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
+import MaterialSelector from '@/components/Selector/MaterialSelector.vue'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 
 interface Props {

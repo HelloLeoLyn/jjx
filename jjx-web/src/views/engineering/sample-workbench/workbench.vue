@@ -550,7 +550,7 @@
 
     <!-- 批量添加材料弹窗 -->
     <el-dialog v-model="batchMaterialVisible" title="批量添加材料" width="460px" append-to-body>
-      <BomMaterialSelector
+      <MaterialSelector
         v-if="batchMaterialVisible"
         :material-id="batchMaterial?.materialId"
         :material-name="batchMaterial?.materialName"
@@ -596,7 +596,7 @@ import SamplePickDialog from '@/views/sales/sample-order/components/SamplePickDi
 import SamplePlanView from './components/SamplePlanView.vue'
 import SampleExecutionView from './components/SampleExecutionView.vue'
 import BomPanel from './components/BomPanel.vue'
-import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
+import MaterialSelector from '@/components/Selector/MaterialSelector.vue'
 import NoteFilesPanel from './components/NoteFilesPanel.vue'
 import DefectRecordPanel from './components/DefectRecordPanel.vue'
 import PrintProcessPanel from './components/PrintProcessPanel.vue'

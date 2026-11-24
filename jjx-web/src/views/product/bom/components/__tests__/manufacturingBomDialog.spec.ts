@@ -55,7 +55,7 @@ vi.mock('element-plus', async (importOriginal) => ({
   },
   ElMessageBox: { confirm: mocks.confirm },
 }))
-vi.mock('@/components/Selector/BomMaterialSelector.vue', () => ({
+vi.mock('@/components/Selector/MaterialSelector.vue', () => ({
   default: { template: '<span class="material-selector-stub" />' },
 }))
 vi.mock('@/components/inventory/MaterialFormDialog.vue', () => ({

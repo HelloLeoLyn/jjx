@@ -16,11 +16,11 @@ import { hasPermi } from '@/directives'
 import { materialApi } from '@/api/inventory/material'
 import { materialMasterApi } from '@/api/inventory/materialMaster'
 import BomItemEditor from '../../BomItemEditor.vue'
-import BomMaterialSelector from '../BomMaterialSelector.vue'
+import MaterialSelector from '../MaterialSelector.vue'
 import EditableSearchSelect from '../EditableSearchSelect.vue'
 
 afterEach(() => { vi.useRealTimers(); document.body.innerHTML = '' })
-const mountSelector = (confirmSelection = true) => mount(BomMaterialSelector, {
+const mountSelector = (confirmSelection = true) => mount(MaterialSelector, {
   attachTo: document.body, props: { materialId: 5, materialName: '旧物料', confirmSelection },
 })
 
@@ -165,7 +165,7 @@ describe('公共物料搜索：多关键词、分页和行间隔离', () => {
   it('工作台可按原权限建档，BOM清单/批量显式禁用；空词浏览不改变BOM默认行为', async () => {
     vi.useFakeTimers()
     vi.mocked(materialApi.search).mockReset().mockResolvedValue(page([]) as any)
-    const wrapper = mount(BomMaterialSelector, { props: {
+    const wrapper = mount(MaterialSelector, { props: {
       materialId: 11, materialName: 'PET', specification: '008', materialCode: 'MAT-PET',
       showMaterialCode: true, browseOnFocus: true, createPermissions: ['engineering:sample:workbench'],
     } })
@@ -193,7 +193,7 @@ it('没有工作台权限时不显示建档入口', async () => {
   vi.useFakeTimers()
   vi.mocked(hasPermi).mockReturnValue(false)
   vi.mocked(materialApi.search).mockReset().mockResolvedValue(page([]) as any)
-  const wrapper = mount(BomMaterialSelector, { props: { createPermissions: ['engineering:sample:workbench'] } })
+  const wrapper = mount(MaterialSelector, { props: { createPermissions: ['engineering:sample:workbench'] } })
   try {
     await wrapper.get('input').setValue('新PET')
     await vi.advanceTimersByTimeAsync(400)

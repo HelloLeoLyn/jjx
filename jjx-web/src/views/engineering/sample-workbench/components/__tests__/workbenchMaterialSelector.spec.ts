@@ -38,7 +38,7 @@ vi.mock('@/api/sales/sampleOrder', () => ({ getProcessHistory: vi.fn().mockResol
 vi.mock('@/components/inventory/MaterialFormDialog.vue', () => ({ default: { name: 'MaterialFormDialog', template: '<div />' } }))
 vi.mock('@/components/print/PrintFieldAutocomplete.vue', () => ({ default: { template: '<div />' } }))
 import { materialApi } from '@/api/inventory/material'
-import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
+import MaterialSelector from '@/components/Selector/MaterialSelector.vue'
 import EditableSearchSelect from '@/components/Selector/EditableSearchSelect.vue'
 import BomPanel from '../BomPanel.vue'
 import PrintProcessPanel from '../PrintProcessPanel.vue'
@@ -78,7 +78,7 @@ beforeEach(() => { vi.useFakeTimers(); vi.mocked(materialApi.search).mockReset()
 afterEach(() => { wrappers.forEach(w => w.unmount()); wrappers.length = 0; vi.useRealTimers(); document.body.innerHTML = '' })
 
 async function searchAndPick(wrapper: any) {
-  const selector = wrapper.getComponent(BomMaterialSelector)
+  const selector = wrapper.getComponent(MaterialSelector)
   const input = selector.get('input')
   await input.trigger('focus'); await input.setValue('PET 008')
   await vi.advanceTimersByTimeAsync(450)
@@ -108,7 +108,7 @@ describe('BOM物料清单公共搜索', () => {
     selector.getComponent(EditableSearchSelect).vm.$emit('clear')
     expect(wrapper.emitted('clear')?.[0]).toEqual([row])
     await wrapper.setProps({ readonly: true })
-    expect(wrapper.findComponent(BomMaterialSelector).exists()).toBe(false)
+    expect(wrapper.findComponent(MaterialSelector).exists()).toBe(false)
   })
 })
 
@@ -135,7 +135,7 @@ describe('印刷添加材料公共搜索', () => {
     ;(wrapper.vm as any).openMaterialPicker(row)
     await nextTick()
     vi.mocked(materialApi.search).mockResolvedValueOnce({ data: { records: [], total: 0 } } as any)
-    const selector = wrapper.getComponent(BomMaterialSelector)
+    const selector = wrapper.getComponent(MaterialSelector)
     await selector.get('input').trigger('focus'); await selector.get('input').setValue('新PET 008')
     await vi.advanceTimersByTimeAsync(450)
     ;(document.body.querySelector('.ess-create') as HTMLElement).click()
@@ -143,7 +143,7 @@ describe('印刷添加材料公共搜索', () => {
     expect((wrapper.vm as any).matFormPreset).toEqual({ materialName: '新PET 008', unit: 'PCS' })
     ;(wrapper.vm as any).onMaterialCreated(PET)
     await nextTick()
-    expect(wrapper.getComponent(BomMaterialSelector).props('materialId')).toBe(11)
+    expect(wrapper.getComponent(MaterialSelector).props('materialId')).toBe(11)
     expect(row.materials).toBeNull()
     const cancel = wrapper.findAll('button').find(button => button.text() === '取消')!
     await cancel.trigger('click')

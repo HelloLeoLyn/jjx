@@ -69,7 +69,7 @@ describe('制造投入表格真实字段交互', () => {
           return () => h('div', { 'data-label': props.label }, slots.default?.({ row: input, $index: 0 }))
         } }),
         ElInputNumber: NumberInput, ElButton: Slot, ElCheckbox: true, ElTag: true, ElTooltip: Slot,
-        BomMaterialSelector: true, MaterialFormDialog: true,
+        MaterialSelector: true, MaterialFormDialog: true,
       } },
     })
     const cell = (label: string) => wrapper.get(`[data-label="${label}"]`)

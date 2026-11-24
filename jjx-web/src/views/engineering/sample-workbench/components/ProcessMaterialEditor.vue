@@ -13,7 +13,7 @@
         <el-table-column label="材料" min-width="150">
           <template #default="{ row }">
             <template v-if="editable">
-              <BomMaterialSelector
+              <MaterialSelector
                 :material-id="row.materialId"
                 :material-name="row.materialId ? row.name : ''"
                 :specification="row.spec"
@@ -133,7 +133,7 @@ import {
   setMaterialSplit,
 } from '../composables/sampleMaterials'
 import { computed } from 'vue'
-import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
+import MaterialSelector from '@/components/Selector/MaterialSelector.vue'
 const props = defineProps<{
   pc: any
   rows?: any[]

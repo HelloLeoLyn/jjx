@@ -202,7 +202,7 @@
 
     <!-- 材料选择弹窗 -->
     <el-dialog v-model="pickerVisible" title="添加材料" width="480px" append-to-body>
-      <BomMaterialSelector
+      <MaterialSelector
         v-if="pickerVisible"
         :material-id="pickerMaterial?.materialId"
         :material-name="pickerMaterial?.materialName"
@@ -238,7 +238,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
+import MaterialSelector from '@/components/Selector/MaterialSelector.vue'
 import { getProcessHistory } from '@/api/sales/sampleOrder'
 import { ProcessStatusEnum } from '@/enums/product/process'
 import PrintFieldAutocomplete from '@/components/print/PrintFieldAutocomplete.vue'

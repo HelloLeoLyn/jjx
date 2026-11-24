@@ -75,7 +75,7 @@ import SampleInfoCard from '../SampleInfoCard.vue'
 import SamplePickDialog from '@/views/sales/sample-order/components/SamplePickDialog.vue'
 import { SampleProcessStatusEnum } from '@/enums/sales'
 
-import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
+import MaterialSelector from '@/components/Selector/MaterialSelector.vue'
 import EditableSearchSelect from '@/components/Selector/EditableSearchSelect.vue'
 import { materialApi } from '@/api/inventory/material'
 vi.mock('@/api/inventory/material', () => ({ materialApi: { search: vi.fn() } }))
@@ -472,7 +472,7 @@ it('批量添加弹窗挂载真实公共物料搜索，PET 008回填对象并支
   ], total: 1 } } as any)
   const wrapper = openPage(false)
   try {
-    const selector = wrapper.getComponent(BomMaterialSelector)
+    const selector = wrapper.getComponent(MaterialSelector)
     const input = selector.get('input')
     await input.trigger('focus'); await input.setValue('PET 008')
     await vi.advanceTimersByTimeAsync(450)
