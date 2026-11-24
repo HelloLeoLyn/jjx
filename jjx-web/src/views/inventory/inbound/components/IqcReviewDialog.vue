@@ -125,7 +125,7 @@ import { IqcQuarantineActionEnum } from '@/enums/inventory/IqcQuarantineEnum'
 import { QualityReviewStatus, QualityReviewStatusEnum } from '@/enums/quality/InspectionEnum'
 import type { InboundItemVO } from '@/types/inventory/inbound'
 
-const props = defineProps<{ visible: boolean; inboundId?: number; inboundNo?: string }>()
+const props = defineProps<{ visible: boolean; inboundId?: number; inboundNo?: string; itemId?: number }>()
 const emit = defineEmits<{
   (event: 'update:visible', value: boolean): void
   (event: 'success'): void
@@ -167,7 +167,7 @@ function qualityBatchNo(row: ReviewRow): string {
 }
 
 watch(
-  () => [props.visible, props.inboundId] as const,
+  () => [props.visible, props.inboundId, props.itemId] as const,
   ([visible]) => {
     if (visible) load()
   },
@@ -181,8 +181,13 @@ async function load() {
     const inbound = (await inboundApi.getById(String(props.inboundId))).data
     // InboundVO.status 即 order_status 状态码（后端 vo.setStatus(order.getOrderStatus())）
     inboundOrderStatus.value = inbound?.status
+    const sourceItems = props.itemId
+      ? (inbound?.items || []).filter((item) =>
+          Number(String(item.inboundItemId || item.itemId || '')) === Number(props.itemId)
+        )
+      : inbound?.items || []
     rows.value = await Promise.all(
-      (inbound?.items || []).map(async (item) => {
+      sourceItems.map(async (item) => {
         const itemId = String(item.inboundItemId || item.itemId || '')
         const [qualityResult, history] = await Promise.all([
           // dev-20260922-009：检验批在 lotId（inspectionId 已置空），优先取 lotId

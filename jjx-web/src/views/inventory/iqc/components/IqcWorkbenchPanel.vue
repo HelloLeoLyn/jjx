@@ -55,6 +55,12 @@
           在窗口内点「重算单据状态」收尾。</span
         >
       </div> -->
+      <div v-if="canJudge && selectedReviewRows.length" class="batch-bar">
+        <el-button type="primary" :loading="reviewSubmitting" @click="batchApproveSelected">
+          批量通过审核（已选 {{ selectedReviewRows.length }} 行）
+        </el-button>
+        <span class="batch-tip">只对待审核行生效；驳回仍需逐行填写原因。</span>
+      </div>
       <div v-if="isInspectMode && canInspect" class="batch-bar">
         <el-button
           type="primary"
@@ -109,6 +115,7 @@
       v-model:visible="reviewVisible"
       :inbound-id="activeInboundId"
       :inbound-no="activeInboundNo"
+      :item-id="activeReviewItemId"
       @success="handleFlowSuccess"
     />
     <DispositionHistoryDialog
@@ -294,11 +301,14 @@ const inspectionRemark = ref(''),
   submitting = ref(false),
   checksVisible = ref(false),
   reviewVisible = ref(false),
+  reviewSubmitting = ref(false),
   dispositionVisible = ref(false)
 const activeWorkRow = ref<WorkRow>(),
   activeInboundId = ref<number>(),
   activeInboundNo = ref(''),
   activeItemId = ref<string>()
+/** 单项审核入口：为空=整单视图（兼容旧入口），有值=只显示该行 */
+const activeReviewItemId = ref<number>()
 const num = (value?: number | string | null) =>
   value == null || value === ''
     ? '-'
@@ -715,9 +725,48 @@ function activateSelected() {
   activeInboundId.value = Number(selectedInbound.value?.inboundId)
   activeInboundNo.value = selectedInbound.value?.inboundNo || ''
 }
-function openReview() {
+function openReview(row?: WorkRow) {
   activateSelected()
+  // 行内入口：只审这一行；无参调用保留整单视图（旧入口）
+  activeReviewItemId.value = row?.itemId ? Number(row.itemId) : undefined
   reviewVisible.value = true
+}
+
+/** 可批量通过的行：品质主管权限 + 当前待审核 */
+const selectedReviewRows = computed(() =>
+  selectedRows.value.filter((row) => row.reviewStatus === QualityReviewStatus.PENDING)
+)
+
+async function batchApproveSelected() {
+  const rows = selectedReviewRows.value
+  if (!rows.length || reviewSubmitting.value) return
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `将一次性锁定 ${rows.length} 项检验报告，确认全部通过？`,
+      '批量 IQC 审核',
+      {
+        inputPlaceholder: '审核意见（选填）',
+        confirmButtonText: '批量通过',
+        cancelButtonText: '取消',
+      }
+    )
+    reviewSubmitting.value = true
+    const result = await inboundApi.batchApproveInspectionItems(
+      rows.map((row) => Number(row.itemId)),
+      { remark: value?.trim() || undefined }
+    )
+    const list = result.data || []
+    const ok = list.filter((item: any) => item.success).length
+    const failed = list.filter((item: any) => !item.success)
+    if (failed.length) {
+      ElMessage.warning(`成功 ${ok} 项，失败 ${failed.length} 项：${failed.map((item: any) => `${item.itemId} ${item.message}`).join('；')}`)
+    } else {
+      ElMessage.success(`已通过 ${ok} 项`)
+    }
+    await handleFlowSuccess()
+  } finally {
+    reviewSubmitting.value = false
+  }
 }
 /** 材料行「处置历史」：只看这一行材料的处置单（含 通过/驳回/完成返工）。 */
 function openDispositionHistory(row?: any) {

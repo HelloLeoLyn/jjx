@@ -126,6 +126,14 @@ export const inboundApi = {
     return request.post<R<boolean>>(`/inventory/inbound/inspection-item/${itemId}/approve`, data)
   },
 
+  /** 批量 IQC 审核通过：逐项执行，返回每一项的成功/失败原因（dev-20261124-007） */
+  batchApproveInspectionItems(itemIds: number[], data?: { remark?: string }) {
+    return request.post<R<Array<{ itemId: number; success: boolean; message?: string }>>>(
+      '/inventory/inbound/iqc/batch-approve',
+      { itemIds, ...data }
+    )
+  },
+
   rejectInspectionItem(itemId: string, data: Omit<InboundRejectParams, 'inboundId'>) {
     return request.post<R<boolean>>(`/inventory/inbound/inspection-item/${itemId}/reject`, data)
   },

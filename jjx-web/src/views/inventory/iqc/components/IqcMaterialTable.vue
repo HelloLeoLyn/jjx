@@ -6,7 +6,7 @@
     :row-class-name="rowClass"
     @selection-change="(v: any[]) => emit('selection-change', v)"
   >
-    <el-table-column type="selection" width="46" fixed="left" :selectable="canEdit" />
+    <el-table-column type="selection" width="46" fixed="left" :selectable="rowSelectable" />
     <el-table-column prop="materialCode" label="材料编码" min-width="125" />
     <el-table-column prop="materialName" label="材料名称" min-width="150" />
     <el-table-column label="检验批号" min-width="150">
@@ -137,7 +137,7 @@ const { canEdit, canJudge, canDispose, isCompleted } = defineProps<{
 const emit = defineEmits<{
   (e: 'selection-change', rows: any[]): void
   (e: 'edit', row: any): void
-  (e: 'review'): void
+  (e: 'review', row: any): void
   (e: 'print', row: any): void
   (e: 'history', row: any): void
   (e: 'disposition-history', row: any): void
@@ -165,6 +165,12 @@ function disposedQuantity(row: any) {
  * 它们按自身条件出现：处置看「已审定不良 + 剩余可处置量 > 0」，只读入口看有无检验批。
  * 打印/历史属于只读附属入口，order 靠后，收进统一组件的「更多」。
  */
+/** 勾选规则：可编辑行（检验录入）或品质主管可审核的待审行（批量通过） */
+function rowSelectable(row: any): boolean {
+  if (canEdit(row)) return true
+  return canJudge && row.reviewStatus === QualityReviewStatus.PENDING
+}
+
 function pendingActionKey(row: any): 'edit' | 'review' | null {
   if (canEdit(row)) return 'edit'
   if (canJudge && row.reviewStatus === QualityReviewStatus.PENDING) return 'review'
@@ -222,7 +228,7 @@ function handleMaterialAction(key: string, row: any) {
   }
   if (pendingActionKey(row) !== key) return
   if (key === 'edit') return openInspectionEntry(row)
-  emit('review')
+  emit('review', row)
 }
 
 /**

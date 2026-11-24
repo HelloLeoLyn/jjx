@@ -152,6 +152,33 @@ public class InventoryInboundController {
         return Result.success(inboundService.approveInspectionItem(itemId, review));
     }
 
+    @PostMapping("/iqc/batch-approve")
+    @Operation(summary = "批量 IQC 审核通过（逐项执行，返回每项结果）")
+    @SaCheckPermission("quality:lot:judge")
+    public Result<java.util.List<java.util.Map<String, Object>>> batchApproveInspectionItems(
+            @RequestBody com.jjx.inventory.dto.save.IqcBatchReviewDTO body) {
+        java.util.List<java.util.Map<String, Object>> results = new java.util.ArrayList<>();
+        if (body == null || body.getItemIds() == null || body.getItemIds().isEmpty()) {
+            return Result.success(results);
+        }
+        InboundInspectionReviewDTO review = new InboundInspectionReviewDTO();
+        review.setRemark(body.getRemark());
+        for (Long itemId : body.getItemIds()) {
+            java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("itemId", itemId);
+            try {
+                boolean ok = inboundService.approveInspectionItem(itemId, review);
+                row.put("success", ok);
+                row.put("message", ok ? "通过" : "未通过（状态已变化）");
+            } catch (Exception e) {
+                row.put("success", false);
+                row.put("message", e.getMessage());
+            }
+            results.add(row);
+        }
+        return Result.success(results);
+    }
+
     @PostMapping("/sync-review-status/{inboundId}")
     @Operation(summary = "重算入库单审核状态（明细已全部审核但单据状态未推进时收尾，幂等）")
     @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId",
