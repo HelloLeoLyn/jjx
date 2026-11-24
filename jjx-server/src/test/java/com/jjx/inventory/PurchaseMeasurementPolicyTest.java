@@ -108,4 +108,36 @@ class PurchaseMeasurementPolicyTest extends RollFixture {
         input.setReceivedQuantity(bd("7"));
         assertThrows(BusinessException.class,()->ReflectionTestUtils.invokeMethod(service,"measurementReceipt",source,input));
     }
+    @Test void rollPurchaseOnMetreMaterialKeepsMetresAndPricesByArea() throws Exception {
+        // 基本单位=米、计价=㎡、采购单位=卷：数量记 1 卷 × 100m = 100 米，面积只做计价
+        var material=materials.selectById(11L);material.setUnit("M");material.setWidthMm(bd("195"));
+        var policy=new MeasurementPolicy("M","㎡",MeasurementPolicy.Mode.LENGTH_AREA,null);
+        material.setMeasurementPolicyJson(policy.toJson());
+        var item=new PurchaseOrderItemDTO();item.setMaterialId(11L);
+        item.setPurchaseUnit("ROLL");item.setPriceUnit("㎡");item.setUnitPrice(bd("75"));
+        item.setPurchaseQuantity(bd("1"));item.setRollWidthMm(bd("195"));item.setRollLengthM(bd("100"));
+        var dto=new PurchaseOrderDTO();dto.setItems(List.of(item));purchasing().previewPricing(dto);
+        eq("100",item.getQuantity());eq("19.5",item.getPriceQuantity());eq("1462.50",item.getAmount());
+        assertEquals("M",item.getUnit());assertEquals("ROLL",item.getPurchaseUnit());assertEquals("㎡",item.getPriceUnit());
+        assertEquals(1,item.getRollCount());eq("195",item.getRollWidthMm());eq("100",item.getRollLengthM());
+        assertEquals(policy,InventoryMeasurementSnapshotService.read(item.getMeasurementSnapshot()).policy());
+    }
+    @Test void metreRollReceiptWritesOneLineInMetresAndPricesByArea() throws Exception {
+        // 收货按卷录 1 卷：入库明细 1 行、数量 100 米、金额按面积精确
+        var policy=new MeasurementPolicy("M","㎡",MeasurementPolicy.Mode.LENGTH_AREA,null);
+        var source=new PurchaseOrderItem();source.setItemId(9L);source.setMaterialId(11L);
+        source.setUnit("M");source.setPurchaseUnit("ROLL");source.setPriceUnit("㎡");source.setAmount(bd("1462.50"));
+        source.setMeasurementSnapshot(InventoryMeasurementSnapshotService.freeze(policy,MeasurementCalculator.calculate(policy,
+            new MeasurementInput(bd("100"),bd("195"),null,bd("100"),null,null,null))));
+        var roll=new PurchaseOrderReceiveDTO.RollReceiveDTO();roll.setRollWidthMm(bd("195"));roll.setRollLengthM(bd("100"));
+        var input=new PurchaseOrderReceiveDTO.ReceiveItemDTO();input.setRolls(List.of(roll));
+        List<com.jjx.inventory.domain.InventoryInboundItem> lines=ReflectionTestUtils.invokeMethod(purchasing(),"measurementReceipt",source,input);
+        assertEquals(1,lines.size());
+        var line=lines.get(0);
+        eq("100",line.getQuantity());eq("1462.50",line.getAmount());eq("14.625",line.getUnitPrice());
+        eq("195",line.getRollWidthMm());eq("100",line.getRollLengthM());
+        var frozen=InventoryMeasurementSnapshotService.read(line.getMeasurementSnapshot());
+        eq("100",frozen.result().physicalQuantity());eq("19.5",frozen.result().priceQuantity());
+        eq("100",input.getReceivedQuantity());
+    }
 }

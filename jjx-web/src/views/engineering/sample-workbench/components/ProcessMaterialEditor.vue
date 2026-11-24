@@ -32,7 +32,7 @@
             <template v-else>{{ row.name }}</template>
           </template>
         </el-table-column>
-        <el-table-column label="规格" width="110">
+        <el-table-column label="规格" width="180">
           <template #default="{ row }">
             <el-input
               v-if="editable"
@@ -77,7 +77,7 @@
             <div v-if="editable" style="display: flex; align-items: center; gap: 4px">
               <el-input-number
                 :model-value="splitNumber(row.split)"
-                  aria-label="跳距（mm）"
+                aria-label="跳距（mm）"
                 :min="0"
                 :precision="0"
                 :step="1"
@@ -154,7 +154,6 @@ const emit = defineEmits<{
   (e: 'remove-material', index: number): void
   (e: 'create-material', row: any): void
 }>()
-
 
 function onMaterialDraft(row: any, draft: { pending: boolean; text: string }) {
   row.__matDraftPending = !!draft.pending

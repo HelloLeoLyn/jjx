@@ -91,7 +91,9 @@ public final class PurchaseQuantityPricing {
             i.setUnit(base);i.setPurchaseUnit(purchase);i.setPriceUnit(price);
             i.setQuantity(basic.setScale(4,RoundingMode.HALF_UP));
             entered=com.jjx.inventory.measurement.MeasurementCalculator.ledgerQuantity(purchase,result);
-            i.setRollCount(UnitCodes.ROLL.equals(result.physicalUnit())?result.physicalQuantity().intValueExact():null);
+            Integer rolls = UnitCodes.ROLL.equals(purchase) ? Integer.valueOf(entered.intValueExact())
+                    : UnitCodes.ROLL.equals(result.physicalUnit()) ? Integer.valueOf(result.physicalQuantity().intValueExact()) : null;
+            i.setRollCount(rolls);
             bounded(i.getQuantity(),4,8,"库存基本数量",false);
             priced=exact(priceQty);
         } else {

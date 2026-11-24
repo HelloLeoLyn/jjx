@@ -91,7 +91,7 @@
           />
           <span v-else class="note-value">{{ item.workInstruction || '—' }}</span>
         </label>
-        <label class="child-field"
+        <!-- <label class="child-field"
           ><span>子工序备注</span>
           <el-input
             v-if="editable"
@@ -102,7 +102,7 @@
             :aria-label="`${item.itemKey}子工序备注`"
           />
           <span v-else class="note-value">{{ item.subProcessRemark || '—' }}</span>
-        </label>
+        </label> -->
         <el-button
           v-if="editable"
           link

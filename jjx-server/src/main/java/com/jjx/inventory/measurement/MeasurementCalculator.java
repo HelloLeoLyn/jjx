@@ -93,6 +93,12 @@ public final class MeasurementCalculator {
             throw new BusinessException("反算缺少明确策略、参数或非负账面数量");
         MeasurementPolicy p = policy.normalized();
         String unit = UnitCodes.requireDictUnit(ledgerUnit, "库存记账单位");
+        // 卷是采购/交付形态：库存按米记账时，卷数 × 本次每卷实际长 换算成实物米数，不另立记账单位。
+        if (UnitCodes.ROLL.equals(unit) && UnitCodes.M.equals(p.physicalUnit())) {
+            if (ledgerQuantity.stripTrailingZeros().scale() > 0)
+                throw new BusinessException("按卷采购的数量必须是整数卷");
+            return calculate(p, quantity(input, ledgerQuantity.multiply(positive(input.rollLengthM(), "本次每卷实际长(m)"))));
+        }
         if (unit.equals(p.physicalUnit())) {
             if (p.mode()==MeasurementPolicy.Mode.MEASURED_WEIGHT && input.physicalQuantity()!=null && input.physicalQuantity().compareTo(ledgerQuantity)!=0)
                 throw new BusinessException("实测重量对应的实物数量与采购数量不一致，请重新确认净重");
@@ -136,6 +142,13 @@ public final class MeasurementCalculator {
         String unit = UnitCodes.requireDictUnit(ledgerUnit, "库存记账单位");
         if (unit.equals(result.physicalUnit())) return result.physicalQuantity();
         if (unit.equals(result.priceUnit())) return result.priceQuantity();
+        // 卷：库存按米记账时，卷数 = 实物米数 ÷ 本次每卷实际长
+        if (UnitCodes.ROLL.equals(unit) && UnitCodes.M.equals(result.physicalUnit())) {
+            BigDecimal rollLength = result.actual() == null ? null : result.actual().rollLengthM();
+            if (rollLength == null || rollLength.signum() <= 0)
+                throw new BusinessException("缺少本次每卷实际长，无法按卷换算");
+            return result.physicalQuantity().divide(rollLength, 4, RoundingMode.HALF_UP);
+        }
         throw new BusinessException("换算结果与库存单位不匹配");
     }
 }

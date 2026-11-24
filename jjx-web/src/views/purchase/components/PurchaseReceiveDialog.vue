@@ -377,8 +377,10 @@ async function syncRollQuantity(row: ReceiveItem) {
     row.previewError=''
     try {
       const quantities=await Promise.all(row.rolls.map(async roll=>{
+        // 实物单位是米时每卷的实物数量是「该卷米数」；实物单位是卷时才是 1 卷。
+        const physicalQuantity=row.measurement!.policy.physicalUnit==='M'?Number(roll.rollLengthM):1
         const result=(await materialMeasurementApi.preview({policy:row.measurement!.policy,actual:{
-          ...row.measurement!.result.actual,physicalQuantity:1,widthMm:roll.rollWidthMm,rollLengthM:roll.rollLengthM,
+          ...row.measurement!.result.actual,physicalQuantity,widthMm:roll.rollWidthMm,rollLengthM:roll.rollLengthM,
           actualWeightKg:roll.actualWeightKg,
         }})).data
         if (!result) throw new Error('计量预览未返回结果')

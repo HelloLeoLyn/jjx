@@ -1093,7 +1093,12 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         item.setMeasurementSnapshot(null); // 不信任客户端注入的历史策略。
         item.setPurchaseUnit(normalizeUnit(StringUtils.defaultIfBlank(item.getPurchaseUnit(), storedMaterial ? StringUtils.defaultIfBlank(old.getPurchaseUnit(),base) : policy==null?base:policy.physicalUnit())));
         item.setPriceUnit(normalizeUnit(StringUtils.defaultIfBlank(item.getPriceUnit(), storedMaterial ? StringUtils.defaultIfBlank(old.getPriceUnit(),base) : policy==null?base:policy.priceUnit())));
-        if(policy!=null && (!java.util.List.of(policy.physicalUnit(),policy.priceUnit()).contains(item.getPurchaseUnit())
+        // 卷（ROLL）是采购/交付形态，不是库存单位：库存按米记账时采购单位允许填 ROLL，
+        // 用「卷数 × 本次每卷实际长」换算成实物米数，不再把策略置空退回按面积记账的旧路径。
+        boolean rollPurchase = policy != null
+                && com.jjx.common.util.UnitCodes.ROLL.equals(item.getPurchaseUnit())
+                && com.jjx.common.util.UnitCodes.M.equals(policy.physicalUnit());
+        if(policy!=null && !rollPurchase && (!java.util.List.of(policy.physicalUnit(),policy.priceUnit()).contains(item.getPurchaseUnit())
                 || !java.util.List.of(policy.physicalUnit(),policy.priceUnit()).contains(item.getPriceUnit()))) {
             com.jjx.purchase.domain.model.PurchaseQuantityPricing.validateCombination(base,item.getPurchaseUnit(),item.getPriceUnit());
             policy=null; // 显式供应商旧约定优先，仍走原有已支持路径。
@@ -1118,7 +1123,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                 item.getPurchaseQuantity()!=null?item.getPurchaseQuantity():item.getQuantity());
             item.setMeasurementSnapshot(com.jjx.inventory.service.impl.InventoryMeasurementSnapshotService.freeze(policy,result));
             item.setMeasurementActual(result.actual());
-            if (com.jjx.common.util.UnitCodes.ROLL.equals(policy.physicalUnit())) {
+            if (com.jjx.common.util.UnitCodes.ROLL.equals(policy.physicalUnit())
+                    || com.jjx.common.util.UnitCodes.ROLL.equals(item.getPurchaseUnit())) {
                 item.setRollWidthMm(result.actual().widthMm());
                 item.setRollLengthM(result.actual().rollLengthM());
             } else {
@@ -1596,12 +1602,15 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         var frozen=com.jjx.inventory.service.impl.InventoryMeasurementSnapshotService.read(item.getMeasurementSnapshot());
         var policy=frozen.policy();var prior=frozen.result().actual();
         var facts=new java.util.ArrayList<com.jjx.inventory.measurement.MeasurementInput>();
-        boolean roll=com.jjx.common.util.UnitCodes.ROLL.equals(policy.physicalUnit());
+        // 按卷交付：实物单位是卷(ROLL)时每卷记 1 卷；实物单位是米(M)时每卷记该卷实际米数（面积只做计价）。
+        boolean roll=com.jjx.common.util.UnitCodes.ROLL.equals(policy.physicalUnit())
+                || com.jjx.common.util.UnitCodes.ROLL.equals(item.getPurchaseUnit());
         if(roll) {
             if(input.getRolls()==null || input.getRolls().isEmpty())throw new BusinessException("该采购行按卷采购，请录入每卷实际卷宽、卷长和适用的净重");
             for(var entry:input.getRolls()) {
                 if(entry==null || entry.getRollWidthMm()==null || entry.getRollLengthM()==null) throw new BusinessException("每卷实际宽度与长度不能为空");
-                facts.add(new com.jjx.inventory.measurement.MeasurementInput(BigDecimal.ONE,entry.getRollWidthMm(),null,entry.getRollLengthM(),prior.unitWeightG(),prior.grammage(),entry.getActualWeightKg()));
+                java.math.BigDecimal physical=com.jjx.common.util.UnitCodes.M.equals(policy.physicalUnit())?entry.getRollLengthM():BigDecimal.ONE;
+                facts.add(new com.jjx.inventory.measurement.MeasurementInput(physical,entry.getRollWidthMm(),null,entry.getRollLengthM(),prior.unitWeightG(),prior.grammage(),entry.getActualWeightKg()));
             }
         } else {
             if(input.getRolls()!=null&&!input.getRolls().isEmpty())throw new BusinessException("非卷材不能提交卷号明细");
