@@ -54,7 +54,7 @@
                 <span v-if="parent.previewError" class="qty-err">{{ parent.previewError }}</span>
                 <el-button link type="primary" @click="parent.rolls?.push({rollWidthMm:parent.rollWidthMm,rollLengthM:parent.rollLengthM});syncRollQuantity(parent)">增加一卷</el-button>
                 <el-button link @click="parent.rolls?.pop();syncRollQuantity(parent)">移除末卷</el-button>
-                按采购行 {{ parent.rollCount }} 卷 / {{ parent.rollWidthMm }}mm × {{ parent.rollLengthM }}m 生成；卷号提交后自动生成，卷宽/卷长可按实际修改。
+                已生成 {{ (parent.rolls || []).length }} 卷（采购行计划 {{ parent.rollCount }} 卷）；卷号提交后自动生成，卷宽/卷长可按实际修改。
               </div>
             </div>
             <div v-else>
@@ -344,6 +344,21 @@ function rollArea(width?: number, length?: number): number {
   return Math.round((Number(width) * Number(length) / 1000) * 10000) / 10000
 }
 
+/** 物料基本单位下的单卷数量：M → 卷长（米）；㎡ → 面积；其余按面积兜底。 */
+function baseQuantityOf(row: ReceiveItem, width?: number, length?: number): number {
+  const area = rollArea(width, length)
+  const unit = String(row.unit || '').trim().toUpperCase()
+  if (unit === 'M') return Number(length || 0)
+  return area
+}
+
+/** 由基本单位数量反算卷长（米）。 */
+function baseToLength(row: ReceiveItem, base: number, width: number): number {
+  const unit = String(row.unit || '').trim().toUpperCase()
+  if (unit === 'M') return Number(base || 0)
+  return width > 0 ? (Number(base || 0) * 1000) / width : 0
+}
+
 /** 按未收数量生成卷明细；最后一卷按差额收口 */
 function rebuildRolls(row: ReceiveItem, fill = true) {
   if (!isRollPlanned(row)) { row.rolls = []; return }
@@ -353,17 +368,20 @@ function rebuildRolls(row: ReceiveItem, fill = true) {
     void syncRollQuantity(row);return
   }
   const width = Number(row.rollWidthMm)
-  const per = rollArea(width, Number(row.rollLengthM))
+  const planLength = Number(row.rollLengthM)
+  const perBase = baseQuantityOf(row, width, planLength)
   const target = fill ? Math.max(0, remainOf(row)) : 0
-  if (!(per > 0) || target <= 0) { row.rolls = []; row.receiveQuantity = 0; return }
-  const count = Math.max(1, Math.ceil(target / per - 1e-9))
+  if (!(perBase > 0) || target <= 0) { row.rolls = []; row.receiveQuantity = 0; return }
+  // dev-20261124-003：卷数以采购行为准；采购行没写卷数时才按剩余量推算。
+  const planned = Number(row.rollCount || 0)
+  const count = planned > 0 ? planned : Math.max(1, Math.ceil(target / perBase - 1e-9))
   let left = target
   const rolls: RollRow[] = []
-  for (let i = 0; i < count && left > 0; i++) {
-    const area = round2(Math.min(per, left))
-    const length = Math.round((area * 1000 / width) * 10000) / 10000
-    rolls.push({ rollWidthMm: width, rollLengthM: length })
-    left = Math.round((left - area) * 10000) / 10000
+  for (let i = 0; i < count; i++) {
+    const base = left > 0 ? Math.min(perBase, left) : perBase
+    const length = baseToLength(row, base, width)
+    rolls.push({ rollWidthMm: width, rollLengthM: Math.max(0.0001, Math.round(length * 10000) / 10000) })
+    left = Math.max(0, Math.round((left - base) * 10000) / 10000)
   }
   row.rolls = rolls
   syncRollQuantity(row)
@@ -391,7 +409,7 @@ async function syncRollQuantity(row: ReceiveItem) {
     } catch(error:any) {if(row.previewVersion===version){row.receiveQuantity=undefined;row.previewError=error?.message||'请补齐每卷实际计量参数'}}
     return
   }
-  row.receiveQuantity = round2(row.rolls.reduce((sum, roll) => sum + rollArea(roll.rollWidthMm, roll.rollLengthM), 0))
+  row.receiveQuantity = round2(row.rolls.reduce((sum, roll) => sum + baseQuantityOf(row, roll.rollWidthMm, roll.rollLengthM), 0))
 }
 
 function fillRow(row: ReceiveItem) {
@@ -521,9 +539,15 @@ const handleSubmit = async () => {
     const missingTypeCount = receiptAttachments.value?.getMissingTypeCount?.() ?? 0
     if (missingTypeCount > 0) {ElMessage.warning(`有 ${missingTypeCount} 个票据未选择资料类型，请先选择后再提交`);return}
     if(!hasInbound && pendingFiles.value.length){ElMessage.warning('本次仅确认报废，没有入库单，请移除收货票据后提交');return}
+    // dev-20261124-003：确认框展示真实会生成的入库明细条数（卷按卷计数）。
+    const generatedRows = form.items.reduce((sum, it) => {
+      if (it.processingPlan) return sum + 1
+      if (isRollPlanned(it)) return sum + (it.rolls?.length || 0)
+      return sum + (Number(it.receiveQuantity || 0) > 0 ? 1 : 0)
+    }, 0)
     try {
       await ElMessageBox.confirm(
-        `确认本次交货或报废？涉及 ${receiveItems.length} 行采购明细（订单 ${props.orderNo}）。${hasInbound ? '实际交货生成待确认入库单，库存尚未增加；报废只登记损耗。' : '本次仅登记报废损耗，不生成入库单。'}`,
+        `确认本次交货或报废？涉及 ${receiveItems.length} 行采购明细（订单 ${props.orderNo}），将生成 ${generatedRows} 条入库明细。${hasInbound ? '实际交货生成待确认入库单，库存尚未增加；报废只登记损耗。' : '本次仅登记报废损耗，不生成入库单。'}`,
         '收货确认', { type: 'warning', confirmButtonText: '确认收货', cancelButtonText: '再改改' }
       )
     } catch {return}

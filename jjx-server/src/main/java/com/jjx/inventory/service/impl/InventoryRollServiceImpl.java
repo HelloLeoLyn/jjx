@@ -43,6 +43,18 @@ public class InventoryRollServiceImpl implements InventoryRollService {
     private final RedisSequenceService sequence;
     private final MaterialStockAllocationService allocations;
 
+    /**
+     * 卷材在物料基本单位下的数量（dev-20261124-003）：
+     * M → 卷长（米）；㎡ → 面积；其他基本单位暂不支持无计量策略的按卷收货。
+     * 面积始终由 宽×长÷1000 派生，不单独落库。
+     */
+    public static BigDecimal baseQuantity(String unit, BigDecimal lengthM, BigDecimal area) {
+        String normalized = com.jjx.common.util.UnitCodes.normalize(unit);
+        if (com.jjx.common.util.UnitCodes.M.equals(normalized)) return lengthM;
+        if (com.jjx.common.util.UnitCodes.SQM.equals(normalized)) return area;
+        throw new BusinessException("材料基本单位 " + unit + " 不支持无计量策略的按卷收货，请先配置计量策略");
+    }
+
     @Override
     public BigDecimal area(BigDecimal widthMm, BigDecimal lengthM) {
         positive(widthMm, "卷宽"); positive(lengthM, "卷长");
@@ -79,7 +91,9 @@ public class InventoryRollServiceImpl implements InventoryRollService {
         if (item.getSourceOutboundItemId() != null || item.getReversalOfItemId() != null)
             throw new BusinessException("余卷退料和红冲请使用专用入口");
         if (item.getMeasurementSnapshot()==null) validateWidth(item.getMaterialId(), item.getRollWidthMm());
-        BigDecimal measured = item.getMeasurementSnapshot()==null?area(item.getRollWidthMm(), item.getRollLengthM()):InventoryMeasurementSnapshotService.ledger(item.getMeasurementSnapshot(),item.getUnit());
+        BigDecimal measured = item.getMeasurementSnapshot()==null
+                ? baseQuantity(item.getUnit(), item.getRollLengthM(), area(item.getRollWidthMm(), item.getRollLengthM()))
+                : InventoryMeasurementSnapshotService.ledger(item.getMeasurementSnapshot(),item.getUnit());
         if (measured.compareTo(delta) != 0 || zero(item.getPostedQuantity()).signum() != 0)
             throw new BusinessException("逐卷入库必须整卷允收过账，部分合格请先按实际物理卷拆分收货明细");
         if (!stockMapper.selectRollForUpdate(item.getRollNo()).isEmpty()) throw new BusinessException("卷号已存在，不可重复入库");
@@ -164,7 +178,9 @@ public class InventoryRollServiceImpl implements InventoryRollService {
         if(item.getMeasurementSnapshot()!=null) return List.of(initialStock(order,item,delta));
 
         if (item.getRollPlanJson() == null || item.getRollPlanJson().isBlank()) {
-            BigDecimal measured = area(item.getRollWidthMm(), item.getRollLengthM());
+            // dev-20261124-003：过账数量改为物料基本单位，面积只用于展示/成本分摊。
+            BigDecimal measured = baseQuantity(item.getUnit(), item.getRollLengthM(),
+                    area(item.getRollWidthMm(), item.getRollLengthM()));
             if ("PURCHASE".equalsIgnoreCase(order.getSourceType()) || "PURCHASE_ORDER".equalsIgnoreCase(order.getSourceType())) {
                 areaToleranceRemark(measured, delta);
                 InventoryInboundItem physical = new InventoryInboundItem();

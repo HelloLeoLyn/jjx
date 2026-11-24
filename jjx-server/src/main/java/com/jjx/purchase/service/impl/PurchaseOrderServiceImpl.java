@@ -1504,7 +1504,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                     // dev-20261117-026：按卷采购行必须按卷收；卷号为空时按采购单号自动生成。
                     if (itemDTO.getRolls()==null || itemDTO.getRolls().isEmpty())
                         throw new BusinessException("该采购行按卷采购，请录入卷明细");
-                    BigDecimal rollAreaSum = BigDecimal.ZERO;
+                    // dev-20261124-003：按物料基本单位累计（M=米，㎡=面积），面积只作派生。
+                    BigDecimal rollBaseSum = BigDecimal.ZERO;
                     for (PurchaseOrderReceiveDTO.RollReceiveDTO roll : itemDTO.getRolls()) {
                         if (roll==null || roll.getRollWidthMm()==null || roll.getRollLengthM()==null
                                 || roll.getRollWidthMm().signum()<=0 || roll.getRollLengthM().signum()<=0)
@@ -1514,19 +1515,21 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                         if (rollNo != null && rollNo.length()>64) throw new BusinessException("卷号不能超过64字");
                         BigDecimal area = roll.getRollWidthMm().multiply(roll.getRollLengthM())
                                 .divide(BigDecimal.valueOf(1000),4,RoundingMode.HALF_UP);
-                        rollAreaSum = rollAreaSum.add(area);
+                        BigDecimal baseQuantity = com.jjx.inventory.service.impl.InventoryRollServiceImpl
+                                .baseQuantity(item.getUnit(), roll.getRollLengthM(), area);
+                        rollBaseSum = rollBaseSum.add(baseQuantity);
                         var receipt=new com.jjx.inventory.domain.InventoryInboundItem();
                         receipt.setSourcePurchaseItemId(item.getItemId());receipt.setMaterialId(item.getMaterialId());
                         receipt.setMaterialCode(item.getMaterialCode());receipt.setMaterialName(item.getMaterialName());
                         receipt.setSpecification(item.getMaterialSpec());
-                        receipt.setUnit(item.getUnit());receipt.setQuantity(area);receipt.setUnitPrice(baseUnitCost(item));
-                        receipt.setAmount(area.multiply(baseUnitCost(item)).setScale(2,RoundingMode.HALF_UP));
+                        receipt.setUnit(item.getUnit());receipt.setQuantity(baseQuantity);receipt.setUnitPrice(baseUnitCost(item));
+                        receipt.setAmount(baseQuantity.multiply(baseUnitCost(item)).setScale(2,RoundingMode.HALF_UP));
                         receipt.setRollNo(rollNo);receipt.setRollWidthMm(roll.getRollWidthMm());receipt.setRollLengthM(roll.getRollLengthM());
                         receiptLines.add(receipt);
                     }
-                    if (rollAreaSum.setScale(2, RoundingMode.HALF_UP).compareTo(itemDTO.getReceivedQuantity().setScale(2, RoundingMode.HALF_UP)) != 0)
-                        throw new BusinessException("卷面积合计与本次收货数量不一致");
-                    itemDTO.setReceivedQuantity(rollAreaSum);
+                    if (rollBaseSum.setScale(4, RoundingMode.HALF_UP).compareTo(itemDTO.getReceivedQuantity().setScale(4, RoundingMode.HALF_UP)) != 0)
+                        throw new BusinessException("卷合计数量与本次收货数量不一致（按物料基本单位核对）");
+                    itemDTO.setReceivedQuantity(rollBaseSum);
                 } else {
                     if (itemDTO.getRolls()!=null && !itemDTO.getRolls().isEmpty())
                         throw new BusinessException("该采购行未按卷采购，不能提交卷明细");

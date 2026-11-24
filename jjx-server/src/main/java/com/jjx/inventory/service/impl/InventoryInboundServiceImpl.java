@@ -2267,8 +2267,15 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 BigDecimal measuredTotal = rolls.stream()
                         .map(roll -> roll.getMeasurementSnapshot()==null?rollService.area(roll.getRollWidthMm(), roll.getOriginalRollLengthM()):InventoryMeasurementSnapshotService.ledger(roll.getMeasurementSnapshot(),item.getUnit()))
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
+                // dev-20261124-003：过账数量按物料基本单位核对；面积只用于金额分摊。
+                BigDecimal baseTotal = rolls.stream()
+                        .map(roll -> roll.getMeasurementSnapshot() == null
+                                ? InventoryRollServiceImpl.baseQuantity(item.getUnit(), roll.getOriginalRollLengthM(),
+                                        rollService.area(roll.getRollWidthMm(), roll.getOriginalRollLengthM()))
+                                : InventoryMeasurementSnapshotService.ledger(roll.getMeasurementSnapshot(), item.getUnit()))
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
                 String trace = isPurchaseInbound(order) && item.getMeasurementSnapshot()==null
-                        ? InventoryRollServiceImpl.areaToleranceRemark(measuredTotal, quantityToPost) : null;
+                        ? InventoryRollServiceImpl.areaToleranceRemark(baseTotal, quantityToPost) : null;
                 if (trace != null) {
                     measuredAreaTotal = measuredAreaTotal.add(measuredTotal);
                     allowedAreaTotal = allowedAreaTotal.add(quantityToPost);
@@ -2293,11 +2300,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                         remainingAmount = remainingAmount.subtract(rollAmount);
                     }
                     remainingRolls--;
+                    BigDecimal rollBase = roll.getMeasurementSnapshot() == null
+                            ? InventoryRollServiceImpl.baseQuantity(item.getUnit(), roll.getOriginalRollLengthM(), area)
+                            : InventoryMeasurementSnapshotService.ledger(roll.getMeasurementSnapshot(), item.getUnit());
                     tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
                     tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getDisplayName());
                     tx.setRemark(trace == null ? (remark != null ? remark : "逐卷入库")
                             : appendRemark(remark != null ? remark : "逐卷入库", trace));
-                    InventoryStockItem saved = stockMutationService.applyDelta(roll, area, tx);
+                    InventoryStockItem saved = stockMutationService.applyDelta(roll, rollBase, tx);
                     singleStockId = saved.getItemId();
                 }
                 if (rolls.size() == 1) item.setStockItemId(singleStockId);
