@@ -225,6 +225,22 @@
           />
         </template>
       </el-table-column>
+      <el-table-column label="交期(天)" width="100" align="center">
+        <template #default="scope">
+          <span :title="'按 预计交期 − 订单日期 推算'">{{ deliveryDaysOf(scope.row) ?? '-' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="预计交期" prop="estimatedDeliveryDate" width="180">
+        <template #default="scope">
+          <el-date-picker
+            v-model="scope.row.estimatedDeliveryDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="预计交期"
+            style="width: 100%"
+          />
+        </template>
+      </el-table-column>
       <el-table-column label="单位" prop="unit" width="80">
         <template #default="scope">
           <el-input v-model="scope.row.unit" placeholder="单位" class="borderless-input" />
@@ -260,17 +276,7 @@
           <span>{{ formatCurrency(scope.row.amount) }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="交期(天)" width="100" align="center">
-        <template #default="scope">
-          <span :title="'按 预计交期 − 订单日期 推算'">{{ deliveryDaysOf(scope.row) ?? '-' }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="预计交期" prop="estimatedDeliveryDate" width="180">
-        <template #default="scope">
-          <el-date-picker v-model="scope.row.estimatedDeliveryDate" type="date"
-            value-format="YYYY-MM-DD" placeholder="预计交期" style="width: 100%" />
-        </template>
-      </el-table-column>
+
       <el-table-column label="行备注" prop="lineRemark" min-width="120">
         <template #default="scope">
           <el-input v-model="scope.row.lineRemark" placeholder="行备注" />
@@ -502,8 +508,8 @@
             <span v-if="!foreignRateValid">汇率缺失或无效，无法折算原币；金额仍按人民币记录</span>
             <span v-else>
               含税总额（折前） {{ foreignTotalDisplay }} {{ form.currency }} · 实际应收
-              {{ foreignCurrencyDisplay }} {{ form.currency }}
-              （1 {{ form.currency }} = {{ form.exchangeRate }} CNY）
+              {{ foreignCurrencyDisplay }} {{ form.currency }} （1 {{ form.currency }} =
+              {{ form.exchangeRate }} CNY）
             </span>
           </div>
         </el-form-item>
@@ -623,7 +629,8 @@ async function loadSampleConversion() {
     if (!res?.data) throw new Error('缺少样品来源')
     returnToSourceOrder.value = res.data.returnToSourceOrder === true
     emit('conversionMode', returnToSourceOrder.value)
-    if (!returnToSourceOrder.value && !draftSession.resumeId) await prefillFromSample(props.sampleOrderId)
+    if (!returnToSourceOrder.value && !draftSession.resumeId)
+      await prefillFromSample(props.sampleOrderId)
   } catch {
     conversionError.value = true
   } finally {
@@ -798,13 +805,13 @@ const foreignView = computed(() => ({
   final: orderMoneyView(form.finalAmount, form.currency, form.exchangeRate),
 }))
 const foreignRateValid = computed(
-  () => form.currency === 'CNY' || foreignView.value.final.rateValid,
+  () => form.currency === 'CNY' || foreignView.value.final.rateValid
 )
 const foreignTotalDisplay = computed(() =>
-  foreignView.value.total.original == null ? '—' : formatAmount(foreignView.value.total.original),
+  foreignView.value.total.original == null ? '—' : formatAmount(foreignView.value.total.original)
 )
 const foreignCurrencyDisplay = computed(() =>
-  foreignView.value.final.original == null ? '—' : formatAmount(foreignView.value.final.original),
+  foreignView.value.final.original == null ? '—' : formatAmount(foreignView.value.final.original)
 )
 
 // 汇率提示文字
@@ -849,11 +856,19 @@ const draftSession = useAttachmentDraftInstance('sales_order', {
 const { draftId, choices: draftChoices, complete: clearDraftId } = draftSession
 // 报价转换只重用本组件已打开的草稿，不接管本标签页的通用订单草稿。
 let quotationDraftId = ''
-watch(draftId, (id) => {
-  if (props.sourceQuotationId && id) quotationDraftId = id
-}, { flush: 'sync' })
+watch(
+  draftId,
+  (id) => {
+    if (props.sourceQuotationId && id) quotationDraftId = id
+  },
+  { flush: 'sync' }
+)
 function ensureDraftId() {
-  if (props.sourceQuotationId || !draftSession.resumeId || !draftSession.restore(draftSession.resumeId))
+  if (
+    props.sourceQuotationId ||
+    !draftSession.resumeId ||
+    !draftSession.restore(draftSession.resumeId)
+  )
     draftSession.startNew()
 }
 function restoreAttachmentDraft(id: string) {
@@ -881,7 +896,7 @@ const attachSession = useAttachmentSession({
 const attachmentViewSession = useQuotationAttachmentView(
   attachSession,
   () => props.sourceQuotationId || (form as any).quotationId,
-  () => form.orderId,
+  () => form.orderId
 )
 
 /** 附件信息类提交（保存处理器的唯一出口）：只认 updates；uploads 随单据保存落定，这里明确拒绝而不是静默吞掉 */
@@ -1150,7 +1165,9 @@ function deliveryDaysOf(row: any): number | null {
   const base = fmtDate(form.orderDate)
   if (!estimated || !base) return null
   const days = Math.round(
-    (new Date(`${String(estimated).slice(0, 10)}T00:00:00`).getTime() - new Date(`${base}T00:00:00`).getTime()) / 86400000
+    (new Date(`${String(estimated).slice(0, 10)}T00:00:00`).getTime() -
+      new Date(`${base}T00:00:00`).getTime()) /
+      86400000
   )
   return days > 0 ? days : null
 }

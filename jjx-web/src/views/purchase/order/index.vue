@@ -270,7 +270,7 @@
       v-model:visible="receiveDialogVisible"
       :orderId="currentOrderId"
       :orderNo="currentOrderNo"
-      @success="handleSuccess"
+      @success="handleReceiveSuccess"
       @goto-iqc="handleGotoIqc"
     />
 
@@ -513,6 +513,10 @@ const handleSortChange = ({ prop, order }: { prop: string; order: string }) => {
   getList()
 }
 
+const handleReceiveSuccess = () => {
+  handleSuccess()
+  receiveDialogVisible.value = false
+}
 // 操作成功回调
 const handleSuccess = () => {
   getList()

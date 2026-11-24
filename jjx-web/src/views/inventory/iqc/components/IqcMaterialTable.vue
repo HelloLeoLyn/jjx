@@ -98,10 +98,11 @@
     >
     <TableActionColumn
       :actions="materialActions"
-      :min-width="170"
+      :min-width="290"
       :min-visible="3"
       display="text"
       @action="handleMaterialAction"
+      fixed="right"
     >
     </TableActionColumn>
   </el-table>

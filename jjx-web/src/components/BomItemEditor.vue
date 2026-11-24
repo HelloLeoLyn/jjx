@@ -85,7 +85,7 @@
         <!-- 序号列：只显示编号（拖拽手柄已移到操作列，dev-20261124-004） -->
         <el-table-column label="序号" width="50" align="center" fixed="left">
           <template #default="scope">
-            <span class="row-index">{{ comboNoOf(scope.$index) || '' }}</span>
+            <span class="row-index">{{ comboNoOf(scope.$index) || scope.$index }}</span>
           </template>
         </el-table-column>
 
@@ -179,12 +179,6 @@
         </el-table-column>
         <el-table-column label="规格" prop="specification" width="180">
           <template #default="scope">
-            <el-icon v-if="scope.row.materialId" size="small" color="#15bf15">
-              <Check />
-            </el-icon>
-            <el-icon v-else size="small" color="#e56706">
-              <WarningFilled />
-            </el-icon>
             <span v-if="Number(scope.row.materialId) > 0">{{ autoSpecOf(scope.row) }}</span>
             <el-input
               v-else-if="quickMode"
@@ -195,6 +189,27 @@
               maxlength="500"
             />
             <span v-else>{{ scope.row.specification }}</span>
+          </template>
+        </el-table-column>
+        <!-- 行审核状态（dev-20261020-029） -->
+        <el-table-column label="行状态" width="80" align="center">
+          <template #default="scope">
+            <el-icon v-if="scope.row.materialId" size="small" color="#15bf15">
+              <Check />
+            </el-icon>
+            <el-icon v-else size="small" color="#e56706">
+              <WarningFilled />
+            </el-icon>
+            <div class="row-status-cell">
+              <el-tooltip :content="scope.row.rejectReason || '无'" placement="top">
+                <el-tag
+                  :type="BomItemReviewStatusEnum.getTagProps(rowReviewStatus(scope.row)).type"
+                  size="small"
+                >
+                  {{ BomItemReviewStatusEnum.getLabel(rowReviewStatus(scope.row)) }}
+                </el-tag>
+              </el-tooltip>
+            </div>
           </template>
         </el-table-column>
         <!-- 模数（恢复原义：每份材料可产出产品数量；用量 = 基数 ÷ 模数）；允许 >0 正小数，最多4位 -->
@@ -346,32 +361,11 @@
           >
         </el-table-column>
 
-        <!-- 行审核状态（dev-20261020-029） -->
-        <el-table-column label="行状态" width="80" align="center">
-          <template #default="scope">
-            <div class="row-status-cell">
-              <el-tooltip :content="scope.row.rejectReason || '无'" placement="top">
-                <el-tag
-                  :type="BomItemReviewStatusEnum.getTagProps(rowReviewStatus(scope.row)).type"
-                  size="small"
-                >
-                  {{ BomItemReviewStatusEnum.getLabel(rowReviewStatus(scope.row)) }}
-                </el-tag>
-              </el-tooltip>
-            </div>
-          </template>
-        </el-table-column>
-
         <!-- 操作列 -->
         <el-table-column label="操作" min-width="200" align="left" fixed="right">
           <template #default="scope">
             <!-- 拖拽手柄：整组拖动，只在组合首行显示；其余行留位对齐（dev-20261124-004） -->
-            <span
-              v-if="!readonly && isComboRunFirst(scope.$index)"
-              class="drag-handle"
-              title="拖动排序"
-              aria-label="拖动排序"
-            >
+            <span v-if="!readonly" class="drag-handle" title="拖动排序" aria-label="拖动排序">
               <el-icon><Rank /></el-icon>
             </span>
             <span v-else class="drag-handle-placeholder" aria-hidden="true"></span>
@@ -1724,7 +1718,9 @@ defineExpose({
   cursor: grab;
   user-select: none;
   vertical-align: middle;
-  transition: color 0.2s, background-color 0.2s;
+  transition:
+    color 0.2s,
+    background-color 0.2s;
 
   .el-icon {
     font-size: 16px;
