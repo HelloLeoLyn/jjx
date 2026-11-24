@@ -2960,21 +2960,54 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 parentOfChild.put(child.getItemId(), entry.getKey());
             }
         }
-        // 领料单只展示实际领料明细：不补未领用的 BOM 父行
+        // 只展开“有实际领用”的分支：父行自身有领用或有子行被领用才展示，不列整张BOM
+        java.util.Map<Long, OutboundItemVO> byBom = new java.util.HashMap<>();
+        java.util.List<OutboundItemVO> others = new java.util.ArrayList<>();
         for (OutboundItemVO item : vo.getItems()) {
-            Long bomItemId = item.getSourceBomItemId();
-            if (bomItemId == null) continue;
-            com.jjx.engineering.domain.entity.EngineeringBomItem bi = byItemId.get(bomItemId);
-            if (bi == null) continue;
-            boolean child = !productItemIds.contains(bomItemId);
-            BigDecimal need = child
-                    ? (item.getCoverageQuantity() != null ? item.getCoverageQuantity() : bi.getQuantity())
-                    : demands.getOrDefault(bi, BigDecimal.ZERO);
-            String rowKey = child
-                    ? bom.getBomId() + ":" + parentOfChild.get(bomItemId) + "/" + bi.getBomId() + ":" + bi.getItemId()
-                    : bom.getBomId() + ":" + bi.getItemId();
-            fillDetailBomFields(item, bi, rowKey, null, child ? 2 : 1, need);
+            if (item.getSourceBomItemId() != null) byBom.put(item.getSourceBomItemId(), item);
+            else others.add(item);
         }
+        java.util.List<OutboundItemVO> result = new java.util.ArrayList<>();
+        for (com.jjx.engineering.domain.entity.EngineeringBomItem parent : productItems) {
+            if (!isStockPickable(parent)) continue;
+            java.util.List<com.jjx.engineering.domain.entity.EngineeringBomItem> children =
+                    childrenByParent.getOrDefault(parent.getItemId(), java.util.Collections.emptyList());
+            boolean parentIssued = byBom.containsKey(parent.getItemId());
+            boolean anyChildIssued = false;
+            for (com.jjx.engineering.domain.entity.EngineeringBomItem child : children) {
+                if (byBom.containsKey(child.getItemId())) { anyChildIssued = true; break; }
+            }
+            if (!parentIssued && !anyChildIssued) continue;
+            String parentKey = bom.getBomId() + ":" + parent.getItemId();
+            OutboundItemVO parentVO = byBom.remove(parent.getItemId());
+            if (parentVO == null) parentVO = newDetailItemVO(parent);
+            fillDetailBomFields(parentVO, parent, parentKey, null, 1,
+                    demands.getOrDefault(parent, BigDecimal.ZERO));
+            result.add(parentVO);
+            for (com.jjx.engineering.domain.entity.EngineeringBomItem child : children) {
+                OutboundItemVO childVO = byBom.remove(child.getItemId());
+                if (childVO == null) continue;
+                String childKey = parentKey + "/" + child.getBomId() + ":" + child.getItemId();
+                BigDecimal need = childVO.getCoverageQuantity() != null
+                        ? childVO.getCoverageQuantity() : child.getQuantity();
+                fillDetailBomFields(childVO, child, childKey, parentKey, 2, need);
+                result.add(childVO);
+            }
+        }
+        result.addAll(byBom.values());
+        result.addAll(others);
+        vo.setItems(result);
+    }
+
+    private OutboundItemVO newDetailItemVO(com.jjx.engineering.domain.entity.EngineeringBomItem bi) {
+        OutboundItemVO vo = new OutboundItemVO();
+        vo.setMaterialId(bi.getMaterialId());
+        vo.setMaterialCode(bi.getMaterialCode());
+        vo.setMaterialName(bi.getMaterialName());
+        vo.setSpecification(bi.getSpecification());
+        vo.setUnit(bi.getUnit());
+        vo.setSourceBomItemId(bi.getItemId());
+        return vo;
     }
 
     private void fillDetailBomFields(OutboundItemVO vo,
