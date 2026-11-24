@@ -458,9 +458,12 @@ public class InventoryRollServiceImpl implements InventoryRollService {
     private void validateIdentity(Long id, Long materialId, String code, String suppliedUnit) {
         InventoryMaterial material = materialId == null ? null : materialMapper.selectById(materialId);
         if (material == null || !Objects.equals(code, material.getMaterialCode())
-                || !(squareMetre(material.getUnit()) || java.util.Set.of("KG","ROLL").contains(com.jjx.common.util.UnitCodes.normalize(material.getUnit())))
+                // dev-20261124-008：卷材按物料基本单位记账，允许 M（米）；面积仍由宽×长派生。
+                || !(squareMetre(material.getUnit())
+                        || java.util.Set.of("KG", "ROLL", com.jjx.common.util.UnitCodes.M)
+                                .contains(com.jjx.common.util.UnitCodes.normalize(material.getUnit())))
                 || (suppliedUnit != null && !Objects.equals(com.jjx.common.util.UnitCodes.normalize(suppliedUnit),com.jjx.common.util.UnitCodes.normalize(material.getUnit()))))
-            throw new BusinessException("卷材必须使用匹配的物料及㎡库存单位，请先核对物料档案");
+            throw new BusinessException("卷材必须使用匹配的物料及面积/长度库存单位（㎡、M、KG、ROLL），请先核对物料档案");
         if (id != null) {
             InventoryItem item = itemMapper.selectById(id);
             if (item == null || !InventoryItemTypeEnum.MATERIAL.getCode().equals(item.getItemType())
