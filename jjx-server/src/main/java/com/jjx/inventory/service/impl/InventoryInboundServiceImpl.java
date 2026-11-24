@@ -419,6 +419,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 inboundOrderMapper.updateById(order);
             }
         }
+        refreshIqcStatsQuietly(order.getInboundId());
         publishInboundEvent("inventory.inbound.created", order.getInboundId());
         return order.getInboundId();
     }
@@ -732,6 +733,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         // dev-20260924-026：此处原先为「非 RELEASE 处置动作」旁路写库存流水，已移除（原因同 createIqcQuarantine）。
         // 处置留痕：inventory_iqc_disposition_order（处置单）+ 隔离表状态/剩余量 + quality_ncr 处置记录。
         if (!scrap) updateBatchAfterDisposition(quarantine.getIqcBatchId(), actionCode, quantity);
+        refreshIqcStatsQuietly(quarantine.getInboundId());
         return true;
     }
 
@@ -1004,6 +1006,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         disposition.setReason(scrap.getReason());
         iqcDispositionOrderMapper.updateById(disposition);
         iqcQuarantineMapper.updateById(quarantine);
+        refreshIqcStatsQuietly(disposition.getInboundId());
         return true;
     }
 
@@ -1064,6 +1067,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             inbound.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
             inboundOrderMapper.updateById(inbound);
         }
+        refreshIqcStatsQuietly(item.getInboundId());
         return newLotId;
     }
 
@@ -1311,6 +1315,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if (updated) {
             voidFqcConcessionReservation(order, reason);
             publishInboundEvent("inventory.inbound.cancelled", inboundId);
+            refreshIqcStatsQuietly(inboundId);
         }
         return updated;
     }
@@ -1380,6 +1385,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if (updated) {
             publishIqcEventAfterCommit("quality.iqc.submitted", iqcPayload(order, null, null, null));
         }
+        refreshIqcStatsQuietly(inboundId);
         return updated;
     }
 
@@ -1955,6 +1961,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         inboundOrderMapper.updateById(order);
         publishIqcEventAfterCommit("quality.iqc.reinspection.created", iqcPayload(order, item,
                 order.getInspectorId(), order.getInspectorName()));
+        refreshIqcStatsQuietly(item.getInboundId());
         return newId;
     }
 
@@ -1992,6 +1999,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 publishIqcEventAfterCommit("quality.iqc.quarantine.created", approvedPayload);
             }
         }
+        refreshIqcStatsQuietly(inboundId);
     }
 
     @Override
@@ -2074,6 +2082,16 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             payload.put("receiverName", receiverName);
         }
         return payload;
+    }
+
+    /** dev-20261124-001：写时刷新 IQC 工作台统计（单行 UPDATE）。统计失败不影响业务主流程，只留告警。 */
+    private void refreshIqcStatsQuietly(Long inboundId) {
+        if (inboundId == null) return;
+        try {
+            inboundOrderMapper.refreshIqcStats(inboundId);
+        } catch (Exception e) {
+            log.warn("刷新 IQC 统计失败: inboundId={}", inboundId, e);
+        }
     }
 
     private void publishIqcEventAfterCommit(String eventCode, Map<String, Object> payload) {
@@ -2583,6 +2601,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         createdPayload.put("sourceNo", po.getOrderNo());
         createdPayload.put("supplierId", po.getSupplierId());
         createdPayload.put("supplierName", po.getSupplierName());
+        refreshIqcStatsQuietly(order.getInboundId());
         publishIqcEventAfterCommit("inventory.inbound.created_from_purchase", createdPayload);
         log.info("采购入库完成: purchaseOrderId={}, inboundId={}", purchaseOrderId, order.getInboundId());
         return order.getInboundId();
@@ -2622,6 +2641,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             inboundItemMapper.insert(actual);totalQty=totalQty.add(actual.getQuantity());totalAmount=totalAmount.add(actual.getAmount());
         }
         order.setTotalQuantity(totalQty);order.setTotalAmount(totalAmount);inboundOrderMapper.updateById(order);
+        refreshIqcStatsQuietly(order.getInboundId());
         return order.getInboundId();
     }
 
@@ -2738,6 +2758,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setTotalQuantity(totalQty);
         order.setTotalAmount(totalAmt);
         inboundOrderMapper.updateById(order);
+        refreshIqcStatsQuietly(order.getInboundId());
         try { eventPublisher.fire("purchase.arrived", Map.of("sourceNo", order.getSourceNo(), "inboundId", String.valueOf(order.getInboundId()))); } catch (Exception e) { log.warn("联动失败: {}", e.getMessage()); }
         log.info("采购收货自动入库单生成/更新: purchaseOrderId={}, inboundId={}, qty={}", purchaseOrderId, order.getInboundId(), totalQty);
         return order.getInboundId();

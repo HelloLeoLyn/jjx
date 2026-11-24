@@ -103,4 +103,40 @@ public class InventoryInboundOrder extends BaseEntity {
     /** 备注 */
     private String remark;
 
+    // ===== IQC 工作台统计（dev-20261124-001）=====
+    // 写时刷新、列表直读；口径与 InventoryInboundOrderMapper.refreshIqcStats 保持一致。
+
+    /** IQC统计-材料数 */
+    private Integer iqcMaterialCount;
+
+    /** IQC统计-已检数（已生成检验批的明细数） */
+    private Integer iqcInspectedCount;
+
+    /** IQC统计-待审核数 */
+    private Integer iqcPendingReviewCount;
+
+    /** IQC统计-待检验数 */
+    private Integer iqcPendingInspectionCount;
+
+    /** IQC统计-待复检数 */
+    private Integer iqcPendingReinspectionCount;
+
+    /** IQC统计-剩余可处置量 */
+    private java.math.BigDecimal iqcRemainingDispositionQty;
+
+    /** IQC统计-待报废审批数 */
+    private Integer iqcPendingScrapCount;
+
+    /** IQC统计-待返工数 */
+    private Integer iqcPendingReworkCount;
+
+    /** IQC统计-已批准数 */
+    private Integer iqcApprovedCount;
+
+    /** IQC统计-FAIL行数 */
+    private Integer iqcFailRowCount;
+
+    /** IQC统计-刷新时间 */
+    private java.time.LocalDateTime iqcStatsTime;
+
 }

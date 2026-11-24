@@ -26,19 +26,22 @@ public interface InventoryInboundOrderMapper extends BaseMapper<InventoryInbound
     String CURRENT_IQC_ROWS = " FROM inventory_inbound_item i LEFT JOIN quality_lot q ON q.lot_id=" +
             CURRENT_IQC_LOT + " WHERE i.inbound_id=o.inbound_id ";
 
+    /**
+     * IQC 工作台分页（dev-20261124-001）：统计列已由写时刷新落到 inventory_inbound_order，
+     * 这里只做单表分页，不再对每行执行 10 个相关子查询。
+     */
     @Select("<script>" +
             "SELECT o.inbound_id, o.inbound_no, o.source_no, o.supplier_name, o.total_quantity, " +
-            "(SELECT COUNT(*) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id) AS material_count, " +
-            "(SELECT COUNT(*) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id AND i.lot_id IS NOT NULL) AS inspected_count, " +
-            "(SELECT COUNT(*)" + CURRENT_IQC_ROWS + "AND q.review_status='PENDING') AS pending_review_count, " +
-            "(SELECT COUNT(*)" + CURRENT_IQC_ROWS + "AND (q.review_status IS NULL OR q.review_status IN ('DRAFT','REJECTED')) AND q.parent_lot_id IS NULL) AS pending_inspection_count, " +
-            "(SELECT COUNT(*)" + CURRENT_IQC_ROWS + "AND (q.review_status IS NULL OR q.review_status IN ('DRAFT','REJECTED')) AND q.parent_lot_id IS NOT NULL) AS pending_reinspection_count, " +
-// dev-20260929-004: 隔离单 status 列已删除（迁移 228），剩余可处置量改由剩余量派生 —— 结清行 remaining=0 自然归零；GREATEST 兜住脏数据负值，避免把剩余量算小。
-            "(SELECT COALESCE(SUM(GREATEST(q.remaining_quantity, 0)),0) FROM inventory_iqc_quarantine q WHERE q.inbound_id=o.inbound_id) AS remaining_disposition_quantity, " +
-            "(SELECT COUNT(*) FROM inventory_iqc_disposition_order d WHERE d.inbound_id=o.inbound_id AND d.action='SCRAP' AND d.status='PENDING_APPROVAL') AS pending_scrap_count, " +
-            "(SELECT COUNT(*) FROM inventory_iqc_disposition_order d WHERE d.inbound_id=o.inbound_id AND d.action='REWORK' AND d.status='CREATED') AS pending_rework_count, " +
-            "(SELECT COUNT(*) FROM inventory_inbound_item i JOIN quality_lot q ON q.lot_id = i.lot_id WHERE i.inbound_id = o.inbound_id AND q.review_status = 'APPROVED') AS approved_count, " +
-            "(SELECT COUNT(*) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id AND i.inspection_result = 'FAIL') AS fail_row_count, " +
+            "o.iqc_material_count AS materialCount, " +
+            "o.iqc_inspected_count AS inspectedCount, " +
+            "o.iqc_pending_review_count AS pendingReviewCount, " +
+            "o.iqc_pending_inspection_count AS pendingInspectionCount, " +
+            "o.iqc_pending_reinspection_count AS pendingReinspectionCount, " +
+            "o.iqc_remaining_disposition_qty AS remainingDispositionQuantity, " +
+            "o.iqc_pending_scrap_count AS pendingScrapCount, " +
+            "o.iqc_pending_rework_count AS pendingReworkCount, " +
+            "o.iqc_approved_count AS approvedCount, " +
+            "o.iqc_fail_row_count AS failRowCount, " +
             "o.order_status, o.inspection_result, o.create_time " +
             "FROM inventory_inbound_order o " +
             "WHERE o.source_type = #{sourceType} " +
@@ -59,6 +62,26 @@ public interface InventoryInboundOrderMapper extends BaseMapper<InventoryInbound
                                               @Param("orderStatus") Integer orderStatus,
                                               @Param("fillInspection") Boolean fillInspection,
                                               @Param("inboundNo") String inboundNo);
+
+    /**
+     * 刷新单张入库单的 IQC 统计（dev-20261124-001）。
+     * 只更新 1 行，成本与表总量无关；业务写操作完成后在同一事务内调用。
+     * 口径与原 selectIqcPendingPage 的 10 个相关子查询完全一致（见迁移 384 的注释）。
+     */
+    @Update("UPDATE inventory_inbound_order o SET " +
+            "o.iqc_material_count = (SELECT COUNT(*) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id), " +
+            "o.iqc_inspected_count = (SELECT COUNT(*) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id AND i.lot_id IS NOT NULL), " +
+            "o.iqc_pending_review_count = (SELECT COUNT(*)" + CURRENT_IQC_ROWS + "AND q.review_status='PENDING'), " +
+            "o.iqc_pending_inspection_count = (SELECT COUNT(*)" + CURRENT_IQC_ROWS + "AND (q.review_status IS NULL OR q.review_status IN ('DRAFT','REJECTED')) AND q.parent_lot_id IS NULL), " +
+            "o.iqc_pending_reinspection_count = (SELECT COUNT(*)" + CURRENT_IQC_ROWS + "AND (q.review_status IS NULL OR q.review_status IN ('DRAFT','REJECTED')) AND q.parent_lot_id IS NOT NULL), " +
+            "o.iqc_remaining_disposition_qty = (SELECT COALESCE(SUM(GREATEST(q.remaining_quantity, 0)),0) FROM inventory_iqc_quarantine q WHERE q.inbound_id=o.inbound_id), " +
+            "o.iqc_pending_scrap_count = (SELECT COUNT(*) FROM inventory_iqc_disposition_order d WHERE d.inbound_id=o.inbound_id AND d.action='SCRAP' AND d.status='PENDING_APPROVAL'), " +
+            "o.iqc_pending_rework_count = (SELECT COUNT(*) FROM inventory_iqc_disposition_order d WHERE d.inbound_id=o.inbound_id AND d.action='REWORK' AND d.status='CREATED'), " +
+            "o.iqc_approved_count = (SELECT COUNT(*) FROM inventory_inbound_item i JOIN quality_lot q ON q.lot_id = i.lot_id WHERE i.inbound_id = o.inbound_id AND q.review_status = 'APPROVED'), " +
+            "o.iqc_fail_row_count = (SELECT COUNT(*) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id AND i.inspection_result = 'FAIL'), " +
+            "o.iqc_stats_time = NOW() " +
+            "WHERE o.inbound_id = #{inboundId}")
+    int refreshIqcStats(@Param("inboundId") Long inboundId);
 
     /**
      * 根据来源单据查询入库单
