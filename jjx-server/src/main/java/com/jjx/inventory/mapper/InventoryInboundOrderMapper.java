@@ -33,6 +33,7 @@ public interface InventoryInboundOrderMapper extends BaseMapper<InventoryInbound
     @Select("<script>" +
             "SELECT o.inbound_id, o.inbound_no, o.source_no, o.supplier_name, o.total_quantity, " +
             "o.iqc_material_count AS materialCount, " +
+            "o.iqc_item_count AS itemCount, " +
             "o.iqc_inspected_count AS inspectedCount, " +
             "o.iqc_pending_review_count AS pendingReviewCount, " +
             "o.iqc_pending_inspection_count AS pendingInspectionCount, " +
@@ -69,8 +70,9 @@ public interface InventoryInboundOrderMapper extends BaseMapper<InventoryInbound
      * 口径与原 selectIqcPendingPage 的 10 个相关子查询完全一致（见迁移 384 的注释）。
      */
     @Update("UPDATE inventory_inbound_order o SET " +
-            "o.iqc_material_count = (SELECT COUNT(*) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id), " +
-            "o.iqc_inspected_count = (SELECT COUNT(*) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id AND i.lot_id IS NOT NULL), " +
+            "o.iqc_material_count = (SELECT COUNT(DISTINCT i.material_id) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id AND i.material_id IS NOT NULL), " +
+            "o.iqc_item_count = (SELECT COUNT(*) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id), " +
+            "o.iqc_inspected_count = (SELECT COUNT(DISTINCT i.material_id) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id AND i.material_id IS NOT NULL AND i.lot_id IS NOT NULL), " +
             "o.iqc_pending_review_count = (SELECT COUNT(*)" + CURRENT_IQC_ROWS + "AND q.review_status='PENDING'), " +
             "o.iqc_pending_inspection_count = (SELECT COUNT(*)" + CURRENT_IQC_ROWS + "AND (q.review_status IS NULL OR q.review_status IN ('DRAFT','REJECTED')) AND q.parent_lot_id IS NULL), " +
             "o.iqc_pending_reinspection_count = (SELECT COUNT(*)" + CURRENT_IQC_ROWS + "AND (q.review_status IS NULL OR q.review_status IN ('DRAFT','REJECTED')) AND q.parent_lot_id IS NOT NULL), " +

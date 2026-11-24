@@ -49,7 +49,8 @@
         <el-table-column prop="supplierName" label="供应商" min-width="150" />
         <el-table-column prop="createTime" label="到货时间" width="180" />
         <el-table-column prop="totalQuantity" label="整批收货量" width="105" />
-        <el-table-column prop="materialCount" label="材料数" width="85" />
+        <el-table-column prop="materialCount" label="材料数（项）" width="105" />
+        <el-table-column prop="itemCount" label="明细行数" width="95" />
         <el-table-column label="状态" min-width="150">
           <template #default="{ row }">
             <el-tag
@@ -66,7 +67,7 @@
         </el-table-column>
         <el-table-column label="检验进度" min-width="210">
           <template #default="{ row }"
-            ><span>已检 {{ row.inspectedCount }}/{{ row.materialCount }}</span
+            ><span>已检 {{ row.inspectedCount }}/{{ row.materialCount }} 项</span
             ><span class="progress-part">待审 {{ row.pendingReviewCount }}</span
             ><span class="progress-part">已审 {{ row.approvedCount }}</span></template
           >

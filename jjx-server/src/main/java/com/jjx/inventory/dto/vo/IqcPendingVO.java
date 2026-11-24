@@ -16,6 +16,8 @@ public class IqcPendingVO {
     private String supplierName;
     private BigDecimal totalQuantity;
     private Long materialCount;
+    /** 明细行数（按卷拆行后的行数，2026-11-24 dev-20261124-002） */
+    private Long itemCount;
     private Long inspectedCount;
     private Long pendingReviewCount;
     private Long approvedCount;
