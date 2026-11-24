@@ -23,9 +23,12 @@
         <el-button
           type="danger"
           plain
-          :disabled="readonly || !items.length || syncLoading || refreshLoading || clearConfirmPending"
+          :disabled="
+            readonly || !items.length || syncLoading || refreshLoading || clearConfirmPending
+          "
           @click="handleClearAllItems"
-        >清空明细</el-button>
+          >清空明细</el-button
+        >
         <el-button
           type="info"
           :icon="Refresh"
@@ -79,57 +82,13 @@
         @expand-change="handleLayoutExpand"
         class="bom-item-table"
       >
-        <!-- 序号列 - 拖拽手柄 -->
+        <!-- 序号列：只显示编号（拖拽手柄已移到操作列，dev-20261124-004） -->
         <el-table-column label="序号" width="50" align="center" fixed="left">
           <template #default="scope">
-            <div class="drag-cell">
-              <el-icon class="drag-handle"><Rank /></el-icon>
-              <el-icon v-if="scope.row.materialId" size="small" color="#15bf15">
-                <Check />
-              </el-icon>
-              <el-icon v-else size="small" color="#e56706">
-                <WarningFilled />
-              </el-icon>
-              <span v-if="comboNoOf(scope.$index)" class="row-index">{{
-                comboNoOf(scope.$index)
-              }}</span>
-            </div>
+            <span class="row-index">{{ comboNoOf(scope.$index) || '' }}</span>
           </template>
         </el-table-column>
-        <el-table-column v-if="hasLayoutMaterialDrafts" type="expand">
-          <template #default="scope">
-            <div v-if="hasLayoutMaterialDraft(scope.row)" style="padding: 12px">
-              <p>制造BOM投入明细仅保留在本窗口，需另存为制造BOM；普通行没有此明细。</p>
-              <el-button v-if="!readonly && layoutMaterialDrafts[String(scope.row.itemId)]?.length === 1" link type="danger" @click="emit('remove-layout-material', scope.row)">移除此制造BOM投入草稿</el-button>
-              <el-table :data="layoutMaterialDrafts[String(scope.row.itemId)]" border>
-                <el-table-column label="制造BOM投入物料" min-width="200">
-                  <template #default="child">
-                    <BomMaterialSelector
-                      v-if="!readonly"
-                      :material-id="child.row.materialId"
-                      :material-name="child.row.materialName"
-                      :allow-create="false"
-                      confirm-selection
-                      @draft-change="(draft) => { if (!readonly) child.row.searchPending = draft.pending }"
-                      @select="(material) => selectLayoutMaterial(child.row, material)"
-                      @clear="clearLayoutMaterial(child.row)"
-                    />
-                    <span v-else>{{ child.row.materialName }}</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="宽度(mm)" width="170">
-                  <template #default="child"><el-input-number v-model="child.row.widthMm" :disabled="readonly" :min="0.01" :precision="2" :controls="false" /></template>
-                </el-table-column>
-                <el-table-column label="跳距(mm)" width="170">
-                  <template #default="child"><el-input-number v-model="child.row.pitchMm" :disabled="readonly" :min="0.01" :precision="2" :controls="false" /></template>
-                </el-table-column>
-                <el-table-column label="每跳片数" width="100">
-                  <template #default="child">{{ child.row.pcsPerPitch }}</template>
-                </el-table-column>
-              </el-table>
-            </div>
-          </template>
-        </el-table-column>
+
         <el-table-column label="项目" prop="processName" width="80">
           <template #default="scope">
             <StandardProcessSelector
@@ -160,8 +119,72 @@
             </div>
           </template>
         </el-table-column>
+        <el-table-column v-if="hasLayoutMaterialDrafts" type="expand">
+          <template #default="scope">
+            <div v-if="hasLayoutMaterialDraft(scope.row)" style="padding: 12px">
+              <p>制造BOM投入明细仅保留在本窗口，需另存为制造BOM；普通行没有此明细。</p>
+              <el-button
+                v-if="!readonly && layoutMaterialDrafts[String(scope.row.itemId)]?.length === 1"
+                link
+                type="danger"
+                @click="emit('remove-layout-material', scope.row)"
+                >移除此制造BOM投入草稿</el-button
+              >
+              <el-table :data="layoutMaterialDrafts[String(scope.row.itemId)]" border>
+                <el-table-column label="制造BOM投入物料" min-width="200">
+                  <template #default="child">
+                    <BomMaterialSelector
+                      v-if="!readonly"
+                      :material-id="child.row.materialId"
+                      :material-name="child.row.materialName"
+                      :allow-create="false"
+                      confirm-selection
+                      @draft-change="
+                        (draft) => {
+                          if (!readonly) child.row.searchPending = draft.pending
+                        }
+                      "
+                      @select="(material) => selectLayoutMaterial(child.row, material)"
+                      @clear="clearLayoutMaterial(child.row)"
+                    />
+                    <span v-else>{{ child.row.materialName }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="宽度(mm)" width="170">
+                  <template #default="child"
+                    ><el-input-number
+                      v-model="child.row.widthMm"
+                      :disabled="readonly"
+                      :min="0.01"
+                      :precision="2"
+                      :controls="false"
+                  /></template>
+                </el-table-column>
+                <el-table-column label="跳距(mm)" width="170">
+                  <template #default="child"
+                    ><el-input-number
+                      v-model="child.row.pitchMm"
+                      :disabled="readonly"
+                      :min="0.01"
+                      :precision="2"
+                      :controls="false"
+                  /></template>
+                </el-table-column>
+                <el-table-column label="每跳片数" width="100">
+                  <template #default="child">{{ child.row.pcsPerPitch }}</template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="规格" prop="specification" width="180">
           <template #default="scope">
+            <el-icon v-if="scope.row.materialId" size="small" color="#15bf15">
+              <Check />
+            </el-icon>
+            <el-icon v-else size="small" color="#e56706">
+              <WarningFilled />
+            </el-icon>
             <span v-if="Number(scope.row.materialId) > 0">{{ autoSpecOf(scope.row) }}</span>
             <el-input
               v-else-if="quickMode"
@@ -340,8 +363,18 @@
         </el-table-column>
 
         <!-- 操作列 -->
-        <el-table-column label="操作" min-width="180" align="left" fixed="right">
+        <el-table-column label="操作" min-width="200" align="left" fixed="right">
           <template #default="scope">
+            <!-- 拖拽手柄：整组拖动，只在组合首行显示；其余行留位对齐（dev-20261124-004） -->
+            <span
+              v-if="!readonly && isComboRunFirst(scope.$index)"
+              class="drag-handle"
+              title="拖动排序"
+              aria-label="拖动排序"
+            >
+              <el-icon><Rank /></el-icon>
+            </span>
+            <span v-else class="drag-handle-placeholder" aria-hidden="true"></span>
             <el-button
               link
               type="primary"
@@ -370,7 +403,11 @@
               >删除</el-button
             >
             <el-button
-              v-if="showManufacturing(scope.row) && !hasLayoutMaterialDraft(scope.row) && (!quickMode || Number(scope.row.subBomId) > 0)"
+              v-if="
+                showManufacturing(scope.row) &&
+                !hasLayoutMaterialDraft(scope.row) &&
+                (!quickMode || Number(scope.row.subBomId) > 0)
+              "
               link
               type="primary"
               size="small"
@@ -379,10 +416,18 @@
               >{{ manufacturingLabel(scope.row) }}</el-button
             >
             <el-button
-              v-if="hasLayoutMaterialDraft(scope.row) && !isPendingRemove(scope.row)"
-              link type="primary" size="small" :disabled="readonly"
+              v-if="
+                scope.row.materialId &&
+                hasLayoutMaterialDraft(scope.row) &&
+                !isPendingRemove(scope.row)
+              "
+              link
+              type="primary"
+              size="small"
+              :disabled="readonly"
               @click="emit('save-manufacturing-draft', scope.row)"
-            >另存为生产BOM</el-button>
+              >保存BOM方案</el-button
+            >
             <el-button
               v-if="!scope.row.materialId && !isPendingRemove(scope.row)"
               link
@@ -519,15 +564,26 @@ const hasLayoutMaterialDraft = (row: EngineeringBomItem): boolean =>
   (props.layoutMaterialDrafts[String(row.itemId)]?.length || 0) > 0
 const hasLayoutMaterialDrafts = computed(() => items.value.some(hasLayoutMaterialDraft))
 const expandedLayoutRows = ref<string[]>([])
-const visibleLayoutExpandKeys = computed(() => expandedLayoutRows.value.filter((key) =>
-  items.value.some((row) => String(row.itemId) === String(key) && hasLayoutMaterialDraft(row))
-))
-const layoutExpandCellStyle = ({ row, column }: { row: EngineeringBomItem; column: { type?: string } }) =>
+const visibleLayoutExpandKeys = computed(() =>
+  expandedLayoutRows.value.filter((key) =>
+    items.value.some((row) => String(row.itemId) === String(key) && hasLayoutMaterialDraft(row))
+  )
+)
+const layoutExpandCellStyle = ({
+  row,
+  column,
+}: {
+  row: EngineeringBomItem
+  column: { type?: string }
+}) =>
   column.type === 'expand' && !hasLayoutMaterialDraft(row)
-    ? { visibility: 'hidden' as const, pointerEvents: 'none' as const } : {}
+    ? { visibility: 'hidden' as const, pointerEvents: 'none' as const }
+    : {}
 function handleLayoutExpand(_row: EngineeringBomItem, expanded: EngineeringBomItem[] | boolean) {
   if (!Array.isArray(expanded)) return
-  expandedLayoutRows.value = expanded.filter(hasLayoutMaterialDraft).map((row) => String(row.itemId))
+  expandedLayoutRows.value = expanded
+    .filter(hasLayoutMaterialDraft)
+    .map((row) => String(row.itemId))
 }
 const specErrors = ref<Record<string, boolean>>({})
 const specRequests = new Map<string, Promise<void>>()
@@ -707,6 +763,12 @@ const comboRuns = computed(() => {
 const comboNoOf = (index: number): number => {
   const run = comboRuns.value.find((r) => index >= r.start && index < r.start + r.size)
   return run ? run.no : 0
+}
+
+/** 拖拽手柄只在组合首行显示：整组拖动语义不变（dev-20261124-004）。 */
+const isComboRunFirst = (index: number): boolean => {
+  const run = comboRuns.value.find((r) => index >= r.start && index < r.start + r.size)
+  return !run || index === run.start
 }
 
 /** 序号列合并：同一组合合并成一个单元格 */
@@ -999,25 +1061,43 @@ function clearEditorItems() {
 }
 
 const handleClearAllItems = async () => {
-  if (props.readonly || !items.value.length || clearConfirmPending.value || syncLoading.value || refreshLoading.value) return
+  if (
+    props.readonly ||
+    !items.value.length ||
+    clearConfirmPending.value ||
+    syncLoading.value ||
+    refreshLoading.value
+  )
+    return
   const keys = items.value.map((row) => row.itemId)
   const approved = items.value.filter(isApprovedRow).length
-  const drafts = items.value.reduce((total, row) => total + (props.layoutMaterialDrafts[String(row.itemId)]?.length || 0), 0)
-  const message = `将清空当前 ${keys.length} 条明细，BOM表头保留。请重新录入或导入后再保存。`
-    + (drafts ? `同时丢弃 ${drafts} 条尚未另存的制造BOM投入草稿。` : '')
-    + (approved ? `其中 ${approved} 条已审核明细保存后仍走移除审核流程。` : '')
+  const drafts = items.value.reduce(
+    (total, row) => total + (props.layoutMaterialDrafts[String(row.itemId)]?.length || 0),
+    0
+  )
+  const message =
+    `将清空当前 ${keys.length} 条明细，BOM表头保留。请重新录入或导入后再保存。` +
+    (drafts ? `同时丢弃 ${drafts} 条尚未另存的制造BOM投入草稿。` : '') +
+    (approved ? `其中 ${approved} 条已审核明细保存后仍走移除审核流程。` : '')
   clearConfirmPending.value = true
   try {
     try {
       await ElMessageBox.confirm(message, '清空BOM明细', {
-        confirmButtonText: '确认清空', cancelButtonText: '取消', type: 'warning',
+        confirmButtonText: '确认清空',
+        cancelButtonText: '取消',
+        type: 'warning',
         closeOnClickModal: false,
       })
     } catch {
       return
     }
     if (props.readonly) return
-    if (syncLoading.value || refreshLoading.value || keys.length !== items.value.length || items.value.some((row, index) => row.itemId !== keys[index])) {
+    if (
+      syncLoading.value ||
+      refreshLoading.value ||
+      keys.length !== items.value.length ||
+      items.value.some((row, index) => row.itemId !== keys[index])
+    ) {
       ElMessage.warning('明细已变化或正在更新，请重新确认清空')
       return
     }
@@ -1623,31 +1703,49 @@ defineExpose({
   }
 }
 
-// 拖拽单元格样式
-.drag-cell {
-  display: flex;
+// 序号：纯编号，居中
+.row-index {
+  font-size: 13px;
+  color: #606266;
+  min-width: 16px;
+  text-align: center;
+}
+
+// 拖拽手柄（操作列最左）：整组拖动入口
+.drag-handle {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  width: 24px;
+  height: 24px;
+  margin-right: 8px;
+  border-radius: 4px;
+  color: #c0c4cc;
   cursor: grab;
   user-select: none;
+  vertical-align: middle;
+  transition: color 0.2s, background-color 0.2s;
 
-  .drag-handle {
+  .el-icon {
     font-size: 16px;
-    color: #c0c4cc;
-    transition: color 0.2s;
-
-    &:hover {
-      color: #409eff;
-    }
   }
 
-  .row-index {
-    font-size: 13px;
-    color: #606266;
-    min-width: 16px;
-    text-align: center;
+  &:hover {
+    color: #409eff;
+    background-color: #ecf5ff;
   }
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+// 非组合首行（或只读）留位，保证操作按钮对齐
+.drag-handle-placeholder {
+  display: inline-block;
+  width: 24px;
+  margin-right: 8px;
+  vertical-align: middle;
 }
 
 // 响应式适配
