@@ -1,5 +1,7 @@
 package com.jjx.product.service.impl;
 
+import cn.dev33.satoken.stp.StpUtil;
+import com.jjx.engineering.printing.artwork.ArtworkRepository;
 import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -31,6 +33,7 @@ import com.jjx.system.service.ReviewFlowService;
 public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMapper, EngineeringFilm>
         implements IEngineeringFilmService {
 
+    private final ArtworkRepository artworkRepository;
     private final EngineeringFilmMapper filmMapper;
     /** 2026-09-21（dev-20260921-013）：工程事件改手写 payload（带业务编码）。 */
     private final com.jjx.event.EventPublisher eventPublisher;
@@ -304,16 +307,14 @@ public class EngineeringFilmServiceImpl extends ServiceImpl<EngineeringFilmMappe
 
     @Override
     public List<EngineeringFilmVO> getFilmsByProductId(Long productId) {
-        List<EngineeringFilm> films = filmMapper.selectByProductId(productId);
-        return films.stream()
-                .map(EngineeringFilmServiceImpl::convertToVO).toList();
+        if (!StpUtil.hasPermission("engineering:film:view")) return List.of();
+        return artworkRepository.productVersions(productId, false);
     }
 
     @Override
     public List<EngineeringFilmVO> getCurrentFilmsByProductId(Long productId) {
-        List<EngineeringFilm> films = filmMapper.selectCurrentByProductId(productId);
-        return films.stream()
-                .map(EngineeringFilmServiceImpl::convertToVO).toList();
+        if (!StpUtil.hasPermission("engineering:film:view")) return List.of();
+        return artworkRepository.productVersions(productId, true);
     }
 
     @Override

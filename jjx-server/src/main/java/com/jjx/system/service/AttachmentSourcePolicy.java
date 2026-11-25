@@ -48,6 +48,11 @@ public class AttachmentSourcePolicy {
      * 字典 {@code attachment_document_type.ext_data.sources} 的取值必须取自本表键集合（见 {@link #knownSourceTypes()}）。
      */
     private static final Map<String, Source> SOURCES = Map.ofEntries(
+        Map.entry("print_artwork_version", new Source("engineering:film",
+            "SELECT CONCAT(a.artwork_no,'/',v.version_no) FROM print_artwork_version v JOIN print_artwork a USING(artwork_id) WHERE v.version_id=?",
+            "SELECT v.version_id FROM print_artwork_version v JOIN print_artwork a USING(artwork_id) WHERE CONCAT(a.artwork_no,'/',v.version_no)=?",
+            "SELECT COUNT(*) FROM print_artwork_version v JOIN engineering_resource_product_rel r ON r.resource_type='ARTWORK' AND r.resource_id=v.artwork_id AND r.is_active=1 WHERE v.version_id=? AND r.product_id=?",
+            null, false)),
         Map.entry("work_spec", new Source("product",
             "SELECT product_code FROM product WHERE product_id=?",
             "SELECT product_id FROM product WHERE product_code=?",

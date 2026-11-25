@@ -46,6 +46,12 @@ public class AttachmentRefService {
     public Long create(AttachmentRefDTO request) {
         String source = sources.canonical(request.getSourceType());
         String sourceNo = sources.check(source, request.getSourceId(), true);
+        if ("print_artwork_version".equals(source)) {
+            var drafts = jdbc.queryForList("SELECT version_id FROM print_artwork_version "
+                + "WHERE version_id=? AND status='DRAFT' AND drawing_file_id=? FOR UPDATE",
+                Long.class, request.getSourceId(), request.getAttachmentId());
+            if (drafts.isEmpty()) throw new BusinessException("只能关联本草稿版本指定的图纸");
+        }
         // 归属收口（dev-20261015-027）：前端可能只传编码或都没传 —— 来源唯一产品时后端兜底写全（多产品/无产品不猜）
         Long productId = request.getProductId();
         String productCode = optional(request.getProductCode(), 64);

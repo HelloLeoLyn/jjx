@@ -60,6 +60,14 @@ public class AttachmentAccessService {
         // 时间条件只是异常防护——挡住历史 ID 被后来新建的附件复用而造成的误认（V1-A 实测 19 条异常引用）。
         // 它**不构成附件身份证明**：时间匹配不等于内容一致；身份一致需要绑定时的内容指纹（sha256），
         // 现表未存该字段，故此类引用仍需人工复核（见 jjx-docs/history 的对账清单）。
+        // 正式切换前同一附件服务也运行于尚未应用 P02 的库。
+        List<String> artworkTables = jdbc.queryForList("SELECT table_name FROM information_schema.tables "
+            + "WHERE table_schema=DATABASE() AND table_name='print_artwork_version'", String.class);
+        if (!artworkTables.isEmpty()) {
+            Long artwork = jdbc.queryForObject("SELECT COUNT(*) FROM print_artwork_version WHERE drawing_file_id=?",
+                Long.class, file.getId());
+            if (artwork != null && artwork > 0) return true;
+        }
         Long hard = jdbc.queryForObject("SELECT (SELECT COUNT(*) FROM product_work_spec_item WHERE resource_type IN ('DRAWING','DOCSET_FILE') AND source_id=?) + (SELECT COUNT(*) FROM quality_template_registry q WHERE q.file_id=? AND (SELECT a2.create_time FROM sys_attachment a2 WHERE a2.id=q.file_id) <= q.create_time) + (SELECT COUNT(*) FROM engineering_film WHERE file_id=?) + (SELECT COUNT(*) FROM product WHERE JSON_UNQUOTE(JSON_EXTRACT(work_spec_json,'$.structureFileId'))=?)",
             Long.class, file.getId(), file.getId(), file.getId(), String.valueOf(file.getId()));
         if (hard != null && hard > 0) return true;

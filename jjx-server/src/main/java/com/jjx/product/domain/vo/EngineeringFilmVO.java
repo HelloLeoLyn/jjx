@@ -10,6 +10,9 @@ import java.time.LocalDateTime;
 @Schema(description = "菲林VO")
 public class EngineeringFilmVO {
     
+    private Long artworkId;
+    private Long versionId;
+    private String versionStatus;
     private Long filmId;
     private String filmCode;
     private String filmName;
