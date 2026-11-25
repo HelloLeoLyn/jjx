@@ -101,6 +101,9 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
      */
     Long createProductionPick(Long workOrderId, java.util.List<java.util.Map<String, Object>> items);
 
+    /** 生产领料按 FIFO 分配到库存批次/库位（幂等：已分配的明细跳过）。 */
+    java.util.Map<String, Object> allocateProductionPick(Long outboundId);
+
     /** 创建用料计算页提交的原料/替代料分配，保留 BOM 对应项与需求抵扣量。 */
     Long createCalculatedProductionPick(Long workOrderId, java.util.List<java.util.Map<String, Object>> items);
 

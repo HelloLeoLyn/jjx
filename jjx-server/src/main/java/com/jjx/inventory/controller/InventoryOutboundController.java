@@ -190,6 +190,13 @@ public class InventoryOutboundController {
         return Result.success(outboundService.createProductionPick(workOrderId, items));
     }
 
+    @PostMapping("/{outboundId}/allocate")
+    @Operation(summary = "生产领料按 FIFO 分配库位/批次（幂等）")
+    @SaCheckPermission("inventory:outbound:edit")
+    public Result<java.util.Map<String, Object>> allocateProductionPick(@PathVariable Long outboundId) {
+        return Result.success(outboundService.allocateProductionPick(outboundId));
+    }
+
     @PostMapping("/create-calculated-production-pick/{workOrderId}")
     @Operation(summary = "按工单用料计算方案生成领料单，保留替代关系与抵扣量")
     @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#workOrderId", action = LogActions.OUTBOUND_PRODUCTION_PICK)

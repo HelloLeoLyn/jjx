@@ -2064,7 +2064,104 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createProductionPick(Long workOrderId, java.util.List<java.util.Map<String, Object>> items) {
-        return createProductionPickInternal(workOrderId, items, null, null, null);
+        Long outboundId = createProductionPickInternal(workOrderId, items, null, null, null);
+        // dev-20261125-004：生成后自动按 FIFO 分配库位/批次（失败不阻断建单）
+        try {
+            allocateProductionPick(outboundId);
+        } catch (Exception e) {
+            log.warn("生产领料自动分配库位失败: outboundId={}, err={}", outboundId, e.getMessage());
+        }
+        return outboundId;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public java.util.Map<String, Object> allocateProductionPick(Long outboundId) {
+        InventoryOutboundOrder order = outboundOrderMapper.selectById(outboundId);
+        if (order == null) throw new BusinessException("出库单不存在");
+        java.util.List<InventoryOutboundItem> items = outboundItemMapper.selectByOutboundId(outboundId);
+        int allocatedLines = 0, shortageLines = 0;
+        int sort = 0;
+        for (InventoryOutboundItem it : items) {
+            if (it.getSortOrder() != null && it.getSortOrder() > sort) sort = it.getSortOrder();
+        }
+        for (InventoryOutboundItem item : items) {
+            if (item.getStockItemId() != null || item.getMaterialId() == null) continue;
+            BigDecimal remaining = item.getQuantity() == null ? BigDecimal.ZERO : item.getQuantity();
+            if (remaining.signum() <= 0) continue;
+            java.util.List<InventoryStockItem> fifo = stockItemMapper.selectFIFOAvailableForUpdate(item.getMaterialId());
+            boolean first = true;
+            for (InventoryStockItem batch : fifo) {
+                if (remaining.signum() <= 0) break;
+                if (order.getWarehouseId() != null && batch.getWarehouseId() != null
+                        && !order.getWarehouseId().equals(batch.getWarehouseId())) continue;
+                BigDecimal qty = batch.getQuantity() == null ? BigDecimal.ZERO : batch.getQuantity();
+                BigDecimal reserved = batch.getReservedQuantity() == null ? BigDecimal.ZERO : batch.getReservedQuantity();
+                BigDecimal avail = qty.subtract(reserved);
+                if (avail.signum() <= 0) continue;
+                BigDecimal take = remaining.min(avail);
+                if (take.signum() <= 0) continue;
+                if (first) {
+                    item.setStockItemId(batch.getItemId());
+                    item.setLocationId(batch.getLocationId());
+                    item.setBatchNo(batch.getBatchNo());
+                    item.setRollNo(batch.getRollNo());
+                    item.setQuantity(take);
+                    if (item.getUnitPrice() != null) item.setAmount(item.getUnitPrice().multiply(take));
+                    outboundItemMapper.updateById(item);
+                    first = false;
+                } else {
+                    InventoryOutboundItem extra = new InventoryOutboundItem();
+                    extra.setOutboundId(outboundId);
+                    extra.setMaterialId(item.getMaterialId());
+                    extra.setMaterialCode(item.getMaterialCode());
+                    extra.setMaterialName(item.getMaterialName());
+                    extra.setSpecification(item.getSpecification());
+                    extra.setUnit(item.getUnit());
+                    extra.setQuantity(take);
+                    extra.setUnitPrice(item.getUnitPrice());
+                    if (item.getUnitPrice() != null) extra.setAmount(item.getUnitPrice().multiply(take));
+                    extra.setStockItemId(batch.getItemId());
+                    extra.setLocationId(batch.getLocationId());
+                    extra.setBatchNo(batch.getBatchNo());
+                    extra.setRollNo(batch.getRollNo());
+                    extra.setSourceBomItemId(item.getSourceBomItemId());
+                    extra.setSortOrder(++sort);
+                    outboundItemMapper.insert(extra);
+                }
+                remaining = remaining.subtract(take);
+                allocatedLines++;
+            }
+            if (remaining.signum() > 0) {
+                InventoryOutboundItem rest = new InventoryOutboundItem();
+                rest.setOutboundId(outboundId);
+                rest.setMaterialId(item.getMaterialId());
+                rest.setMaterialCode(item.getMaterialCode());
+                rest.setMaterialName(item.getMaterialName());
+                rest.setSpecification(item.getSpecification());
+                rest.setUnit(item.getUnit());
+                rest.setQuantity(remaining);
+                rest.setUnitPrice(item.getUnitPrice());
+                if (item.getUnitPrice() != null) rest.setAmount(item.getUnitPrice().multiply(remaining));
+                rest.setSourceBomItemId(item.getSourceBomItemId());
+                rest.setSortOrder(++sort);
+                outboundItemMapper.insert(rest);
+                shortageLines++;
+            }
+        }
+        java.util.List<InventoryOutboundItem> after = outboundItemMapper.selectByOutboundId(outboundId);
+        BigDecimal totalQty = BigDecimal.ZERO, totalAmt = BigDecimal.ZERO;
+        for (InventoryOutboundItem i : after) {
+            totalQty = totalQty.add(i.getQuantity() == null ? BigDecimal.ZERO : i.getQuantity());
+            if (i.getAmount() != null) totalAmt = totalAmt.add(i.getAmount());
+        }
+        order.setTotalQuantity(totalQty);
+        order.setTotalAmount(totalAmt);
+        outboundOrderMapper.updateById(order);
+        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("allocatedLines", allocatedLines);
+        result.put("shortageLines", shortageLines);
+        return result;
     }
 
     private java.util.Map<Long, BigDecimal> sumPickedCoverageByBomItem(
