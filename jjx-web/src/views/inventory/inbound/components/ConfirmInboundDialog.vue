@@ -26,9 +26,23 @@
         </el-option-group>
       </el-select>
       <el-button :disabled="!bulkLocationId" @click="applyBulk">应用到本仓库所有行</el-button>
+      <el-button :disabled="!bulkLocationId || !selectedRows.length" @click="applyBulkToSelected">
+        应用到选中（{{ selectedRows.length }}）
+      </el-button>
+      <el-button link :disabled="!selectedRows.length" @click="clearSelection">清空勾选</el-button>
       <span class="bulk-tip">只影响与所选库位同仓库的明细</span>
     </div>
-    <el-table v-loading="loading" :data="rows" border size="small" class="confirm-table" max-height="420">
+    <el-table
+      ref="tableRef"
+      v-loading="loading"
+      :data="rows"
+      border
+      size="small"
+      class="confirm-table"
+      max-height="420"
+      @selection-change="onSelectionChange"
+    >
+      <el-table-column type="selection" width="46" />
       <el-table-column prop="inboundNo" label="入库单号" width="150" />
       <el-table-column prop="materialCode" label="物料编码" width="130" />
       <el-table-column prop="materialName" label="物料名称" min-width="150" />
@@ -92,6 +106,22 @@ const emit = defineEmits<{
 const loading = ref(false)
 const rows = ref<ConfirmRow[]>([])
 const bulkLocationId = ref<number>()
+const tableRef = ref<any>()
+const selectedRows = ref<ConfirmRow[]>([])
+
+function onSelectionChange(selection: ConfirmRow[]) {
+  selectedRows.value = selection
+}
+
+function clearSelection() {
+  tableRef.value?.clearSelection?.()
+}
+
+/** 把所选库位应用到勾选中的明细行 */
+function applyBulkToSelected() {
+  if (!bulkLocationId.value || !selectedRows.value.length) return
+  selectedRows.value.forEach((row) => { row.locationId = bulkLocationId.value as number })
+}
 const warehouseNames = reactive<Record<string, string>>({})
 
 /** 统一设置：按仓库分组展示全部已加载库位 */

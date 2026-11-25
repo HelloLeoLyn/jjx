@@ -24,8 +24,20 @@
         />
       </el-select>
       <el-button :disabled="!bulkLocationId" @click="applyBulk">应用到全部明细</el-button>
+      <el-button :disabled="!bulkLocationId || !selectedRows.length" @click="applyBulkToSelected">
+        应用到选中（{{ selectedRows.length }}）
+      </el-button>
+      <el-button link :disabled="!selectedRows.length" @click="clearSelection">清空勾选</el-button>
     </div>
-    <el-table v-loading="loading" :data="items" border class="posting-table">
+    <el-table
+      ref="tableRef"
+      v-loading="loading"
+      :data="items"
+      border
+      class="posting-table"
+      @selection-change="onSelectionChange"
+    >
+      <el-table-column type="selection" width="46" />
       <el-table-column prop="materialCode" label="物料编码" width="150" />
       <el-table-column prop="materialName" label="物料名称" min-width="180" />
       <el-table-column prop="supplierMaterialName" label="供应商品名" min-width="180" />
@@ -92,6 +104,22 @@ type PostingRow = Omit<InboundItemVO, 'locationId'> & { locationId?: number }
 const items = ref<PostingRow[]>([])
 const locations = ref<InventoryStorageLocation[]>([])
 const bulkLocationId = ref<number>()
+const tableRef = ref<any>()
+const selectedRows = ref<PostingRow[]>([])
+
+function onSelectionChange(selection: PostingRow[]) {
+  selectedRows.value = selection
+}
+
+function clearSelection() {
+  tableRef.value?.clearSelection?.()
+}
+
+/** 统一设置库位：应用到勾选中的明细行 */
+function applyBulkToSelected() {
+  if (!bulkLocationId.value || !selectedRows.value.length) return
+  selectedRows.value.forEach((item) => { item.locationId = bulkLocationId.value as number })
+}
 
 /** 统一设置库位：应用到当前单据全部明细 */
 function applyBulk() {
