@@ -193,7 +193,11 @@ export interface EngineeringRoutingItemDTO {
   groupId?: number
   groupOrder?: number
   groupName?: string
-  processId: number
+  processId?: number | null
+  processName?: string
+  majorCategory?: string
+  parentId?: number | null
+  children?: EngineeringRoutingItemDTO[]
   processOrder?: number
   customLaborHours?: number
   customMachineHours?: number

@@ -97,6 +97,7 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
     @Override
     @Transactional(rollbackFor = Exception.class)
     public EngineeringRoutingVO createRouting(EngineeringRoutingDTO dto) {
+        validatePrintNames(dto.getItems());
         // 检查编码是否重复
         checkCodeUnique(dto.getRoutingCode(), dto.getRoutingVersion());
 
@@ -134,6 +135,7 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
     @Override
     @Transactional(rollbackFor = Exception.class)
     public EngineeringRoutingVO updateRouting(EngineeringRoutingDTO dto) {
+        validatePrintNames(dto.getItems());
         EngineeringRouting routing = getById(dto.getRoutingId());
         if (routing == null) {
             throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
@@ -987,6 +989,18 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
                     routingDetailMapper.insert(child);
                 }
             }
+        }
+    }
+
+    /** 印刷名称是已有必填项；新增、编辑及升版均在任何写入前拒绝空名称。dev-20261125-006 */
+    private void validatePrintNames(List<EngineeringRoutingItemDTO> rows) {
+        if (rows == null) return;
+        for (EngineeringRoutingItemDTO row : rows) {
+            if (row == null) throw new BusinessException("工艺路线明细不能为空");
+            if ("PRINT".equals(row.getMajorCategory()) && !StringUtils.hasText(row.getProcessName())) {
+                throw new BusinessException("印刷工序名称不能为空");
+            }
+            validatePrintNames(row.getChildren());
         }
     }
 

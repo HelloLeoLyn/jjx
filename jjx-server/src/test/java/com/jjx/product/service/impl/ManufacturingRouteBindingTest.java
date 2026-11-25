@@ -141,4 +141,56 @@ class ManufacturingRouteBindingTest {
         assertEquals(second.getRoutingId(), current.getRoutingId());
         assertNull(routingMapper.selectCurrentByOutput("PRODUCT", 349L));
     }
+    private com.jjx.product.domain.dto.EngineeringRoutingItemDTO print(String name) {
+        var item = new com.jjx.product.domain.dto.EngineeringRoutingItemDTO();
+        item.setMajorCategory("PRINT"); item.setProcessCategory("PANEL"); item.setProcessName(name);
+        item.setCustomProcessParams("{\"printName\":\"\",\"colorNo\":\"185C\"}");
+        return item;
+    }
+
+    @Test
+    void printNameSurvivesCreateReadUpdateAndReopenWithRealMapper() {
+        var request = dto("RT-PRINT", "PRODUCT", 1L);
+        request.setItems(java.util.List.of(print("面板丝印")));
+        var created = service.createRouting(request);
+        assertEquals("面板丝印", created.getItems().getFirst().getProcessName());
+        assertEquals("PRINT", created.getItems().getFirst().getMajorCategory());
+        assertEquals("面板丝印", service.getRoutingItems(created.getRoutingId()).getItems().getFirst().getProcessName());
+        var update = dto("RT-PRINT", "PRODUCT", 1L); update.setRoutingId(created.getRoutingId());
+        update.setItems(java.util.List.of(print("面板移印")));
+        service.updateRouting(update);
+        var reopened = service.getRoutingItems(created.getRoutingId()).getItems().getFirst();
+        assertEquals("面板移印", reopened.getProcessName());
+        assertTrue(reopened.getCustomProcessParams().contains("185C"));
+    }
+
+    @Test
+    void emptyPrintNameRejectsCreateEditAndVersionBumpBeforeAnyWrite() {
+        for (String name : new String[]{null, "", " \t "}) {
+            var request = dto("RT-EMPTY", "PRODUCT", 1L);
+            request.setItems(java.util.List.of(print(name)));
+            assertTrue(assertThrows(BusinessException.class, () -> service.createRouting(request)).getMessage().contains("印刷工序名称不能为空"));
+            assertEquals(0L, routingMapper.selectCount(null));
+        }
+        var valid = dto("RT-VALID", "PRODUCT", 1L); valid.setItems(java.util.List.of(print("保留名称")));
+        var saved = service.createRouting(valid);
+        for (boolean bump : new boolean[]{false, true}) {
+            var request = dto("RT-VALID", "PRODUCT", 1L); request.setRoutingId(saved.getRoutingId());
+            request.setBumpVersion(bump); request.setItems(java.util.List.of(print(" ")));
+            assertThrows(BusinessException.class, () -> service.updateRouting(request));
+            assertEquals(1L, routingMapper.selectCount(null));
+            assertEquals("保留名称", service.getRoutingItems(saved.getRoutingId()).getItems().getFirst().getProcessName());
+        }
+    }
+
+    @Test
+    void unnamedPrintChildCannotLeaveAnEmptyParentRoute() {
+        var request = dto("RT-CHILD", "PRODUCT", 1L);
+        var parent = new com.jjx.product.domain.dto.EngineeringRoutingItemDTO();
+        parent.setMajorCategory("ASSEMBLY"); parent.setProcessName("组合");
+        parent.setChildren(java.util.List.of(print(""))); request.setItems(java.util.List.of(parent));
+        assertThrows(BusinessException.class, () -> service.createRouting(request));
+        assertEquals(0L, routingMapper.selectCount(null));
+    }
+
 }

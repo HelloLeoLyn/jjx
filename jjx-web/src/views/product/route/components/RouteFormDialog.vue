@@ -143,7 +143,11 @@ import { FullScreen } from '@element-plus/icons-vue'
 import { productRouteApi } from '@/api/product/routing'
 import { RouteStatusEnum } from '@/enums/product'
 import type { ProductItem, StandardProcessOption } from '@/types/product'
-import type { ProductRouteFormData, EngineeringRoutingItemVO } from '@/types/product/routing'
+import type {
+  ProductRouteFormData,
+  EngineeringRoutingItemVO,
+  EngineeringRoutingItemDTO,
+} from '@/types/product/routing'
 import ProductSelector from '@/components/Selector/ProductSelector.vue'
 import RouteItemIconEditor from './RouteItemIconEditor.vue'
 
@@ -274,7 +278,9 @@ function snapshotProcessParams(value?: string): unknown {
       if (Array.isArray(node)) return node.map(sortValue)
       if (node && typeof node === 'object') {
         return Object.fromEntries(
-          Object.keys(node).sort().map((key) => [key, sortValue(node[key])])
+          Object.keys(node)
+            .sort()
+            .map((key) => [key, sortValue(node[key])])
         )
       }
       return node
@@ -449,13 +455,16 @@ const handleItemsUpdate = (items: EngineeringRoutingItemVO[]) => {
   recomputeDirty()
 }
 
-const toItemDTO = (item: EngineeringRoutingItemVO) => ({
+/** 新增和编辑共用保存字段，印刷名称及组合子项不能遗漏。dev-20261125-006 */
+const toItemDTO = (item: EngineeringRoutingItemVO): EngineeringRoutingItemDTO => ({
   itemId: item.itemId,
   routingId: item.routingId,
   groupId: item.groupId ?? undefined,
   groupOrder: item.groupOrder ?? undefined,
   groupName: item.groupName ?? undefined,
   processId: item.processId,
+  processName: item.processName,
+  parentId: item.parentId,
   processOrder: item.processOrder,
   customLaborHours: item.customLaborHours,
   customMachineHours: item.customMachineHours,
@@ -464,8 +473,22 @@ const toItemDTO = (item: EngineeringRoutingItemVO) => ({
   remark: item.remark,
   processCategory: item.processCategory,
   majorCategory: item.majorCategory,
-  children: item.children,
+  workInstruction: item.workInstruction,
+  indexNumber: item.indexNumber ?? undefined,
+  precondition: item.precondition ?? undefined,
+  preconditionDisplay: item.preconditionDisplay ?? undefined,
+  isOptional: item.isOptional,
+  children: item.children?.map(toItemDTO),
 })
+
+/** 输入提醒；后端同样在写入前执行印刷名称必填校验。 */
+function hasUnnamedPrint(items: EngineeringRoutingItemVO[]): boolean {
+  return items.some(
+    (item) =>
+      (item.majorCategory === 'PRINT' && !item.processName?.trim()) ||
+      (item.children?.length && hasUnnamedPrint(item.children))
+  )
+}
 
 /** 校验 + 保存；成功返回 true。不负责关闭弹窗（关闭由调用方按需执行）。 */
 const doSave = async (): Promise<boolean> => {
@@ -480,6 +503,11 @@ const doSave = async (): Promise<boolean> => {
     ElMessage.warning('请至少添加一道工序')
     return false
   }
+  if (hasUnnamedPrint(items)) {
+    ElMessage.warning('请填写印刷名称后再保存')
+    return false
+  }
+  const itemDTOs = items.map(toItemDTO)
   submitLoading.value = true
   try {
     if (activeRoutingId.value !== undefined) {
@@ -488,7 +516,7 @@ const doSave = async (): Promise<boolean> => {
       const payload: any = {
         ...formData,
         routingId: activeRoutingId.value,
-        items,
+        items: itemDTOs,
         bumpVersion: changed && isApproved,
       }
       if (changed && isApproved) payload.changeNote = changeNote.value.trim()
@@ -506,7 +534,7 @@ const doSave = async (): Promise<boolean> => {
     } else {
       const res = await productRouteApi.addProductRoute({
         ...formData,
-        items: items.map(toItemDTO) as any,
+        items: itemDTOs,
       })
       const newId = res?.data?.routingId
       ElMessage.success('新增成功')
