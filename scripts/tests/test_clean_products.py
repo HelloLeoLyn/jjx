@@ -12,6 +12,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / 'scripts/db-clean-test-data.sh'
 PRODUCTS = ('product_config_option', 'product_config_model', 'product', 'product_category')
+RETAINED_INFRA = ('inventory_storage_location', 'production_equipment', 'portal_language_config')
 MOCK = r'''#!/usr/bin/env python3
 import json, os, pathlib, re, sys
 f = json.loads(os.environ['CLEAN_TEST_FIXTURE'])
@@ -36,7 +37,10 @@ elif q.startswith('SELECT COUNT(*)'):
     if table == f.get('query_failure'):
         print('mock database read error', file=sys.stderr)
         sys.exit(1)
-    if table == 'inventory_material' and 'product_id' in q:
+    if table in ('inventory_storage_location', 'production_equipment', 'portal_language_config'):
+        expected = {'inventory_storage_location': 5, 'production_equipment': 3, 'portal_language_config': 2}[table]
+        print(f.get('retained_after', {}).get(table, expected) if capture.exists() else expected)
+    elif table == 'inventory_material' and 'product_id' in q:
         print(f.get('retained_ref', 0))
     elif table == 'archive_production_quality_inspection' and 'product_code' in q:
         print(f.get('code_ref', 0))
@@ -124,6 +128,54 @@ class CleanProductsTest(unittest.TestCase):
             self.assertNotIn('product: 3 行', r.stdout)
         self.assertFalse(self.capture.exists())
 
+    def test_infrastructure_is_retained_and_covered_in_all_previews(self):
+        for args in ([], ['--domains', 'inventory'], ['--domains', 'purchase'],
+                     ['--domains', 'quality'], ['--domains', 'purchase,inventory,quality']):
+            with self.subTest(args=args):
+                r = self.run_script(args)
+                self.assertEqual(0, r.returncode, r.stdout + r.stderr)
+                for table, count in zip(RETAINED_INFRA, (5, 3, 2)):
+                    self.assertIn(f'{table}: {count} 行（保留）', r.stdout)
+                self.assertIn('张表均有归宿', r.stdout)
+                self.assertFalse(self.capture.exists())
+
+    def test_simulated_execution_preserves_infrastructure_in_full_and_domain_modes(self):
+        for domains in (None, 'inventory', 'purchase', 'quality', 'purchase,inventory,quality'):
+            with self.subTest(domains=domains):
+                if self.capture.exists():
+                    self.capture.unlink()
+                args = ['--execute', '--backup', str(self.backup)]
+                if domains:
+                    args += ['--domains', domains]
+                r = self.run_script(args, terminal=True)
+                self.assertEqual(0, r.returncode, r.stdout + r.stderr)
+                sql = self.capture.read_text()
+                for table, count in zip(RETAINED_INFRA, (5, 3, 2)):
+                    self.assertNotRegex(sql, rf'(?mi)^\s*(?:TRUNCATE(?: TABLE)?|DELETE FROM)\s+`?{table}`?\b')
+                    self.assertIn(f'保留核验 {table}: {count} → {count} 行', r.stdout)
+                self.assertIn('保留基础资料核验通过', r.stdout)
+                if not domains or 'inventory' in domains:
+                    self.assertIn('TRUNCATE inventory_stock;', sql)
+
+    def test_retained_infrastructure_change_fails_postcheck(self):
+        for table in RETAINED_INFRA:
+            with self.subTest(table=table):
+                if self.capture.exists():
+                    self.capture.unlink()
+                r = self.run_script(['--execute', '--backup', str(self.backup)], terminal=True,
+                                    retained_after={table: 0})
+                self.assertNotEqual(0, r.returncode)
+                self.assertTrue(self.capture.exists())
+                self.assertIn('保留基础资料行数发生变化', r.stderr)
+                self.assertNotIn('保留基础资料核验通过', r.stdout)
+
+    def test_retained_infrastructure_read_failure_blocks_execution(self):
+        r = self.run_script(['--execute', '--backup', str(self.backup)], terminal=True,
+                            query_failure='production_equipment')
+        self.assertNotEqual(0, r.returncode)
+        self.assertIn('mock database read error', r.stderr)
+        self.assertFalse(self.capture.exists())
+
     def test_retained_id_code_and_tag_refs_block(self):
         for fixture, expected in (({'retained_ref': 1}, 'inventory_material.product_id'),
                                   ({'code_ref': 1}, 'archive_production_quality_inspection.product_code'),
@@ -176,6 +228,7 @@ class CleanProductsTest(unittest.TestCase):
         r = self.run_script(['--execute', '--backup', str(self.backup)], terminal=True)
         self.assertEqual(0, r.returncode, r.stdout + r.stderr)
         sql = self.capture.read_text()
+        self.assertTrue(sql.startswith('DELIMITER //\n'))
         for table in PRODUCTS:
             self.assertRegex(sql, r'(?m)^TRUNCATE ' + table + ';')
         self.assertIn("DELETE FROM sys_attachment WHERE biz_type = 'product'", sql)

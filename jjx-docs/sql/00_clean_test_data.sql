@@ -12,9 +12,13 @@ DROP PROCEDURE assert_clean_test_target//
 DELIMITER ;
 
 -- =====================================================
--- 清理测试数据脚本（v24）
+-- 清理测试数据脚本（v26）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
+-- v26 变更（2026-11-25，任务 dev-20261125-005，用户确认）：
+--   库位 inventory_storage_location、生产设备 production_equipment、门户语言配置 portal_language_config
+--   转为保留基础资料；全量与各域清理都保留，基础资料核验展示三表数量。
+--   全量清理包含产品及附件的既有规则不变；脚本增加三表清理前后行数一致核验。
 -- v22 变更（2026-10-10，任务 dev-20261010-004）：
 --   【口径修正】sys_attachment 原为整表 TRUNCATE，会连带清掉「配置/基础档案类上传资产」
 --   （工序图标 engineering_jjx_icon、公司 logo system_config、质量模板 quality_template、
@@ -321,7 +325,7 @@ TRUNCATE work_spec_usage;
 
 TRUNCATE production_order;
 
-TRUNCATE production_equipment;
+-- dev-20261125-005：生产设备档案保留，不清理 production_equipment。
 
 -- ==================== 8. 库存模块（v4 起物料/仓库也清） ====================
 TRUNCATE inventory_alert_log;
@@ -354,7 +358,7 @@ TRUNCATE inventory_stock_item;
 
 TRUNCATE inventory_stock;
 
-TRUNCATE inventory_storage_location;
+-- dev-20261125-005：库位结构保留，不清理 inventory_storage_location。
 
 -- v8：仓库保留不清（基础档案，出库单创建依赖默认仓库）
 -- TRUNCATE inventory_warehouse;
@@ -372,7 +376,7 @@ TRUNCATE portal_product_display;
 
 TRUNCATE portal_page_content;
 
-TRUNCATE portal_language_config;
+-- dev-20261125-005：门户语言配置保留，不清理 portal_language_config。
 
 -- ==================== 10. 任务模块（保留开发任务） ====================
 -- 只清 office/emergency 演示任务，保留 kanban_module='dev' 开发任务
@@ -471,6 +475,7 @@ DELETE FROM inventory_item WHERE item_type = 'PRODUCT' AND NOT EXISTS (SELECT 1 
 --             sys_config（group=quality_config, key=quality.sampling_plan，JSON 数组；迁移 219，dev-20260924-021）
 -- 生产基础资料：engineering_standard_process
 -- 图标学习样本：engineering_process_icon_sample（v14 起保留）
+-- 仓储/生产/门户基础资料：inventory_storage_location / production_equipment / portal_language_config（dev-20261125-005，用户确认保留）
 -- 业务基础资料：sales_customer / purchase_supplier / inventory_material /
 --               inventory_material_category / inventory_warehouse /
 --               inventory_item（统一库存物品主数据，由物料派生，与物料同级）
@@ -533,6 +538,9 @@ SELECT
     (SELECT COUNT(*) FROM inventory_material) AS materials,
     (SELECT COUNT(*) FROM purchase_supplier) AS suppliers,
     (SELECT COUNT(*) FROM inventory_warehouse) AS warehouses,
+    (SELECT COUNT(*) FROM inventory_storage_location) AS storage_locations,
+    (SELECT COUNT(*) FROM production_equipment) AS production_equipment,
+    (SELECT COUNT(*) FROM portal_language_config) AS portal_language_configs,
     (SELECT COUNT(*) FROM engineering_standard_process) AS standard_processes,
     (SELECT COUNT(*) FROM quality_template_registry) AS quality_templates,
     (SELECT COUNT(*) FROM sys_config WHERE config_key = 'quality.sampling_plan') AS sampling_plan_configs,

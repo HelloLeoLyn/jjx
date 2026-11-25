@@ -45,6 +45,9 @@ DOMAINS=()
 DOMAIN_LABEL=""
 INCLUDE_PRODUCTS=0
 PRODUCT_TABLES=(product_config_option product_config_model product product_category)
+# dev-20261125-005：用户确认的保留基础资料，清理前后数量必须一致。
+RETAINED_INFRA_TABLES=(inventory_storage_location production_equipment portal_language_config)
+RETAINED_INFRA_COUNTS=()
 PLAN_SQL=""
 cleanup_plan() { [ -z "$PLAN_SQL" ] || rm -f "$PLAN_SQL"; }
 trap cleanup_plan EXIT
@@ -61,6 +64,7 @@ usage() {
 危险等级: 🟢 无参数/--domains=只读体检（不写库）／🔴 --execute 真清理（体检 → 校验手工备份 → 人工确认 → 执行）
 前置: --execute 必须在终端手工执行（agent/管道一律拒绝）；确认方式=手工输入库名 jjx_erp_db；BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/）里要有今天的全库备份（或用 --backup 指定）；备份必须排除 hr_employee
 域参数: --domains <逗号分隔>，可选 purchase / inventory / quality；可组合，域模式不清理 sys_task
+保留口径: 库位、生产设备、门户语言配置在全量/域模式都保留，执行前后校验三表行数一致
 产品口径: 全量清理一律包含全部产品资料（分类/配置模型/选项 + 产品附件）及无业务引用的 PRODUCT 库存身份；不能区分正式与测试产品。--include-products 保留兼容、等价默认；域模式不含产品。
 用法:
   bash scripts/db-clean-test-data.sh             只读体检：打印本次将删除多少行（全量含产品）
@@ -310,6 +314,8 @@ RETAINED_TABLES=(
   engineering_standard_process engineering_process_icon_sample
   sales_customer sales_customer_address purchase_supplier inventory_material inventory_material_category inventory_attribute_template
   inventory_warehouse inventory_item
+  # dev-20261125-005：三类基础资料转保留，与 SQL 第12节同步。
+  inventory_storage_location production_equipment portal_language_config
   # 物料必填矩阵（品类→字段，迁移 300）：基础配置，随分类保留，清掉会让导入/保存报缺列
   inventory_material_required_field
   # 物料关键词归类规则（迁移 308）：基础配置，随物料分类保留
@@ -383,6 +389,14 @@ check_retained_product_refs() {
   ok "产品引用检查通过：保留表无产品引用"
 }
 check_retained_product_refs
+
+say ""
+say "④ 保留基础资料（本次不会清理）"
+for t in "${RETAINED_INFRA_TABLES[@]}"; do
+  n="$(db_count "SELECT COUNT(*) FROM \`$t\`;")" || exit 1
+  RETAINED_INFRA_COUNTS+=("$n")
+  say "   $t: $n 行（保留）"
+done
 
 if [ "$EXECUTE" -eq 0 ]; then
   say ""
@@ -496,3 +510,15 @@ if [ "$INCLUDE_PRODUCTS" -eq 1 ]; then
   [ "$REMAINING" -eq 0 ] || die "清理已执行，但产品残留核验失败；请检查引用保护保留的记录。执行记录见 $LOG"
   ok "产品清理核验通过：产品资料及产品库存身份均为零"
 fi
+
+# dev-20261125-005：全量及域模式均核对保留基础资料，不把清空误报为成功。
+RETAINED_INFRA_CHANGED=0
+for i in "${!RETAINED_INFRA_TABLES[@]}"; do
+  t="${RETAINED_INFRA_TABLES[$i]}"
+  n="$(db_count "SELECT COUNT(*) FROM \`$t\`;")" || exit 1
+  before="${RETAINED_INFRA_COUNTS[$i]}"
+  say "保留核验 $t: $before → $n 行（期望不变）"
+  [ "$n" = "$before" ] || RETAINED_INFRA_CHANGED=1
+done
+[ "$RETAINED_INFRA_CHANGED" -eq 0 ] || die "清理已执行，但保留基础资料行数发生变化；请核查并发写入或清理范围。执行记录见 $LOG"
+ok "保留基础资料核验通过：库位、生产设备、门户语言配置行数均未变化"
