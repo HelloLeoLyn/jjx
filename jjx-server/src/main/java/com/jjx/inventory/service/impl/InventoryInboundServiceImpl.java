@@ -456,8 +456,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public boolean confirm(Long inboundId, Long operatorId, String operatorName, Long locationId) {
-        return confirmInternal(inboundId, operatorId, operatorName, locationId, true);
+    public boolean confirm(Long inboundId, Long operatorId, String operatorName, com.jjx.inventory.dto.save.InboundConfirmDTO confirm) {
+        return confirmInternal(inboundId, operatorId, operatorName, confirm, true);
     }
 
     /** 内部自动过账（返工退料/打样退料/客户拒收回库）：不强制库位，沿用单据现有库位。 */
@@ -466,7 +466,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         return confirmInternal(inboundId, operatorId, operatorName, null, false);
     }
 
-    private boolean confirmInternal(Long inboundId, Long operatorId, String operatorName, Long locationId,
+    private boolean confirmInternal(Long inboundId, Long operatorId, String operatorName,
+                                    com.jjx.inventory.dto.save.InboundConfirmDTO confirm,
                                     boolean requireLocation) {
         // DEV-651 方案A：行锁查询，锁住单据行直到事务提交，并发下第二个请求阻塞后状态校验失败，杜绝重复入库
         InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
@@ -474,20 +475,32 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             log.error("入库单不存在: inboundId={}", inboundId);
             return false;
         }
-        // dev-20261125-001：人工确认入库必须选库位，且库位必须属于本单仓库；内部自动过账不强制。
-        if (requireLocation && locationId == null) throw new BusinessException("请选择入库库位");
-        if (locationId != null) {
-            com.jjx.inventory.domain.InventoryStorageLocation location = locationMapper.selectById(locationId);
-            if (location == null || !java.util.Objects.equals(location.getWarehouseId(), order.getWarehouseId()))
-                throw new BusinessException("库位不属于本单仓库，请重新选择");
-            order.setLocationId(locationId);
-            inboundOrderMapper.updateById(order);
+        // dev-20261125-002：人工确认入库必须选库位（支持按明细行），库位必须属于本单仓库；内部自动过账不强制。
+        if (requireLocation) {
+            if (confirm == null) throw new BusinessException("请选择入库库位");
+            java.util.Map<Long, Long> itemLocations = new java.util.HashMap<>();
+            if (confirm.getItems() != null) {
+                for (com.jjx.inventory.dto.save.InboundConfirmDTO.ItemLocation entry : confirm.getItems()) {
+                    if (entry != null && entry.getItemId() != null) itemLocations.put(entry.getItemId(), entry.getLocationId());
+                }
+            }
+            java.util.Set<Long> usedLocations = new java.util.HashSet<>();
             for (InventoryInboundItem item : inboundItemMapper.selectByInboundId(inboundId)) {
+                Long locationId = itemLocations.getOrDefault(item.getItemId(), confirm.getLocationId());
+                if (locationId == null)
+                    throw new BusinessException("明细 " + item.getMaterialCode() + " 未选择库位");
+                com.jjx.inventory.domain.InventoryStorageLocation location = locationMapper.selectById(locationId);
+                if (location == null || !java.util.Objects.equals(location.getWarehouseId(), order.getWarehouseId()))
+                    throw new BusinessException("库位不属于本单仓库，请重新选择");
+                usedLocations.add(locationId);
                 if (!java.util.Objects.equals(item.getLocationId(), locationId)) {
                     item.setLocationId(locationId);
                     inboundItemMapper.updateById(item);
                 }
             }
+            // 整单只有一个库位时回写单头；多库位时留空，避免汇总表表达失真
+            order.setLocationId(usedLocations.size() == 1 ? usedLocations.iterator().next() : null);
+            inboundOrderMapper.updateById(order);
         }
 
         // 手工入库保持 confirm 直接过账；采购来源必须走检验提交 + 品质主管 approve。

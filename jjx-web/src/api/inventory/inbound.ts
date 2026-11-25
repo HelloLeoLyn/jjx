@@ -104,9 +104,14 @@ export const inboundApi = {
   },
 
   // 确认入库
-  confirm(inboundId: string, operatorId: string, operatorName: string, locationId: number) {
-    return request.post<R<boolean>>(`/inventory/inbound/confirm/${inboundId}`, null, {
-      params: { operatorId, operatorName, locationId },
+  confirm(
+    inboundId: string,
+    operatorId: string,
+    operatorName: string,
+    data?: { locationId?: number; items?: Array<{ itemId: number; locationId: number }> }
+  ) {
+    return request.post<R<boolean>>(`/inventory/inbound/confirm/${inboundId}`, data, {
+      params: { operatorId, operatorName },
     })
   },
 

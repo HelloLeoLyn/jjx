@@ -82,8 +82,8 @@ public class InventoryInboundController {
     public Result<Boolean> confirm(@PathVariable Long inboundId,
                                    @RequestParam Long operatorId,
                                    @RequestParam String operatorName,
-                                   @RequestParam Long locationId) {
-        return Result.success(inboundService.confirm(inboundId, operatorId, operatorName, locationId));
+                                   @RequestBody(required = false) com.jjx.inventory.dto.save.InboundConfirmDTO confirm) {
+        return Result.success(inboundService.confirm(inboundId, operatorId, operatorName, confirm));
     }
 
     @PostMapping("/roll-plan/{itemId}")

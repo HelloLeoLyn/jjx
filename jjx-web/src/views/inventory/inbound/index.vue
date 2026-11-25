@@ -362,7 +362,9 @@ function openConfirmDialog(rows: InboundVO[]) {
   confirmDialogVisible.value = true
 }
 
-async function doConfirm(selections: Array<{ inboundId: string; locationId: number }>) {
+async function doConfirm(
+  selections: Array<{ inboundId: string; items: Array<{ itemId: number; locationId: number }> }>
+) {
   if (!selections.length) return
   confirmSubmitting.value = true
   batchConfirming.value = true
@@ -372,7 +374,7 @@ async function doConfirm(selections: Array<{ inboundId: string; locationId: numb
   let ok = 0
   for (const s of selections) {
     try {
-      await inboundApi.confirm(s.inboundId, operatorId, operatorName, s.locationId)
+      await inboundApi.confirm(s.inboundId, operatorId, operatorName, { items: s.items })
       ok += 1
     } catch (e: any) {
       failed.push(`${s.inboundId}：${e?.message || '失败'}`)

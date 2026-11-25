@@ -47,7 +47,7 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
     /**
      * 确认入库（执行库存增加）
      */
-    boolean confirm(Long inboundId, Long operatorId, String operatorName, Long locationId);
+    boolean confirm(Long inboundId, Long operatorId, String operatorName, com.jjx.inventory.dto.save.InboundConfirmDTO confirm);
 
     /** 内部/历史调用：不强制库位（返工退料、打样退料、客户拒收回库等自动过账）。 */
     boolean confirm(Long inboundId, Long operatorId, String operatorName);

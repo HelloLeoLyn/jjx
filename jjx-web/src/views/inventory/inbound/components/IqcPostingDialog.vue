@@ -13,17 +13,6 @@
       :closable="false"
       show-icon
     />
-    <div class="location-row">
-      <span class="location-label">入库库位（必选）</span>
-      <el-select v-model="locationId" filterable placeholder="请选择库位" style="width: 320px">
-        <el-option
-          v-for="loc in locations"
-          :key="loc.locationId"
-          :label="loc.locationName || loc.locationCode"
-          :value="loc.locationId"
-        />
-      </el-select>
-    </div>
     <el-table v-loading="loading" :data="items" border class="posting-table">
       <el-table-column prop="materialCode" label="物料编码" width="150" />
       <el-table-column prop="materialName" label="物料名称" min-width="180" />
@@ -36,6 +25,18 @@
         <template #default="{ row }">{{
           Math.max(0, Number(row.quantity) - Number(row.acceptedQuantity || 0))
         }}</template>
+      </el-table-column>
+      <el-table-column label="入库库位" width="220">
+        <template #default="{ row }">
+          <el-select v-model="row.locationId" filterable placeholder="请选择库位" style="width: 100%">
+            <el-option
+              v-for="loc in locations"
+              :key="loc.locationId"
+              :label="loc.locationName || loc.locationCode"
+              :value="loc.locationId"
+            />
+          </el-select>
+        </template>
       </el-table-column>
       <el-table-column label="处置" width="120">
         <template #default="{ row }">{{
@@ -70,8 +71,8 @@ const emit = defineEmits<{
 const userStore = useUserStore()
 const loading = ref(false)
 const submitting = ref(false)
-const items = ref<InboundItemVO[]>([])
-const locationId = ref<number>()
+type PostingRow = InboundItemVO & { locationId?: number }
+const items = ref<PostingRow[]>([])
 const locations = ref<InventoryStorageLocation[]>([])
 
 watch(
@@ -79,15 +80,14 @@ watch(
   async ([visible, id]) => {
     if (!visible || !id) return
     loading.value = true
-    locationId.value = undefined
     try {
       const detail = (await inboundApi.getById(String(id))).data
-      items.value = detail?.items || []
       const warehouseId = Number(detail?.warehouseId || 0)
       locations.value = warehouseId
         ? (await locationApi.list({ pageNum: 1, pageSize: 500, warehouseId })).data?.records || []
         : []
-      if (locations.value.length === 1) locationId.value = locations.value[0].locationId
+      const auto = locations.value.length === 1 ? locations.value[0].locationId : undefined
+      items.value = (detail?.items || []).map((item) => ({ ...item, locationId: auto })) as PostingRow[]
     } finally {
       loading.value = false
     }
@@ -97,8 +97,8 @@ watch(
 
 async function confirm() {
   if (!props.inboundId) return
-  if (!locationId.value) {
-    ElMessage.warning('请选择入库库位')
+  if (!items.value.length || items.value.some((item) => !item.locationId)) {
+    ElMessage.warning('请为每一行明细选择入库库位')
     return
   }
   submitting.value = true
@@ -107,7 +107,12 @@ async function confirm() {
       String(props.inboundId),
       String(userStore.userId || ''),
       String(userStore.nickName || userStore.userName || ''),
-      Number(locationId.value)
+      {
+        items: items.value.map((item) => ({
+          itemId: Number(item.inboundItemId || item.itemId),
+          locationId: Number(item.locationId),
+        })),
+      }
     )
     ElMessage.success('入库过账完成，不合格数量已进入隔离台账')
     emit('success')

@@ -1,32 +1,26 @@
 <template>
   <el-dialog
     :model-value="visible"
-    title="确认入库 · 选择库位"
-    width="780px"
+    title="确认入库 · 按明细选择库位"
+    width="900px"
     append-to-body
     :close-on-click-modal="false"
     @update:model-value="emit('update:visible', $event)"
   >
     <el-alert
-      title="确认入库后库存落到所选库位；库位必选，且必须属于该单仓库。"
+      title="确认入库后库存落到所选库位；每行明细都必须选库位，允许同一物料分放多个库位。"
       type="info"
       :closable="false"
       show-icon
     />
-    <el-table :data="rows" border size="small" class="confirm-table">
-      <el-table-column prop="inboundNo" label="入库单号" min-width="170" />
-      <el-table-column label="仓库" min-width="130">
-        <template #default="{ row }">{{ row.warehouseName || warehouseIdOf(row) }}</template>
-      </el-table-column>
-      <el-table-column label="入库库位" min-width="240">
+    <el-table v-loading="loading" :data="rows" border size="small" class="confirm-table" max-height="420">
+      <el-table-column prop="inboundNo" label="入库单号" width="150" />
+      <el-table-column prop="materialCode" label="物料编码" width="130" />
+      <el-table-column prop="materialName" label="物料名称" min-width="150" />
+      <el-table-column prop="batchNo" label="批次/卷" min-width="130" />
+      <el-table-column label="入库库位" min-width="220">
         <template #default="{ row }">
-          <el-select
-            v-model="row.locationId"
-            filterable
-            :loading="loadingWarehouses.has(String(row.warehouseId))"
-            placeholder="请选择库位"
-            style="width: 100%"
-          >
+          <el-select v-model="row.locationId" filterable placeholder="请选择库位" style="width: 100%">
             <el-option
               v-for="loc in locationsOf(row.warehouseId)"
               :key="loc.locationId"
@@ -47,8 +41,9 @@
 </template>
 
 <script setup lang="ts">
-/** 确认入库专用弹窗（dev-20261125-001）：库位必选，按单仓库加载候选。 */
+/** 确认入库专用弹窗（dev-20261125-002）：按明细行选库位，支持同一物料多库位。 */
 import { computed, reactive, ref, watch } from 'vue'
+import { inboundApi } from '@/api/inventory/inbound'
 import { locationApi } from '@/api/inventory/location'
 import type { InventoryStorageLocation } from '@/types/inventory/location'
 
@@ -59,21 +54,29 @@ export interface ConfirmTarget {
   warehouseName?: string
 }
 
+interface ConfirmRow {
+  inboundId: string
+  inboundNo?: string
+  warehouseId?: string | number
+  itemId: number
+  materialCode?: string
+  materialName?: string
+  batchNo?: string
+  locationId?: number
+}
+
 const props = withDefaults(
   defineProps<{ visible: boolean; orders: ConfirmTarget[]; submitting?: boolean }>(),
   { orders: () => [], submitting: false }
 )
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
-  (e: 'confirm', selections: Array<{ inboundId: string; locationId: number }>): void
+  (e: 'confirm', selections: Array<{ inboundId: string; items: Array<{ itemId: number; locationId: number }> }>): void
 }>()
 
-type Row = ConfirmTarget & { locationId?: number }
-const rows = ref<Row[]>([])
+const loading = ref(false)
+const rows = ref<ConfirmRow[]>([])
 const locations = reactive<Record<string, InventoryStorageLocation[]>>({})
-const loadingWarehouses = reactive(new Set<string>())
-
-const warehouseIdOf = (row: Row) => String(row.warehouseId ?? '')
 
 function locationsOf(warehouseId?: string | number): InventoryStorageLocation[] {
   return locations[String(warehouseId ?? '')] || []
@@ -81,28 +84,40 @@ function locationsOf(warehouseId?: string | number): InventoryStorageLocation[] 
 
 async function loadLocations(warehouseId?: string | number) {
   const key = String(warehouseId ?? '')
-  if (!key) return
-  if (locations[key] || loadingWarehouses.has(key)) return
-  loadingWarehouses.add(key)
-  try {
-    const res = await locationApi.list({ pageNum: 1, pageSize: 500, warehouseId: Number(key) })
-    locations[key] = res.data?.records || []
-  } finally {
-    loadingWarehouses.delete(key)
-  }
+  if (!key || locations[key]) return
+  const res = await locationApi.list({ pageNum: 1, pageSize: 500, warehouseId: Number(key) })
+  locations[key] = res.data?.records || []
 }
 
 watch(
   () => [props.visible, props.orders] as const,
   async ([visible]) => {
     if (!visible) return
-    rows.value = (props.orders || []).map((order) => ({ ...order, locationId: undefined }))
-    for (const order of rows.value) await loadLocations(order.warehouseId)
-    // 只有一个候选库位时默认选中，减少点击
-    rows.value.forEach((row) => {
-      const list = locationsOf(row.warehouseId)
-      if (!row.locationId && list.length === 1) row.locationId = list[0].locationId
-    })
+    loading.value = true
+    rows.value = []
+    try {
+      for (const order of props.orders || []) {
+        await loadLocations(order.warehouseId)
+        const detail = (await inboundApi.getById(String(order.inboundId))).data
+        const items = detail?.items || []
+        const list = locationsOf(order.warehouseId)
+        const auto = list.length === 1 ? list[0].locationId : undefined
+        for (const item of items) {
+          rows.value.push({
+            inboundId: String(order.inboundId),
+            inboundNo: order.inboundNo || detail?.inboundNo,
+            warehouseId: order.warehouseId ?? detail?.warehouseId,
+            itemId: Number(item.inboundItemId || item.itemId),
+            materialCode: item.materialCode,
+            materialName: item.materialName,
+            batchNo: item.batchNo || item.rollNo || '',
+            locationId: auto,
+          })
+        }
+      }
+    } finally {
+      loading.value = false
+    }
   },
   { immediate: true, deep: true }
 )
@@ -111,12 +126,15 @@ const allSelected = computed(() => rows.value.length > 0 && rows.value.every((ro
 
 function submit() {
   if (!allSelected.value) return
+  const grouped = new Map<string, Array<{ itemId: number; locationId: number }>>()
+  for (const row of rows.value) {
+    const list = grouped.get(row.inboundId) || []
+    list.push({ itemId: row.itemId, locationId: Number(row.locationId) })
+    grouped.set(row.inboundId, list)
+  }
   emit(
     'confirm',
-    rows.value.map((row) => ({
-      inboundId: String(row.inboundId),
-      locationId: Number(row.locationId),
-    }))
+    Array.from(grouped.entries()).map(([inboundId, items]) => ({ inboundId, items }))
   )
 }
 </script>
