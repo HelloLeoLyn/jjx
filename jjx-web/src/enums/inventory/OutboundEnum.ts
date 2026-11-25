@@ -37,6 +37,7 @@ export const OutboundOrderStatusEnum = createNamedEnum(
     COMPLETED: { value: 10, label: '已完成', tagProps: { type: 'success' } },
     PROCESSED: { value: 11, label: '已处理', tagProps: { type: 'success' } },
     IN_PROGRESS: { value: 12, label: '调拨中', tagProps: { type: 'warning' } },
+    MIXED_BATCH_PENDING: { value: 13, label: '待混批审批', tagProps: { type: 'warning' } },
   },
   { type: 'info' }
 )

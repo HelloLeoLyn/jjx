@@ -19,6 +19,12 @@ public interface InventoryStockItemMapper extends BaseMapper<InventoryStockItem>
     @Select("SELECT * FROM inventory_stock_item WHERE item_id = #{itemId} FOR UPDATE")
     InventoryStockItem selectByIdForUpdate(@Param("itemId") Long itemId);
 
+    @Select("SELECT * FROM inventory_stock_item WHERE material_id=#{materialId} AND warehouse_id=#{warehouseId} AND status=#{status} AND quantity>0 ORDER BY last_inbound_time,item_id FOR UPDATE")
+    List<InventoryStockItem> selectProductionPickCandidates(@Param("materialId") Long materialId, @Param("warehouseId") Long warehouseId, @Param("status") Integer status);
+
+    @Select("SELECT * FROM inventory_stock_item WHERE material_id=#{materialId} AND warehouse_id=#{warehouseId} AND status=#{status} AND quantity>0 ORDER BY last_inbound_time,item_id")
+    List<InventoryStockItem> selectProductionPickCandidatesReadOnly(@Param("materialId") Long materialId, @Param("warehouseId") Long warehouseId, @Param("status") Integer status);
+
     /** 物理卷可跨库位保留零余额历史行；统一锁序避免发退交叉。 */
     @Select("SELECT * FROM inventory_stock_item WHERE roll_no = #{rollNo} ORDER BY item_id FOR UPDATE")
     List<InventoryStockItem> selectRollForUpdate(@Param("rollNo") String rollNo);

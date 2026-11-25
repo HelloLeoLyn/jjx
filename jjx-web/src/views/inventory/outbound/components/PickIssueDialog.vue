@@ -2,7 +2,7 @@
   <el-dialog
     :model-value="modelValue"
     title="生产发料 · 领料单"
-    width="920px"
+    width="1400px"
     append-to-body
     class="pick-issue-dialog"
     @update:model-value="(value: boolean) => emit('update:modelValue', value)"
@@ -14,22 +14,50 @@
         <div class="doc-info">
           <div class="info-item"><span class="info-label">单据号</span>{{ detail.outboundNo }}</div>
           <div class="info-item"><span class="info-label">类型</span>生产领料</div>
-          <div class="info-item"><span class="info-label">仓库</span>{{ detail.warehouseName || '-' }}</div>
-          <div class="info-item"><span class="info-label">来源工单</span>{{ detail.sourceNo || '-' }}</div>
+          <div class="info-item">
+            <span class="info-label">仓库</span>{{ detail.warehouseName || '-' }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">来源工单</span>{{ detail.sourceNo || '-' }}
+          </div>
           <div class="info-item">
             <span class="info-label">单据状态</span>
-            <el-tag :type="statusTag(detail.status)" size="small">{{ detail.statusName || '-' }}</el-tag>
+            <el-tag :type="statusTag(detail.status)" size="small">{{
+              detail.statusName || '-'
+            }}</el-tag>
           </div>
-          <div class="info-item"><span class="info-label">总数量</span>{{ fmtNum(detail.totalQuantity) }}</div>
-          <div class="info-item"><span class="info-label">创建人</span>{{ detail.createBy || '-' }}</div>
-          <div class="info-item"><span class="info-label">创建时间</span>{{ detail.createTime || '-' }}</div>
-          <div class="info-item info-item-full"><span class="info-label">备注</span>{{ detail.remark || '-' }}</div>
+          <div class="info-item">
+            <span class="info-label">总数量</span>{{ fmtNum(detail.totalQuantity) }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">创建人</span>{{ detail.createBy || '-' }}
+          </div>
+          <div class="info-item">
+            <span class="info-label">创建时间</span>{{ detail.createTime || '-' }}
+          </div>
+          <div class="info-item info-item-full">
+            <span class="info-label">备注</span>{{ detail.remark || '-' }}
+          </div>
         </div>
 
-        <PickDetailTable :rows="items" empty-text="无明细" />
+        <ProductionPickAllocationPanel
+          :outbound-id="detail.outboundId"
+          :detail="detail"
+          @changed="loadDetail"
+          @ready="canIssue = $event"
+        />
 
         <div class="doc-total-row">
-          <span>物料种类：{{ items.length }} 项</span>
+          <span
+            >物料种类：{{
+              new Set(
+                items
+                  .filter((row) => row.itemId || (row as any).outboundItemId)
+                  .map((row) => String(row.materialId))
+              ).size
+            }}
+            项</span
+          >
           <span>总数量：{{ fmtNum(detail.totalQuantity) }}</span>
         </div>
       </div>
@@ -40,7 +68,12 @@
         <el-button :disabled="!detail" @click="handlePrint">打印领料单</el-button>
         <div>
           <el-button @click="emit('update:modelValue', false)">取消</el-button>
-          <el-button type="primary" :loading="submitting" :disabled="!detail" @click="handleConfirm">
+          <el-button
+            type="primary"
+            :loading="submitting"
+            :disabled="!detail || !canIssue"
+            @click="handleConfirm"
+          >
             确认发料
           </el-button>
         </div>
@@ -55,7 +88,7 @@ import { ElMessage } from 'element-plus'
 import { outboundApi } from '@/api/inventory/outbound'
 import { useUserStore } from '@/store/modules/user'
 import type { OutboundItemVO, OutboundVO } from '@/types/inventory/outbound'
-import PickDetailTable from './PickDetailTable.vue'
+import ProductionPickAllocationPanel from './ProductionPickAllocationPanel.vue'
 
 type TagType = 'success' | 'warning' | 'info' | 'danger' | undefined
 
@@ -72,6 +105,7 @@ const emit = defineEmits<{
 
 const loading = ref(false)
 const submitting = ref(false)
+const canIssue = ref(false)
 const detail = ref<OutboundVO | null>(null)
 const items = computed(() => detail.value?.items || [])
 
@@ -82,7 +116,9 @@ function fmtNum(value?: number | string | null): string {
 }
 
 function locationName(item: OutboundItemVO): string {
-  return (item as OutboundItemVO & { locationName?: string }).locationName || item.locationCode || '-'
+  return (
+    (item as OutboundItemVO & { locationName?: string }).locationName || item.locationCode || '-'
+  )
 }
 
 async function loadDetail() {
@@ -105,7 +141,7 @@ watch(
     if (visible) loadDetail()
     else detail.value = null
   },
-  { immediate: true },
+  { immediate: true }
 )
 
 function handlePrint() {
@@ -115,7 +151,7 @@ function handlePrint() {
 }
 
 async function handleConfirm() {
-  if (!detail.value?.outboundId) return
+  if (!detail.value?.outboundId || !canIssue.value) return
   submitting.value = true
   try {
     const store = useUserStore()

@@ -59,6 +59,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         implements InventoryOutboundService {
 
     private final InventoryOutboundOrderMapper outboundOrderMapper;
+    private final ProductionPickAllocationService pickAllocationService;
     /** 2026-09-21（dev-20260921-013）：库存事件改手写 payload。 */
     private final com.jjx.event.EventPublisher eventPublisher;
     private final InventoryOutboundItemMapper outboundItemMapper;
@@ -431,6 +432,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
 
         if (com.jjx.sales.service.SalesDeliveryWorkflowService.OUTBOUND_SOURCE.equals(order.getSourceType()))
             throw new com.jjx.common.exception.BusinessException("发货生成的出库凭证不能修改来源和明细，请作废发货单后重新安排");
+        if (ProductionPickAllocationService.isProductionPick(order)) {
+            throw new BusinessException("生产领料请使用分配明细保存接口，不能重建需求明细");
+        }
         // 更新单头
         if (params.get("outboundType") != null) order.setOutboundType((String) params.get("outboundType"));
         if (params.get("sourceType") != null) order.setSourceType((String) params.get("sourceType"));
@@ -545,6 +549,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 }
             }
         }
+        boolean productionPick = ProductionPickAllocationService.isProductionPick(order);
+        if (productionPick) pickAllocationService.validateForIssue(order, outItems);
         boolean samplePick = "sample".equals(order.getSourceType());
         List<InventoryOutboundItem> actualSampleItems = new ArrayList<>();
         for (InventoryOutboundItem item : outItems) {
@@ -559,14 +565,20 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                         material.getUnit()).getInventoryItemId());
             }
 
-            // 生产/打样领料确认出库：先释放本单预占，后续 FIFO 才能扣到已预占的库存。
+            // 生产方案 C 仅实扣指定批次；其他出库保留原预留消费逻辑。
             Map<Long,BigDecimal> consumedAllocations=java.util.Collections.emptyMap();
-            if (materialAllocations.hasAllocation(order,item.getMaterialId())) {
+            if (!ProductionPickAllocationService.isProductionPick(order) && materialAllocations.hasAllocation(order,item.getMaterialId())) {
                 consumedAllocations=materialAllocations.consume(order,item);
             } else if (hasPickReservation(order)) {
                 releasePickStock(item.getMaterialId(), item.getQuantity());
             }
 
+            if (productionPick) {
+                InventoryStockItem stock = pickAllocationService.issueStock(order, item);
+                applyOutboundDelta(stock, item.getQuantity(), order, item, operatorId, operatorName);
+                outboundItemMapper.updateById(item);
+                continue;
+            }
             if (item.getStockItemId() != null || item.getRollNo() != null) {
                 InventoryStockItem stock = rollService.issueStock(order, item);
                 if (samplePick) throw new BusinessException("打样逐卷实发需要包装量与需求量分离，请使用专门的整卷领料流程");
@@ -667,13 +679,20 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         } catch (Exception e) {
             log.warn("安全库存检查失败: {}", e.getMessage());
         }
-        if (outItems.stream().anyMatch(i -> i.getRollNo() != null)) {
+        if (productionPick) {
+            order.setTotalAmount(outItems.stream().anyMatch(i -> i.getAmount() == null) ? null
+                    : outItems.stream().map(InventoryOutboundItem::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
+            if (outboundOrderMapper.update(null, com.baomidou.mybatisplus.core.toolkit.Wrappers
+                    .<InventoryOutboundOrder>lambdaUpdate().eq(InventoryOutboundOrder::getOutboundId, outboundId)
+                    .set(InventoryOutboundOrder::getTotalAmount, order.getTotalAmount())) != 1)
+                throw new BusinessException("生产领料实发金额回填失败");
+        } else if (outItems.stream().anyMatch(i -> i.getRollNo() != null)) {
             order.setTotalAmount(outItems.stream().map(InventoryOutboundItem::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add));
         }
         order.setOrderStatus(InventoryOrderStatusEnum.COMPLETED.getValue());
         boolean updated = outboundOrderMapper.updateById(order) > 0;
-        if (samplePick && !updated) throw new BusinessException("打样领料状态更新失败");
+        if ((samplePick || productionPick) && !updated) throw new BusinessException("领料状态更新失败");
         if (updated && "work_order".equals(order.getSourceType())
                 && com.jjx.inventory.enums.ProductionSupplementReasonEnum.requiresNcr(order.getSupplementReasonType())) {
             productionTaskService.createSupplementRouteTasks(order.getSourceId(),
@@ -697,7 +716,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                                     .eq(InventoryOutboundOrder::getSourceId, order.getSourceId())
                                     .in(InventoryOutboundOrder::getOrderStatus,
                                             InventoryOrderStatusEnum.PENDING.getValue(),
-                                            InventoryOrderStatusEnum.APPROVED.getValue()));
+                                            InventoryOrderStatusEnum.APPROVED.getValue(),
+                                            InventoryOrderStatusEnum.MIXED_BATCH_PENDING.getValue()));
                     boolean hasUnfinished = unfinishedCnt != null && unfinishedCnt > 0;
                     boolean hasGap = false;
                     try {
@@ -915,6 +935,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             return false;
         }
 
+        if (ProductionPickAllocationService.isProductionPick(order)) pickAllocationService.validateApproval(order);
         // DEV-651：审批只做状态流转，库存扣减统一由 confirm 执行（confirm=审批+完成 单路径）
         // 原实现在这里扣库存，导致：①与 confirm 重复维护扣减逻辑；②approve 后无出口到 COMPLETED，单子卡死
         order.setOrderStatus(InventoryOrderStatusEnum.APPROVED.getValue());
@@ -1547,7 +1568,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         prodOrder.setMaterialStatus(1);
         productionOrderMapper.updateById(prodOrder);
 
-        // DEV-20260909-001 方案A：生成领料单即按 FIFO 预占库存（PENDING 阶段锁货，追加预览/跨单可见已占）
+        // 方案 C：生产单完成建单后分配批次，不预占。
         reservePickItems(order.getOutboundId());
 
         log.info("生产领料单已生成(待发料): workOrderId={}, outboundId={}", workOrderId, order.getOutboundId());
@@ -1707,9 +1728,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         return pickedMap;
     }
 
-    /** 生产与打样领料均在建单时预占，共用释放及重新提交时的预占规则。 */
+    /** 方案 C 生产领料不预占、不释放；仅打样沿用原预占生命周期。 */
     private boolean hasPickReservation(InventoryOutboundOrder order) {
-        return "work_order".equals(order.getSourceType()) || "sample".equals(order.getSourceType());
+        return "sample".equals(order.getSourceType());
     }
 
     /**
@@ -1770,6 +1791,12 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
 
     /** 单据级预占（按明细逐料） */
     private void reservePickItems(Long outboundId) {
+        // 方案 C：生产单只分配；打样仍沿用原预占生命周期。
+        InventoryOutboundOrder pickOrder = outboundOrderMapper.selectById(outboundId);
+        if (ProductionPickAllocationService.isProductionPick(pickOrder)) {
+            pickAllocationService.allocate(outboundId);
+            return;
+        }
         List<InventoryOutboundItem> items = outboundItemMapper.selectByOutboundId(outboundId);
         InventoryOutboundOrder order=outboundOrderMapper.selectById(outboundId);
         for (InventoryOutboundItem it : items) {
@@ -2064,104 +2091,13 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createProductionPick(Long workOrderId, java.util.List<java.util.Map<String, Object>> items) {
-        Long outboundId = createProductionPickInternal(workOrderId, items, null, null, null);
-        // dev-20261125-004：生成后自动按 FIFO 分配库位/批次（失败不阻断建单）
-        try {
-            allocateProductionPick(outboundId);
-        } catch (Exception e) {
-            log.warn("生产领料自动分配库位失败: outboundId={}, err={}", outboundId, e.getMessage());
-        }
-        return outboundId;
+        return createProductionPickInternal(workOrderId, items, null, null, null);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public java.util.Map<String, Object> allocateProductionPick(Long outboundId) {
-        InventoryOutboundOrder order = outboundOrderMapper.selectById(outboundId);
-        if (order == null) throw new BusinessException("出库单不存在");
-        java.util.List<InventoryOutboundItem> items = outboundItemMapper.selectByOutboundId(outboundId);
-        int allocatedLines = 0, shortageLines = 0;
-        int sort = 0;
-        for (InventoryOutboundItem it : items) {
-            if (it.getSortOrder() != null && it.getSortOrder() > sort) sort = it.getSortOrder();
-        }
-        for (InventoryOutboundItem item : items) {
-            if (item.getStockItemId() != null || item.getMaterialId() == null) continue;
-            BigDecimal remaining = item.getQuantity() == null ? BigDecimal.ZERO : item.getQuantity();
-            if (remaining.signum() <= 0) continue;
-            java.util.List<InventoryStockItem> fifo = stockItemMapper.selectFIFOAvailableForUpdate(item.getMaterialId());
-            boolean first = true;
-            for (InventoryStockItem batch : fifo) {
-                if (remaining.signum() <= 0) break;
-                if (order.getWarehouseId() != null && batch.getWarehouseId() != null
-                        && !order.getWarehouseId().equals(batch.getWarehouseId())) continue;
-                BigDecimal qty = batch.getQuantity() == null ? BigDecimal.ZERO : batch.getQuantity();
-                BigDecimal reserved = batch.getReservedQuantity() == null ? BigDecimal.ZERO : batch.getReservedQuantity();
-                BigDecimal avail = qty.subtract(reserved);
-                if (avail.signum() <= 0) continue;
-                BigDecimal take = remaining.min(avail);
-                if (take.signum() <= 0) continue;
-                if (first) {
-                    item.setStockItemId(batch.getItemId());
-                    item.setLocationId(batch.getLocationId());
-                    item.setBatchNo(batch.getBatchNo());
-                    item.setRollNo(batch.getRollNo());
-                    item.setQuantity(take);
-                    if (item.getUnitPrice() != null) item.setAmount(item.getUnitPrice().multiply(take));
-                    outboundItemMapper.updateById(item);
-                    first = false;
-                } else {
-                    InventoryOutboundItem extra = new InventoryOutboundItem();
-                    extra.setOutboundId(outboundId);
-                    extra.setMaterialId(item.getMaterialId());
-                    extra.setMaterialCode(item.getMaterialCode());
-                    extra.setMaterialName(item.getMaterialName());
-                    extra.setSpecification(item.getSpecification());
-                    extra.setUnit(item.getUnit());
-                    extra.setQuantity(take);
-                    extra.setUnitPrice(item.getUnitPrice());
-                    if (item.getUnitPrice() != null) extra.setAmount(item.getUnitPrice().multiply(take));
-                    extra.setStockItemId(batch.getItemId());
-                    extra.setLocationId(batch.getLocationId());
-                    extra.setBatchNo(batch.getBatchNo());
-                    extra.setRollNo(batch.getRollNo());
-                    extra.setSourceBomItemId(item.getSourceBomItemId());
-                    extra.setSortOrder(++sort);
-                    outboundItemMapper.insert(extra);
-                }
-                remaining = remaining.subtract(take);
-                allocatedLines++;
-            }
-            if (remaining.signum() > 0) {
-                InventoryOutboundItem rest = new InventoryOutboundItem();
-                rest.setOutboundId(outboundId);
-                rest.setMaterialId(item.getMaterialId());
-                rest.setMaterialCode(item.getMaterialCode());
-                rest.setMaterialName(item.getMaterialName());
-                rest.setSpecification(item.getSpecification());
-                rest.setUnit(item.getUnit());
-                rest.setQuantity(remaining);
-                rest.setUnitPrice(item.getUnitPrice());
-                if (item.getUnitPrice() != null) rest.setAmount(item.getUnitPrice().multiply(remaining));
-                rest.setSourceBomItemId(item.getSourceBomItemId());
-                rest.setSortOrder(++sort);
-                outboundItemMapper.insert(rest);
-                shortageLines++;
-            }
-        }
-        java.util.List<InventoryOutboundItem> after = outboundItemMapper.selectByOutboundId(outboundId);
-        BigDecimal totalQty = BigDecimal.ZERO, totalAmt = BigDecimal.ZERO;
-        for (InventoryOutboundItem i : after) {
-            totalQty = totalQty.add(i.getQuantity() == null ? BigDecimal.ZERO : i.getQuantity());
-            if (i.getAmount() != null) totalAmt = totalAmt.add(i.getAmount());
-        }
-        order.setTotalQuantity(totalQty);
-        order.setTotalAmount(totalAmt);
-        outboundOrderMapper.updateById(order);
-        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
-        result.put("allocatedLines", allocatedLines);
-        result.put("shortageLines", shortageLines);
-        return result;
+        return pickAllocationService.allocate(outboundId);
     }
 
     private java.util.Map<Long, BigDecimal> sumPickedCoverageByBomItem(
@@ -2395,6 +2331,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
         // 制造BOM二级原料：不在产品BOM剩余量里，按自身可用库存校验（dev-20261123-010）
         java.util.Set<Long> childMaterialIds = new java.util.HashSet<>();
+        java.util.Map<Long, com.jjx.engineering.domain.entity.EngineeringBomItem> controlledPickItems = new java.util.LinkedHashMap<>();
         com.jjx.engineering.domain.entity.EngineeringBom pickBom = productionBomResolver.resolve(prodOrder);
         if (pickBom != null) {
             java.util.List<com.jjx.engineering.domain.entity.EngineeringBomItem> pickBomItems =
@@ -2403,11 +2340,13 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                                     .eq(com.jjx.engineering.domain.entity.EngineeringBomItem::getBomId,
                                             pickBom.getBomId()));
             for (com.jjx.engineering.domain.entity.EngineeringBomItem bi : pickBomItems) {
+                controlledPickItems.put(bi.getItemId(), bi);
                 if ("make".equals(bi.getSourceType()) && bi.getSubBomId() != null) {
                     for (com.jjx.engineering.domain.entity.EngineeringBomItem child : productBomItemMapper.selectList(
                             new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBomItem>()
                                     .eq(com.jjx.engineering.domain.entity.EngineeringBomItem::getBomId,
                                             bi.getSubBomId()))) {
+                        controlledPickItems.put(child.getItemId(), child);
                         if (child.getMaterialId() != null) childMaterialIds.add(child.getMaterialId());
                     }
                 }
@@ -2477,6 +2416,21 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             outItem.setMaterialCode((String) item.get("materialCode"));
             outItem.setMaterialName((String) item.get("materialName"));
             outItem.setQuantity(qty);
+            if (item.get("bomItemId") != null) outItem.setSourceBomItemId(Long.valueOf(item.get("bomItemId").toString()));
+            com.jjx.engineering.domain.entity.EngineeringBomItem identity = outItem.getSourceBomItemId() == null
+                    ? controlledPickItems.values().stream().filter(bi -> materialId.equals(bi.getMaterialId())).findFirst().orElse(null)
+                    : controlledPickItems.get(outItem.getSourceBomItemId());
+            if (outItem.getSourceBomItemId() != null && (identity == null || !materialId.equals(identity.getMaterialId())))
+                throw new BusinessException("领料物料与工单受控BOM明细不一致");
+            if (identity != null) {
+                outItem.setSourceBomItemId(identity.getItemId());
+                outItem.setSpecification(identity.getSpecification());
+                outItem.setUnit(identity.getUnit());
+                outItem.setCoverageQuantity(qty);
+            } else {
+                var material = materialMapper.selectById(materialId);
+                if (material != null) {outItem.setUnit(material.getUnit()); outItem.setSpecification(material.getSpecification());}
+            }
             outItem.setSortOrder(sort++);
             try {
                 List<InventoryStockItem> fifoItems = stockItemMapper.selectFIFOAvailable(materialId);
@@ -2493,7 +2447,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         outboundOrderMapper.updateById(order);
         prodOrder.setMaterialStatus(1);
         productionOrderMapper.updateById(prodOrder);
-        // DEV-20260909-001 方案A：追加领料单生成即按 FIFO 预占库存
+        // 方案 C：追加领料单生成后只分配批次。
         reservePickItems(order.getOutboundId());
         log.info("追加领料单已生成(待发料): workOrderId={}, outboundId={}, no={}", workOrderId, order.getOutboundId(), order.getOutboundNo());
         return order.getOutboundId();
@@ -2918,6 +2872,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
 
         order.setOrderStatus(status);
+        if (ProductionPickAllocationService.isProductionPick(order)) throw new BusinessException("生产领料请通过审核、混批审批或确认发料执行状态流转");
         return outboundOrderMapper.updateById(order) > 0;
     }
 
@@ -3058,10 +3013,10 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             }
         }
         // 只展开“有实际领用”的分支：父行自身有领用或有子行被领用才展示，不列整张BOM
-        java.util.Map<Long, OutboundItemVO> byBom = new java.util.HashMap<>();
+        java.util.Map<Long, java.util.List<OutboundItemVO>> byBom = new java.util.LinkedHashMap<>();
         java.util.List<OutboundItemVO> others = new java.util.ArrayList<>();
         for (OutboundItemVO item : vo.getItems()) {
-            if (item.getSourceBomItemId() != null) byBom.put(item.getSourceBomItemId(), item);
+            if (item.getSourceBomItemId() != null) byBom.computeIfAbsent(item.getSourceBomItemId(), k -> new java.util.ArrayList<>()).add(item);
             else others.add(item);
         }
         java.util.List<OutboundItemVO> result = new java.util.ArrayList<>();
@@ -3076,22 +3031,24 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             }
             if (!parentIssued && !anyChildIssued) continue;
             String parentKey = bom.getBomId() + ":" + parent.getItemId();
-            OutboundItemVO parentVO = byBom.remove(parent.getItemId());
-            if (parentVO == null) parentVO = newDetailItemVO(parent);
-            fillDetailBomFields(parentVO, parent, parentKey, null, 1,
-                    demands.getOrDefault(parent, BigDecimal.ZERO));
-            result.add(parentVO);
+            java.util.List<OutboundItemVO> parentRows = byBom.remove(parent.getItemId());
+            if (parentRows == null) parentRows = java.util.List.of(newDetailItemVO(parent));
+            for (OutboundItemVO parentVO : parentRows) {
+                fillDetailBomFields(parentVO, parent, parentKey, null, 1, demands.getOrDefault(parent, BigDecimal.ZERO));
+                result.add(parentVO);
+            }
             for (com.jjx.engineering.domain.entity.EngineeringBomItem child : children) {
-                OutboundItemVO childVO = byBom.remove(child.getItemId());
-                if (childVO == null) continue;
+                java.util.List<OutboundItemVO> childRows = byBom.remove(child.getItemId());
+                if (childRows == null) continue;
                 String childKey = parentKey + "/" + child.getBomId() + ":" + child.getItemId();
-                BigDecimal need = childVO.getCoverageQuantity() != null
-                        ? childVO.getCoverageQuantity() : child.getQuantity();
-                fillDetailBomFields(childVO, child, childKey, parentKey, 2, need);
-                result.add(childVO);
+                for (OutboundItemVO childVO : childRows) {
+                    BigDecimal need = childVO.getCoverageQuantity() != null ? childVO.getCoverageQuantity() : child.getQuantity();
+                    fillDetailBomFields(childVO, child, childKey, parentKey, 2, need);
+                    result.add(childVO);
+                }
             }
         }
-        result.addAll(byBom.values());
+        byBom.values().forEach(result::addAll);
         result.addAll(others);
         vo.setItems(result);
     }

@@ -280,3 +280,52 @@ export interface SamplePickStatus {
   roundNo: number
   orders: { outboundId: number; outboundNo: string; status: number; statusLabel: string }[]
 }
+
+/** 方案C单据分配：需求和审批由服务端控制，展示合计在前端派生。 */
+export interface PickAllocationRow {
+  itemId: string | number
+  materialId: string | number
+  stockItemId?: string | number
+  quantity: number
+  sourceBomItemId?: string | number
+  coverageQuantity?: number
+  locationId?: string | number
+  batchNo?: string
+  rollNo?: string
+}
+export interface PickAllocationDemand {
+  demandItemId: string | number
+  materialId: string | number
+  materialCode: string
+  materialName: string
+  specification?: string
+  unit?: string
+  sourceBomItemId?: string | number
+  quantity: number
+  coverageQuantity?: number
+  allocations: PickAllocationRow[]
+}
+export interface PickAllocationBatch {
+  stockItemId: string | number
+  materialId: string | number
+  warehouseId: string | number
+  locationId?: string | number
+  locationName?: string
+  batchNo?: string
+  rollNo?: string
+  rollWidthMm?: number
+  originalRollLengthM?: number
+  quantity: number
+  availableQuantity: number
+  supplierId?: string | number
+  supplierName?: string
+}
+export interface PickAllocationView {
+  outboundId: string | number
+  status: number
+  fingerprint: string
+  mixedSupplier: boolean
+  unknownSupplier: boolean
+  demands: PickAllocationDemand[]
+  batches: PickAllocationBatch[]
+}

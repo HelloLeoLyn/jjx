@@ -1,7 +1,7 @@
 <template>
   <div class="outbound-list">
     <!-- 页面标题（2026-08-18：统一出库管理视图，含生产领料单，按类型筛选/标签区分） -->
-    <div class="page-title" style="font-size:16px;font-weight:600;margin-bottom:12px">
+    <div class="page-title" style="font-size: 16px; font-weight: 600; margin-bottom: 12px">
       出库管理
     </div>
     <!-- 搜索栏 -->
@@ -48,11 +48,26 @@
             clearable
             style="width: 120px"
           >
-            <el-option :label="OutboundOrderStatusEnum.DRAFT.label" :value="OutboundOrderStatusEnum.DRAFT.value" />
-            <el-option :label="OutboundOrderStatusEnum.PENDING.label" :value="OutboundOrderStatusEnum.PENDING.value" />
-            <el-option :label="OutboundOrderStatusEnum.APPROVED.label" :value="OutboundOrderStatusEnum.APPROVED.value" />
-            <el-option :label="OutboundOrderStatusEnum.OUT_CONFIRM.label" :value="OutboundOrderStatusEnum.OUT_CONFIRM.value" />
-            <el-option :label="OutboundOrderStatusEnum.CANCELLED.label" :value="OutboundOrderStatusEnum.CANCELLED.value" />
+            <el-option
+              :label="OutboundOrderStatusEnum.DRAFT.label"
+              :value="OutboundOrderStatusEnum.DRAFT.value"
+            />
+            <el-option
+              :label="OutboundOrderStatusEnum.PENDING.label"
+              :value="OutboundOrderStatusEnum.PENDING.value"
+            />
+            <el-option
+              :label="OutboundOrderStatusEnum.APPROVED.label"
+              :value="OutboundOrderStatusEnum.APPROVED.value"
+            />
+            <el-option
+              :label="OutboundOrderStatusEnum.OUT_CONFIRM.label"
+              :value="OutboundOrderStatusEnum.OUT_CONFIRM.value"
+            />
+            <el-option
+              :label="OutboundOrderStatusEnum.CANCELLED.label"
+              :value="OutboundOrderStatusEnum.CANCELLED.value"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="补料来源">
@@ -104,7 +119,13 @@
 
     <!-- 表格 -->
     <el-card class="table-card">
-      <el-table v-loading="loading" :data="outboundList" border style="width: 100%" @selection-change="handleSelectionChange">
+      <el-table
+        v-loading="loading"
+        :data="outboundList"
+        border
+        style="width: 100%"
+        @selection-change="handleSelectionChange"
+      >
         <el-table-column type="selection" width="50" align="center" />
         <el-table-column label="出库单号" prop="outboundNo" min-width="150" />
         <el-table-column label="出库类型" width="100" align="center">
@@ -120,7 +141,11 @@
           <template #default="{ row }">
             {{ sourceText(row) }}
             <!-- dev-20260923-025：补料来源展示（超耗 / 报废补产 / 试制调机 / 来料不良） -->
-            <el-tooltip v-if="row.supplementReasonType" :content="row.supplementReason || ''" placement="top">
+            <el-tooltip
+              v-if="row.supplementReasonType"
+              :content="row.supplementReason || ''"
+              placement="top"
+            >
               <el-tag type="warning" size="small" effect="plain" style="margin-left: 4px">
                 补料·{{ row.supplementReasonTypeName || row.supplementReasonType }}
               </el-tag>
@@ -149,11 +174,20 @@
             <el-button link type="info" @click="showTrace(row)">流水</el-button>
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
             <el-button link type="info" @click="handlePrint(row)">打印</el-button>
-            <el-button v-if="row.status === OutboundOrderStatusEnum.DRAFT.value" link type="primary" v-hasPermi="['inventory:outbound:edit']" @click="handleEdit(row)"
+            <el-button
+              v-if="row.status === OutboundOrderStatusEnum.DRAFT.value"
+              link
+              type="primary"
+              v-hasPermi="['inventory:outbound:edit']"
+              @click="handleEdit(row)"
               >编辑</el-button
             >
             <el-button
-              v-if="row.outboundType === 'production' && row.sourceType === 'work_order' && row.status === OutboundOrderStatusEnum.PENDING.value"
+              v-if="
+                row.outboundType === 'production' &&
+                row.sourceType === 'work_order' &&
+                row.status === OutboundOrderStatusEnum.PENDING.value
+              "
               link
               type="success"
               v-hasPermi="['inventory:outbound:approve']"
@@ -161,7 +195,11 @@
               >审核通过</el-button
             >
             <el-button
-              v-if="row.outboundType === 'production' && row.sourceType === 'work_order' && row.status === OutboundOrderStatusEnum.PENDING.value"
+              v-if="
+                row.outboundType === 'production' &&
+                row.sourceType === 'work_order' &&
+                row.status === OutboundOrderStatusEnum.PENDING.value
+              "
               link
               type="danger"
               v-hasPermi="['inventory:outbound:approve']"
@@ -169,7 +207,11 @@
               >驳回</el-button
             >
             <el-button
-              v-if="(row.status === OutboundOrderStatusEnum.APPROVED.value || (row.outboundType !== 'production' && row.status === OutboundOrderStatusEnum.PENDING.value))"
+              v-if="
+                row.status === OutboundOrderStatusEnum.APPROVED.value ||
+                (row.outboundType !== 'production' &&
+                  row.status === OutboundOrderStatusEnum.PENDING.value)
+              "
               link
               type="warning"
               v-hasPermi="['inventory:outbound:edit']"
@@ -177,7 +219,11 @@
               >{{ row.outboundType === 'production' ? '确认发料' : '确认出库' }}</el-button
             >
             <el-button
-              v-if="row.sourceType === 'sample' && (row.status === OutboundOrderStatusEnum.PENDING.value || row.status === OutboundOrderStatusEnum.APPROVED.value)"
+              v-if="
+                row.sourceType === 'sample' &&
+                (row.status === OutboundOrderStatusEnum.PENDING.value ||
+                  row.status === OutboundOrderStatusEnum.APPROVED.value)
+              "
               link
               type="danger"
               v-hasPermi="['inventory:outbound:edit']"
@@ -210,26 +256,52 @@
       <template v-if="currentDetail">
         <el-descriptions :column="2" border>
           <el-descriptions-item label="单据号">{{ currentDetail.outboundNo }}</el-descriptions-item>
-          <el-descriptions-item label="类型">{{ currentDetail.outboundTypeName }}</el-descriptions-item>
-          <el-descriptions-item label="仓库">{{ currentDetail.warehouseName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="类型">{{
+            currentDetail.outboundTypeName
+          }}</el-descriptions-item>
+          <el-descriptions-item label="仓库">{{
+            currentDetail.warehouseName || '-'
+          }}</el-descriptions-item>
           <el-descriptions-item label="状态">{{ currentDetail.statusName }}</el-descriptions-item>
-          <el-descriptions-item label="来源单号">{{ currentDetail.sourceNo || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="总数量">{{ formatNumber(currentDetail.totalQuantity) }}</el-descriptions-item>
-          <el-descriptions-item label="总金额">¥ {{ formatCurrency(currentDetail.totalAmount) }}</el-descriptions-item>
-          <el-descriptions-item label="创建人">{{ currentDetail.createBy || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="创建时间">{{ currentDetail.createTime || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="备注" :span="2">{{ currentDetail.remark || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="来源单号">{{
+            currentDetail.sourceNo || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="总数量">{{
+            formatNumber(currentDetail.totalQuantity)
+          }}</el-descriptions-item>
+          <el-descriptions-item label="总金额"
+            >¥ {{ formatCurrency(currentDetail.totalAmount) }}</el-descriptions-item
+          >
+          <el-descriptions-item label="创建人">{{
+            currentDetail.createBy || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="创建时间">{{
+            currentDetail.createTime || '-'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="备注" :span="2">{{
+            currentDetail.remark || '-'
+          }}</el-descriptions-item>
         </el-descriptions>
 
         <el-divider content-position="left">出库明细</el-divider>
-        <div class="detail-actions">
-          <el-button size="small" :loading="allocating" @click="allocateDetail">按 FIFO 分配库位/批次</el-button>
-          <span class="tip">分配后按批次/库位拆行；库存不足的行保留为空库位</span>
-        </div>
-        <PickDetailTable :rows="currentDetail.items || []" />
+        <ProductionPickAllocationPanel
+          v-if="
+            currentDetail.outboundType === 'production' && currentDetail.sourceType === 'work_order'
+          "
+          :outbound-id="currentDetail.outboundId"
+          :detail="currentDetail"
+          @changed="refreshAllocationDetail"
+        />
+        <PickDetailTable v-else :rows="currentDetail.items || []" />
 
         <el-divider content-position="left">库存流水（DEV-661）</el-divider>
-        <el-table v-loading="txLoading" :data="detailTransactions" border size="small" style="width: 100%">
+        <el-table
+          v-loading="txLoading"
+          :data="detailTransactions"
+          border
+          size="small"
+          style="width: 100%"
+        >
           <el-table-column label="物料" prop="materialCode" width="110" />
           <el-table-column label="名称" prop="materialName" min-width="120" show-overflow-tooltip />
           <el-table-column label="变动" prop="quantity" width="90" align="right">
@@ -246,7 +318,11 @@
           <el-table-column label="时间" prop="transactionTime" width="150" />
           <el-table-column label="备注" prop="remark" min-width="100" show-overflow-tooltip />
         </el-table>
-        <el-empty v-if="!txLoading && detailTransactions.length === 0" description="暂无库存流水" :image-size="60" />
+        <el-empty
+          v-if="!txLoading && detailTransactions.length === 0"
+          description="暂无库存流水"
+          :image-size="60"
+        />
       </template>
     </el-dialog>
 
@@ -256,7 +332,9 @@
       :operation="previewOperation"
       :biz-id="previewBizId"
       :biz-no="previewBizNo"
-      :status-text-map="outboundStatusTextMap"
+      :status-text-map="
+        Object.fromEntries(OutboundOrderStatusEnum.items.map((item) => [item.value, item.label]))
+      "
       @success="getList"
     />
 
@@ -268,7 +346,6 @@
     />
 
     <!-- 打印对话框（DEV-662：PDF 预览 + 打印 + 下载） -->
-
   </div>
 </template>
 
@@ -287,6 +364,7 @@ import type { TransactionVO } from '@/api/inventory/transaction'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import PickIssueDialog from './components/PickIssueDialog.vue'
 import PickDetailTable from './components/PickDetailTable.vue'
+import ProductionPickAllocationPanel from './components/ProductionPickAllocationPanel.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { formatCurrency, formatNumber, download } from '@/utils/format'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
@@ -372,7 +450,6 @@ const handleSelectionChange = (selection: any[]) => {
   selectedRows.value = selection
 }
 
-
 const handlePrintLabel = () => {
   const row = selectedRows.value[0] as OutboundVO | undefined
   if (!row?.outboundId) {
@@ -390,21 +467,12 @@ const handleRefresh = () => {
 
 // 查看详情（DEV-661：抽屉展示基本信息/明细/库存流水）
 const detailVisible = ref(false)
-const allocating = ref(false)
-
-/** 对当前出库单执行 FIFO 分配（生成后也可手动重排） */
-async function allocateDetail() {
-  if (!currentDetail.value?.outboundId || allocating.value) return
-  allocating.value = true
-  try {
-    const res = await outboundApi.allocate(String(currentDetail.value.outboundId))
-    const data = res.data
-    ElMessage.success(`分配完成：${data?.allocatedLines ?? 0} 行已分配，${data?.shortageLines ?? 0} 行欠料`)
-    await handleView(currentDetail.value)
-    getList()
-  } finally {
-    allocating.value = false
+async function refreshAllocationDetail() {
+  if (currentDetail.value) {
+    const response = await outboundApi.getById(String(currentDetail.value.outboundId))
+    currentDetail.value = response.data || null
   }
+  await getList()
 }
 const detailNo = ref('')
 const currentDetail = ref<OutboundVO | null>(null)
@@ -451,12 +519,6 @@ const previewVisible = ref(false)
 const previewOperation = ref<any>(null)
 const previewBizId = ref<number | null>(null)
 const previewBizNo = ref('')
-const outboundStatusTextMap: Record<number, string> = {
-  [OutboundOrderStatusEnum.DRAFT.value]: OutboundOrderStatusEnum.DRAFT.label,
-  [OutboundOrderStatusEnum.PENDING.value]: OutboundOrderStatusEnum.PENDING.label,
-  [OutboundOrderStatusEnum.APPROVED.value]: OutboundOrderStatusEnum.APPROVED.label,
-  [OutboundOrderStatusEnum.COMPLETED.value]: OutboundOrderStatusEnum.COMPLETED.label,
-}
 function openPreview(opKey: string, row: OutboundVO) {
   if (!row?.outboundId) return
   const op = getOperation(opKey)

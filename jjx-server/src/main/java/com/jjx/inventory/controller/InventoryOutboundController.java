@@ -190,6 +190,29 @@ public class InventoryOutboundController {
         return Result.success(outboundService.createProductionPick(workOrderId, items));
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.jjx.inventory.service.impl.ProductionPickAllocationService pickAllocationService;
+
+    @GetMapping("/{outboundId}/allocation")
+    @SaCheckPermission("inventory:outbound:view")
+    public Result<com.jjx.inventory.service.impl.ProductionPickAllocationService.AllocationView> allocation(@PathVariable Long outboundId) {
+        return Result.success(pickAllocationService.view(outboundId));
+    }
+
+    @PutMapping("/{outboundId}/allocation")
+    @SaCheckPermission("inventory:outbound:edit")
+    public Result<com.jjx.inventory.service.impl.ProductionPickAllocationService.AllocationView> saveAllocation(@PathVariable Long outboundId,
+            @RequestBody com.jjx.inventory.service.impl.ProductionPickAllocationService.SaveRequest request) {
+        return Result.success(pickAllocationService.save(outboundId, request));
+    }
+
+    @PostMapping("/{outboundId}/mixed-batch-review")
+    @SaCheckPermission("outbound:pick:mixed-batch:approve")
+    public Result<com.jjx.inventory.service.impl.ProductionPickAllocationService.AllocationView> reviewAllocation(@PathVariable Long outboundId,
+            @RequestBody com.jjx.inventory.service.impl.ProductionPickAllocationService.ReviewRequest request) {
+        return Result.success(pickAllocationService.review(outboundId, request));
+    }
+
     @PostMapping("/{outboundId}/allocate")
     @Operation(summary = "生产领料按 FIFO 分配库位/批次（幂等）")
     @SaCheckPermission("inventory:outbound:edit")

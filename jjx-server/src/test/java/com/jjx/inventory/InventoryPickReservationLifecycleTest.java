@@ -66,8 +66,7 @@ class InventoryPickReservationLifecycleTest {
     @ParameterizedTest
     @CsvSource({
             "sample, PENDING, 5", "sample, APPROVED, 5",
-            "sample, PENDING, 20", "sample, APPROVED, 20",
-            "work_order, APPROVED, 5", "work_order, APPROVED, 20"
+            "sample, PENDING, 20", "sample, APPROVED, 20"
     })
     void confirmReleasesBeforeFifoAndDeductsOnlyOnce(String source, InventoryOrderStatusEnum status,
                                                    BigDecimal originalQuantity) {
@@ -131,7 +130,7 @@ class InventoryPickReservationLifecycleTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"sample, PENDING", "sample, APPROVED", "work_order, PENDING", "work_order, APPROVED"})
+    @CsvSource({"sample, PENDING", "sample, APPROVED"})
     void cancelRestoresAvailabilityWithoutChangingQuantity(String source, InventoryOrderStatusEnum status) {
         prepare(source, status, new BigDecimal("20"), PICK_QUANTITY);
         stubRelease();
@@ -145,7 +144,7 @@ class InventoryPickReservationLifecycleTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"sample", "work_order"})
+    @ValueSource(strings = {"sample"})
     void rejectReleasesReservationWithoutDeductingStock(String source) {
         prepare(source, InventoryOrderStatusEnum.PENDING, new BigDecimal("20"), PICK_QUANTITY);
         stubRelease();
@@ -157,7 +156,7 @@ class InventoryPickReservationLifecycleTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"sample, CANCELLED", "sample, REJECTED", "work_order, CANCELLED", "work_order, REJECTED"})
+    @CsvSource({"sample, CANCELLED", "sample, REJECTED"})
     void resubmitReservesAgainAfterCancelOrReject(String source, InventoryOrderStatusEnum status) {
         prepare(source, status, new BigDecimal("20"), BigDecimal.ZERO);
         when(stockItemMapper.selectFIFOAvailableForUpdate(11L)).thenReturn(List.of(batch));
@@ -175,6 +174,20 @@ class InventoryPickReservationLifecycleTest {
         verify(stockItemMapper).addReserved(21L, PICK_QUANTITY);
         verify(stockMapper).refreshSummary(11L);
         verifyNoInteractions(stockMutationService, transactionMapper);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"cancel", "reject", "resubmit"})
+    void productionSchemeCDoesNotChangeReservations(String action) {
+        prepare("work_order", "resubmit".equals(action) ? InventoryOrderStatusEnum.REJECTED : InventoryOrderStatusEnum.PENDING,
+                new BigDecimal("20"), PICK_QUANTITY);
+        reset(outboundItemMapper);
+        if ("cancel".equals(action)) assertTrue(service.cancel(1L, "cancel"));
+        else if ("reject".equals(action)) assertTrue(service.reject(1L, 9L, "tester", "reject"));
+        else assertTrue(service.submitApprove(1L));
+        assertEquals(PICK_QUANTITY, batch.getReservedQuantity());
+        assertEquals(new BigDecimal("20"), batch.getQuantity());
+        verifyNoInteractions(stockItemMapper, stockMutationService, transactionMapper, materialAllocations);
     }
 
     @Test

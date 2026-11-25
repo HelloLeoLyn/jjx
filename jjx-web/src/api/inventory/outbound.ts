@@ -1,6 +1,7 @@
 import request from '@/utils/request'
 import type { PageResult, R } from '@/types'
 import type {
+  PickAllocationView,
   OutboundQueryParams,
   OutboundVO,
   OutboundCreateParams,
@@ -39,7 +40,9 @@ export const outboundApi = {
 
   // 打样领料预览（样品BOM展开+匹配物料+可用量；dev-20260929-023）
   samplePickPreview(sampleOrderId: number) {
-    return request.get<R<SamplePickPreviewRow[]>>(`/inventory/outbound/sample-pick/preview/${sampleOrderId}`)
+    return request.get<R<SamplePickPreviewRow[]>>(
+      `/inventory/outbound/sample-pick/preview/${sampleOrderId}`
+    )
   },
 
   // 打样领料（从样品单创建）
@@ -49,7 +52,9 @@ export const outboundApi = {
 
   // 打样备料状态（未备料/备料中/齐套；按打样出库单派生，dev-20261110-003）
   samplePickStatus(sampleOrderId: number) {
-    return request.get<R<SamplePickStatus>>(`/inventory/outbound/sample-pick/status/${sampleOrderId}`)
+    return request.get<R<SamplePickStatus>>(
+      `/inventory/outbound/sample-pick/status/${sampleOrderId}`
+    )
   },
 
   // 某产品关联的领料记录（打样领料 + 生产领料；作业规范页只读，dev-20261011-026）
@@ -71,6 +76,34 @@ export const outboundApi = {
   allocate(outboundId: string) {
     return request.post<R<{ allocatedLines: number; shortageLines: number }>>(
       `/inventory/outbound/${outboundId}/allocate`
+    )
+  },
+
+  getAllocation(outboundId: string) {
+    return request.get<R<PickAllocationView>>(`/inventory/outbound/${outboundId}/allocation`)
+  },
+
+  saveAllocation(
+    outboundId: string,
+    data: {
+      expectedFingerprint: string
+      lines: Array<{
+        demandItemId: string | number
+        stockItemId: string | number
+        quantity: number
+      }>
+    }
+  ) {
+    return request.put<R<PickAllocationView>>(`/inventory/outbound/${outboundId}/allocation`, data)
+  },
+
+  reviewMixedBatch(
+    outboundId: string,
+    data: { expectedFingerprint: string; approved: boolean; reason: string }
+  ) {
+    return request.post<R<PickAllocationView>>(
+      `/inventory/outbound/${outboundId}/mixed-batch-review`,
+      data
     )
   },
 

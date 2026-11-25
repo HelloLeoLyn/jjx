@@ -10,8 +10,17 @@
     </div>
 
     <!-- A4 画布（干净页面） -->
-    <A4Canvas :padding-mm="15" v-if="info && (!isPick || pickInfo)">
-      <PickOrderQr031Print v-if="isPick" :data="pickInfo!" />
+    <A4Canvas
+      :padding-mm="15"
+      v-if="info && (!isProductionPick || allocation) && (!isPick || isProductionPick || pickInfo)"
+    >
+      <ProductionPickPrint
+        v-if="isProductionPick && allocation"
+        :allocation="allocation"
+        :detail="info"
+        :mode="printMode"
+      />
+      <PickOrderQr031Print v-else-if="isPick" :data="pickInfo!" />
       <template v-else>
         <!-- 公司抬头 -->
         <PrintCompanyHeader variant="center" />
@@ -114,7 +123,8 @@ import A4Canvas from '@/components/A4Canvas/index.vue'
 import PrintCompanyHeader from '@/components/PrintCompanyHeader.vue'
 import { createQualityTemplatePrintLog } from '@/api/production/qualityTemplate'
 import PickOrderQr031Print from './components/PickOrderQr031Print.vue'
-import type { PickOrderPrintVO } from '@/types/inventory/outbound'
+import ProductionPickPrint from './components/ProductionPickPrint.vue'
+import type { PickAllocationView, PickOrderPrintVO } from '@/types/inventory/outbound'
 
 const route = useRoute()
 const router = useRouter()
@@ -122,6 +132,11 @@ const router = useRouter()
 const info = ref<any>(null)
 const loading = ref(false)
 const pickInfo = ref<PickOrderPrintVO | null>(null)
+const allocation = ref<PickAllocationView | null>(null)
+const isProductionPick = computed(
+  () => info.value?.outboundType === 'production' && info.value?.sourceType === 'work_order'
+)
+const printMode = computed(() => (route.query.mode === 'picking' ? 'picking' : 'pick'))
 
 // 领料单（URL 带 pick=1 或类型为 production 时显示领料单标题）
 const isPick = computed(() => {
@@ -156,7 +171,10 @@ async function loadData() {
     const res: any = await outboundApi.getById(outboundId)
     if (res.code === 200 && res.data) {
       info.value = res.data
-      if (res.data.outboundType === 'production' || res.data.outboundType === 'sample') {
+      if (isProductionPick.value) {
+        const response = await outboundApi.getAllocation(outboundId)
+        allocation.value = response.data || null
+      } else if (res.data.outboundType === 'production' || res.data.outboundType === 'sample') {
         const pickRes = await outboundApi.getPickPrint(outboundId)
         pickInfo.value = pickRes.data || null
       }

@@ -25,7 +25,8 @@ public enum InventoryOrderStatusEnum implements BizStatusEnum {
     CANCELLED(9, "已取消"),
     COMPLETED(10, "已完成"),
     PROCESSED(11, "已处理"),
-    IN_PROGRESS(12, "调拨中");
+    IN_PROGRESS(12, "调拨中"),
+    MIXED_BATCH_PENDING(13, "待混批审批");
 
     private final Integer value;
     private final String label;

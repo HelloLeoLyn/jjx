@@ -5,7 +5,9 @@
         <span>{{ row.sequence }}</span>
       </template>
     </el-table-column>
-    <el-table-column label="材料编码" prop="materialCode" width="110" />
+    <el-table-column label="材料编码" prop="materialCode" width="110">
+      <template #default="{ row }">{{ row.source.materialCode || '-' }}</template>
+    </el-table-column>
     <el-table-column label="材料名称" min-width="150" show-overflow-tooltip>
       <template #default="{ row }">
         <div class="pick-name" :style="{ paddingLeft: row.depth * 16 + 'px' }">
@@ -23,7 +25,9 @@
       </template>
     </el-table-column>
     <el-table-column label="项目名称" width="110" show-overflow-tooltip>
-      <template #default="{ row }">{{ row.source.processName || row.source.projectName || '-' }}</template>
+      <template #default="{ row }">{{
+        row.source.processName || row.source.projectName || '-'
+      }}</template>
     </el-table-column>
     <el-table-column label="规格" min-width="120" show-overflow-tooltip>
       <template #default="{ row }">{{ row.source.specification || '-' }}</template>
@@ -35,13 +39,17 @@
       <template #default="{ row }">{{ ratioText(row.source) }}</template>
     </el-table-column>
     <el-table-column label="实发数量" width="100" align="right">
-      <template #default="{ row }">{{ num(row.source.quantity ?? row.source.qtyPick ?? row.source.issuedQuantity) }}</template>
+      <template #default="{ row }">{{
+        num(row.source.quantity ?? row.source.qtyPick ?? row.source.issuedQuantity)
+      }}</template>
     </el-table-column>
     <el-table-column label="需求" width="90" align="right">
       <template #default="{ row }">{{ num(row.source.qtyNeeded ?? row.source.demand) }}</template>
     </el-table-column>
     <el-table-column label="库存数量" width="100" align="right">
-      <template #default="{ row }">{{ num(row.source.available ?? row.source.availableQuantity ?? row.source.stockQuantity) }}</template>
+      <template #default="{ row }">{{
+        num(row.source.available ?? row.source.availableQuantity ?? row.source.stockQuantity)
+      }}</template>
     </el-table-column>
     <el-table-column label="备注" min-width="100" show-overflow-tooltip>
       <template #default="{ row }">{{ row.source.remark || '-' }}</template>
@@ -58,7 +66,7 @@ import { computed, ref } from 'vue'
 
 const props = withDefaults(
   defineProps<{ rows?: any[]; emptyText?: string; showLocation?: boolean }>(),
-  { rows: () => [], emptyText: '无明细', showLocation: true },
+  { rows: () => [], emptyText: '无明细', showLocation: true }
 )
 
 const collapsed = ref(new Set<string>())

@@ -51,6 +51,7 @@ class ProductionMakePickTest {
     @Mock RedisSequenceService redisSequenceService;
     @Mock InventoryStockMutationService stockMutationService;
     @Mock EventPublisher eventPublisher;
+    @Mock com.jjx.inventory.service.impl.ProductionPickAllocationService pickAllocationService;
     @InjectMocks InventoryOutboundServiceImpl service;
 
     ProductionOrder production;
@@ -157,7 +158,7 @@ class ProductionMakePickTest {
     }
 
     @ParameterizedTest @ValueSource(strings = {"make", "buy", "linked-make"})
-    void generateReserveAndConfirmTenToNineWithOutboundLedger(String source) {
+    void generateWithoutReservationAndConfirmTenToNineWithOutboundLedger(String source) {
         bomItem.setSourceType("linked-make".equals(source) ? "make" : source);
         if ("linked-make".equals(source)) bomItem.setSubBomId(99L);
         stubCreation();
@@ -165,49 +166,34 @@ class ProductionMakePickTest {
         List<InventoryOutboundItem> items = new ArrayList<>();
         when(stockItemMapper.selectFIFOAvailable(349L)).thenReturn(List.of(batch));
         when(outboundItemMapper.insert(any(InventoryOutboundItem.class))).thenAnswer(inv -> {
-            InventoryOutboundItem item = inv.getArgument(0);
-            item.setItemId(81L);
-            item.setInventoryItemId(31L);
-            items.add(item);
-            return 1;
+            InventoryOutboundItem item = inv.getArgument(0); item.setItemId(81L); item.setInventoryItemId(31L); items.add(item); return 1;
         });
         when(outboundItemMapper.selectByOutboundId(1L)).thenReturn(items);
-        when(stockItemMapper.selectFIFOAvailableForUpdate(349L)).thenReturn(List.of(batch));
-        when(stockItemMapper.addReserved(eq(21L), any())).thenAnswer(inv -> {
-            batch.setReservedQuantity(batch.getReservedQuantity().add(inv.getArgument(1)));
-            return 1;
-        });
         assertEquals(1L, service.createFromProduction(20L, null));
-        assertEquals(349L, items.get(0).getMaterialId());
-        assertEquals(BigDecimal.ONE, items.get(0).getQuantity());
-        assertEquals(BigDecimal.ONE, batch.getReservedQuantity());
+        assertEquals(349L, items.getFirst().getMaterialId());
+        assertEquals(BigDecimal.ONE, items.getFirst().getQuantity());
+        assertEquals(BigDecimal.ZERO, batch.getReservedQuantity());
+        verify(pickAllocationService).allocate(1L);
+        verify(stockItemMapper, never()).addReserved(anyLong(), any());
         var captor = ArgumentCaptor.forClass(InventoryOutboundOrder.class);
         verify(outboundOrderMapper).insert(captor.capture());
-        var order = captor.getValue();
-        order.setOrderStatus(InventoryOrderStatusEnum.APPROVED.getValue());
+        var order = captor.getValue(); order.setOrderStatus(InventoryOrderStatusEnum.APPROVED.getValue());
         when(outboundOrderMapper.selectByIdForUpdate(1L)).thenReturn(order);
         when(outboundOrderMapper.updateById(any(InventoryOutboundOrder.class))).thenReturn(1);
-        when(stockItemMapper.selectFIFOReservedForUpdate(349L)).thenReturn(List.of(batch));
-        when(stockItemMapper.releaseReserved(eq(21L), any())).thenAnswer(inv -> {
-            batch.setReservedQuantity(batch.getReservedQuantity().subtract(inv.getArgument(1)));
-            return 1;
-        });
-        when(stockItemMapper.selectFIFOAvailableByInventoryItemId(31L)).thenReturn(List.of(batch));
+        when(outboundOrderMapper.update(isNull(), any())).thenReturn(1);
+        when(pickAllocationService.issueStock(eq(order), any())).thenReturn(batch);
         when(stockItemMapper.selectByIdForUpdate(21L)).thenReturn(batch);
         var mutation = new InventoryStockMutationServiceImpl(stockItemMapper, stockMapper, transactionMapper);
-        when(stockMutationService.applyDelta(any(), any(), any())).thenAnswer(inv ->
-                mutation.applyDelta(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)));
-
+        when(stockMutationService.applyDelta(any(), any(), any())).thenAnswer(inv -> mutation.applyDelta(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)));
         assertTrue(service.confirm(1L, 9L, "tester"));
         assertEquals(new BigDecimal("9"), batch.getQuantity());
         assertEquals(BigDecimal.ZERO, batch.getReservedQuantity());
+        verify(stockItemMapper, never()).releaseReserved(anyLong(), any());
         var tx = ArgumentCaptor.forClass(InventoryTransaction.class);
         verify(transactionMapper).insert(tx.capture());
         assertEquals(TransactionTypeEnum.OUTBOUND.getCode(), tx.getValue().getTransactionType());
         assertEquals(BigDecimal.ONE.negate(), tx.getValue().getQuantity());
-        assertEquals(349L, tx.getValue().getMaterialId());
-        assertEquals(21L, tx.getValue().getStockItemId());
-        assertEquals(81L, tx.getValue().getSourceItemId());
+        assertEquals(349L, tx.getValue().getMaterialId()); assertEquals(21L, tx.getValue().getStockItemId()); assertEquals(81L, tx.getValue().getSourceItemId());
     }
 
     private void stubCreation() {
@@ -218,6 +204,7 @@ class ProductionMakePickTest {
                 .thenReturn("PICK-TEST");
         when(outboundOrderMapper.insert(any(InventoryOutboundOrder.class))).thenAnswer(inv -> {
             inv.<InventoryOutboundOrder>getArgument(0).setOutboundId(1L);
+            lenient().when(outboundOrderMapper.selectById(1L)).thenReturn(inv.getArgument(0));
             return 1;
         });
     }

@@ -28,6 +28,7 @@ class InventoryOutboundInvariantTest {
     @Mock InventoryStockMapper stockMapper;
     @Mock InventoryTransactionMapper transactionMapper;
     @Mock InventoryStockMutationService stockMutationService;
+    @Mock com.jjx.inventory.service.impl.MaterialStockAllocationService materialAllocations;
     @Mock com.jjx.sales.service.SalesDeliveryWorkflowService deliveryWorkflow;
     @Mock com.jjx.event.EventPublisher eventPublisher;
     @Mock com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
