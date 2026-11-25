@@ -276,6 +276,41 @@
       "date": "2026-11-20",
       "proposalLink": "jjx-docs/task-docs/dev-20261120-005-plan.md",
       "reason": "历史规格属性取值表，当前0行；原302曾批准，309/358曾退役，后续dev-20261111-018明确用户已定保留。用户2026-11-20授权处理基线，现补历史保留例外；无运行时读写，不恢复旧接口或第二属性真源。"
+    },
+    {
+      "table": "print_artwork",
+      "taskCode": "dev-20261125-008",
+      "date": "2026-11-26",
+      "proposalLink": "jjx-docs/history/printing-resource-v2-contract-dev-20261125-007.md",
+      "reason": "印刷图案主档：独立编号/归档对象，可跨产品共享；旧 engineering_film 强制单产品，无法复用"
+    },
+    {
+      "table": "print_artwork_version",
+      "taskCode": "dev-20261125-008",
+      "date": "2026-11-26",
+      "proposalLink": "jjx-docs/history/printing-resource-v2-contract-dev-20261125-007.md",
+      "reason": "图案版本：审批/发布/停用与路线规范引用；图案内版本号唯一；旧菲林以产品为域"
+    },
+    {
+      "table": "print_film_copy",
+      "taskCode": "dev-20261125-008",
+      "date": "2026-11-26",
+      "proposalLink": "jjx-docs/history/printing-resource-v2-contract-dev-20261125-007.md",
+      "reason": "实体底片：与设计版本分离、同版多份、实体号唯一、独立封存/销毁；旧表混存设计与实物"
+    },
+    {
+      "table": "print_frame_stretch",
+      "taskCode": "dev-20261125-008",
+      "date": "2026-11-26",
+      "proposalLink": "jjx-docs/history/printing-resource-v2-contract-dev-20261125-007.md",
+      "reason": "网框绷网履历：同框多次绷网、唯一开放段、历史参数可查；旧框只有当前 mesh"
+    },
+    {
+      "table": "print_use_segment",
+      "taskCode": "dev-20261125-008",
+      "date": "2026-11-26",
+      "proposalLink": "jjx-docs/history/printing-resource-v2-contract-dev-20261125-007.md",
+      "reason": "生产实际用版分段：一次执行多段、单版排他、换版追溯；既有 execution 一行无法表达换版前后"
     }
   ],
   "typeSuffixAllowlist": [
