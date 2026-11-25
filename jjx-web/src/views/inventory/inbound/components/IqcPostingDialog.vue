@@ -2,7 +2,7 @@
   <el-dialog
     :model-value="visible"
     :title="`IQC 确认入库 - ${inboundNo || ''}`"
-    width="850px"
+    width="1200px"
     append-to-body
     :close-on-click-modal="false"
     @update:model-value="emit('update:visible', $event)"
@@ -13,6 +13,18 @@
       :closable="false"
       show-icon
     />
+    <div class="bulk-bar">
+      <span class="bulk-label">统一设置库位</span>
+      <el-select v-model="bulkLocationId" filterable clearable placeholder="选择库位" style="width: 260px">
+        <el-option
+          v-for="loc in locations"
+          :key="loc.locationId"
+          :label="loc.locationName || loc.locationCode"
+          :value="loc.locationId"
+        />
+      </el-select>
+      <el-button :disabled="!bulkLocationId" @click="applyBulk">应用到全部明细</el-button>
+    </div>
     <el-table v-loading="loading" :data="items" border class="posting-table">
       <el-table-column prop="materialCode" label="物料编码" width="150" />
       <el-table-column prop="materialName" label="物料名称" min-width="180" />
@@ -28,7 +40,12 @@
       </el-table-column>
       <el-table-column label="入库库位" width="220">
         <template #default="{ row }">
-          <el-select v-model="row.locationId" filterable placeholder="请选择库位" style="width: 100%">
+          <el-select
+            v-model="row.locationId"
+            filterable
+            placeholder="请选择库位"
+            style="width: 100%"
+          >
             <el-option
               v-for="loc in locations"
               :key="loc.locationId"
@@ -71,9 +88,16 @@ const emit = defineEmits<{
 const userStore = useUserStore()
 const loading = ref(false)
 const submitting = ref(false)
-type PostingRow = InboundItemVO & { locationId?: number }
+type PostingRow = Omit<InboundItemVO, 'locationId'> & { locationId?: number }
 const items = ref<PostingRow[]>([])
 const locations = ref<InventoryStorageLocation[]>([])
+const bulkLocationId = ref<number>()
+
+/** 统一设置库位：应用到当前单据全部明细 */
+function applyBulk() {
+  if (!bulkLocationId.value) return
+  items.value.forEach((item) => { item.locationId = bulkLocationId.value })
+}
 
 watch(
   () => [props.visible, props.inboundId] as const,
@@ -87,7 +111,10 @@ watch(
         ? (await locationApi.list({ pageNum: 1, pageSize: 500, warehouseId })).data?.records || []
         : []
       const auto = locations.value.length === 1 ? locations.value[0].locationId : undefined
-      items.value = (detail?.items || []).map((item) => ({ ...item, locationId: auto })) as PostingRow[]
+      items.value = (detail?.items || []).map((item) => ({
+        ...item,
+        locationId: auto,
+      })) as PostingRow[]
     } finally {
       loading.value = false
     }
@@ -124,6 +151,16 @@ async function confirm() {
 </script>
 
 <style scoped>
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+}
+.bulk-label {
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+}
 .location-row {
   display: flex;
   align-items: center;
