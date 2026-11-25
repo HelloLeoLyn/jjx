@@ -30,7 +30,10 @@ public interface InventoryStockReadMapper {
              <if test='query.warehouseId != null'>AND b.warehouse_id=#{query.warehouseId}</if>
              <if test='query.locationId != null'>AND b.location_id=#{query.locationId}</if>
              ORDER BY (b.location_id IS NULL), b.expiry_date, b.item_id LIMIT 1) location_id
-        FROM inventory_stock s JOIN inventory_item i ON i.inventory_item_id=s.inventory_item_id
+        FROM (SELECT inventory_item_id, MAX(stock_id) stock_id, MAX(material_code) material_code,
+                     MAX(material_name) material_name, MAX(last_update_time) last_update_time
+              FROM inventory_stock GROUP BY inventory_item_id) s
+        JOIN inventory_item i ON i.inventory_item_id=s.inventory_item_id
         LEFT JOIN inventory_material m ON i.item_type=#{materialType} AND m.material_id=i.source_id
         JOIN (SELECT b.inventory_item_id,SUM(b.quantity) total_quantity,
                 SUM(COALESCE(b.reserved_quantity,0)) total_reserved,
