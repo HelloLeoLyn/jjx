@@ -37,21 +37,29 @@ public interface InventoryStockMapper extends BaseMapper<InventoryStock> {
     @Select("SELECT * FROM inventory_stock WHERE material_id = #{materialId}")
     InventoryStock selectByMaterialId(@Param("materialId") Long materialId);
 
-    @Select("SELECT * FROM inventory_stock WHERE inventory_item_id = #{inventoryItemId}")
+    /**
+     * 按物料汇总（跨库位合计）：库存汇总已按「物料+库位」拆行，
+     * 该查询保持原有单行返回语义，供可用量/预留等总量判断使用（dev-20261125-003）。
+     */
+    @Select("SELECT inventory_item_id, MAX(material_id) AS material_id, MAX(material_code) AS material_code, " +
+            "MAX(material_name) AS material_name, COALESCE(SUM(total_quantity),0) AS total_quantity, " +
+            "COALESCE(SUM(total_reserved),0) AS total_reserved, COALESCE(SUM(available_quantity),0) AS available_quantity, " +
+            "MIN(earliest_expiry) AS earliest_expiry, MAX(location_id) AS location_id " +
+            "FROM inventory_stock WHERE inventory_item_id = #{inventoryItemId} GROUP BY inventory_item_id")
     InventoryStock selectByInventoryItemId(@Param("inventoryItemId") Long inventoryItemId);
 
-    /** 发货建单串行校验成品占用；只锁行，不写库存数量。 */
+    /** 锁定该物料的全部库位汇总行（发货建单串行校验用）。 */
     @Select("SELECT * FROM inventory_stock WHERE inventory_item_id = #{inventoryItemId} FOR UPDATE")
-    InventoryStock selectByInventoryItemIdForUpdate(@Param("inventoryItemId") Long inventoryItemId);
+    List<InventoryStock> lockByInventoryItemId(@Param("inventoryItemId") Long inventoryItemId);
 
+    /** 按「物料 + 库位」刷新汇总（dev-20261125-003）。 */
     @Update("INSERT INTO inventory_stock (inventory_item_id, material_id, material_code, material_name, total_quantity, total_reserved, earliest_expiry, location_id) " +
             "SELECT si.inventory_item_id, MAX(si.material_id), MAX(si.material_code), MAX(si.material_name), " +
-            "COALESCE(SUM(si.quantity),0), COALESCE(SUM(si.reserved_quantity),0), MIN(si.expiry_date), " +
-            "(SELECT sub.location_id FROM inventory_stock_item sub WHERE sub.inventory_item_id=si.inventory_item_id " +
-            "AND sub.status=1 AND sub.quantity>0 ORDER BY (sub.location_id IS NULL), sub.expiry_date, sub.last_inbound_time LIMIT 1) " +
-            "FROM inventory_stock_item si WHERE si.inventory_item_id=#{inventoryItemId} AND si.status=1 GROUP BY si.inventory_item_id " +
+            "COALESCE(SUM(si.quantity),0), COALESCE(SUM(si.reserved_quantity),0), MIN(si.expiry_date), si.location_id " +
+            "FROM inventory_stock_item si WHERE si.inventory_item_id=#{inventoryItemId} AND si.status=1 AND si.location_id IS NOT NULL " +
+            "GROUP BY si.inventory_item_id, si.location_id " +
             "ON DUPLICATE KEY UPDATE total_quantity=VALUES(total_quantity), total_reserved=VALUES(total_reserved), " +
-            "earliest_expiry=VALUES(earliest_expiry), location_id=VALUES(location_id), last_update_time=NOW()")
+            "earliest_expiry=VALUES(earliest_expiry), last_update_time=NOW()")
     int refreshSummaryByInventoryItemId(@Param("inventoryItemId") Long inventoryItemId);
 
     /**
@@ -65,18 +73,14 @@ public interface InventoryStockMapper extends BaseMapper<InventoryStock> {
             "SELECT si.inventory_item_id, MAX(si.material_id), MAX(si.material_code), MAX(si.material_name), " +
             "       COALESCE(SUM(si.quantity), 0), " +
             "       COALESCE(SUM(si.reserved_quantity), 0), " +
-            "       MIN(si.expiry_date), " +
-            "       (SELECT sub.location_id FROM inventory_stock_item sub " +
-            "        WHERE sub.inventory_item_id = si.inventory_item_id AND sub.status = 1 AND sub.quantity > 0 " +
-            "        ORDER BY (sub.location_id IS NULL) ASC, sub.expiry_date ASC, sub.last_inbound_time ASC LIMIT 1) " +
+            "       MIN(si.expiry_date), si.location_id " +
             "FROM inventory_stock_item si " +
-            "WHERE si.material_id = #{materialId} AND si.status = 1 AND si.inventory_item_id IS NOT NULL " +
-            "GROUP BY si.inventory_item_id " +
+            "WHERE si.material_id = #{materialId} AND si.status = 1 AND si.inventory_item_id IS NOT NULL AND si.location_id IS NOT NULL " +
+            "GROUP BY si.inventory_item_id, si.location_id " +
             "ON DUPLICATE KEY UPDATE " +
             "  total_quantity = VALUES(total_quantity), " +
             "  total_reserved = VALUES(total_reserved), " +
             "  earliest_expiry = VALUES(earliest_expiry), " +
-            "  location_id = VALUES(location_id), " +
             "  last_update_time = NOW()")
     int refreshSummary(@Param("materialId") Long materialId);
 

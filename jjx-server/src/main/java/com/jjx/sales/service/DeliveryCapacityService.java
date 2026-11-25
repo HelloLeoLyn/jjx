@@ -43,9 +43,16 @@ public class DeliveryCapacityService {
         for (var entry : ordersByProduct.entrySet()) {
             Long productId = entry.getKey();
             InventoryItem identity = itemMapper.selectBySource(InventoryItemTypeEnum.PRODUCT.getCode(), productId);
-            InventoryStock stock = identity == null ? null : lock
-                ? stockMapper.selectByInventoryItemIdForUpdate(identity.getInventoryItemId())
-                : stockMapper.selectByInventoryItemId(identity.getInventoryItemId());
+            InventoryStock stock;
+            if (identity == null) {
+                stock = null;
+            } else if (lock) {
+                // dev-20261125-003：汇总已按库位拆行，先锁全部库位行再取跨库位合计
+                stockMapper.lockByInventoryItemId(identity.getInventoryItemId());
+                stock = stockMapper.selectByInventoryItemId(identity.getInventoryItemId());
+            } else {
+                stock = stockMapper.selectByInventoryItemId(identity.getInventoryItemId());
+            }
             BigDecimal total = stock == null ? BigDecimal.ZERO : positive(stock.getTotalQuantity());
             BigDecimal reserved = stock == null ? BigDecimal.ZERO : positive(stock.getTotalReserved()).min(total);
             BigDecimal shared = total.subtract(reserved);
