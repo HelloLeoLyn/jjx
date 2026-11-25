@@ -81,8 +81,9 @@ public class InventoryInboundController {
     @SaCheckPermission("inventory:inbound:edit")
     public Result<Boolean> confirm(@PathVariable Long inboundId,
                                    @RequestParam Long operatorId,
-                                   @RequestParam String operatorName) {
-        return Result.success(inboundService.confirm(inboundId, operatorId, operatorName));
+                                   @RequestParam String operatorName,
+                                   @RequestParam Long locationId) {
+        return Result.success(inboundService.confirm(inboundId, operatorId, operatorName, locationId));
     }
 
     @PostMapping("/roll-plan/{itemId}")

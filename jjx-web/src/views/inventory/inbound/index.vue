@@ -227,6 +227,13 @@
       :inbound-no="postingInboundNo"
       @success="afterInboundAction"
     />
+    <!-- 确认入库：库位必选（dev-20261125-001） -->
+    <ConfirmInboundDialog
+      v-model:visible="confirmDialogVisible"
+      :orders="confirmTargets"
+      :submitting="confirmSubmitting"
+      @confirm="doConfirm"
+    />
     <!-- 操作预览器 -->
     <OperationPreviewDialog
       v-model="previewVisible"
@@ -250,6 +257,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, Download, Refresh } from '@element-plus/icons-vue'
 import { inboundApi } from '@/api/inventory/inbound'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
+import ConfirmInboundDialog from './components/ConfirmInboundDialog.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { formatNumber, download } from '@/utils/format'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
@@ -339,6 +347,44 @@ const handleSelectionChange = (selection: InboundVO[]) => {
 const userStore = useUserStore()
 const selectedRows = ref<InboundVO[]>([])
 const batchConfirming = ref(false)
+/** 确认入库弹窗（库位必选） */
+const confirmDialogVisible = ref(false)
+const confirmSubmitting = ref(false)
+const confirmTargets = ref<Array<{ inboundId: string; inboundNo?: string; warehouseId?: string; warehouseName?: string }>>([])
+
+function openConfirmDialog(rows: InboundVO[]) {
+  confirmTargets.value = rows.map((row) => ({
+    inboundId: String(row.inboundId),
+    inboundNo: row.inboundNo,
+    warehouseId: row.warehouseId,
+    warehouseName: row.warehouseName,
+  }))
+  confirmDialogVisible.value = true
+}
+
+async function doConfirm(selections: Array<{ inboundId: string; locationId: number }>) {
+  if (!selections.length) return
+  confirmSubmitting.value = true
+  batchConfirming.value = true
+  const operatorId = String(userStore.userId || 1)
+  const operatorName = userStore.nickName || '当前用户'
+  const failed: string[] = []
+  let ok = 0
+  for (const s of selections) {
+    try {
+      await inboundApi.confirm(s.inboundId, operatorId, operatorName, s.locationId)
+      ok += 1
+    } catch (e: any) {
+      failed.push(`${s.inboundId}：${e?.message || '失败'}`)
+    }
+  }
+  confirmSubmitting.value = false
+  batchConfirming.value = false
+  confirmDialogVisible.value = false
+  if (ok > 0) ElMessage.success(`确认入库完成：成功 ${ok} 张`)
+  if (failed.length) ElMessage.error(`失败 ${failed.length} 张 —— ${failed.join('；')}`)
+  afterInboundAction()
+}
 
 /** 红冲单：复检换代生成的负数量单（单号后缀 -R 或数量为负） */
 const isReverse = (row: InboundVO) => isReverseInbound(row.inboundNo, row.totalQuantity)
@@ -355,36 +401,10 @@ const confirmable = (row: InboundVO) =>
 
 const confirmableSelected = computed(() => selectedRows.value.filter(confirmable))
 
-async function handleBatchConfirm() {
+function handleBatchConfirm() {
   const targets = confirmableSelected.value
   if (!targets.length) return
-  try {
-    await ElMessageBox.confirm(
-      `确认对已选的 ${targets.length} 张入库单执行「确认入库」？\n过账后库存与批次按单生效，红冲单（若有）会按负数量冲减。`,
-      '批量确认入库',
-      { confirmButtonText: '确认入库', cancelButtonText: '取消', type: 'warning' }
-    )
-  } catch {
-    return
-  }
-  batchConfirming.value = true
-  const failed: string[] = []
-  let ok = 0
-  const operatorId = String(userStore.userId || 1)
-  const operatorName = userStore.nickName || '当前用户'
-  for (const row of targets) {
-    try {
-      // 逐单独立提交：失败不影响其它单，最后统一汇报
-      await inboundApi.confirm(String(row.inboundId), operatorId, operatorName)
-      ok += 1
-    } catch (e: any) {
-      failed.push(`${row.inboundNo}：${e?.message || '失败'}`)
-    }
-  }
-  batchConfirming.value = false
-  if (ok > 0) ElMessage.success(`批量确认入库完成：成功 ${ok} 张`)
-  if (failed.length) ElMessage.error(`失败 ${failed.length} 张 —— ${failed.join('；')}`)
-  getList()
+  openConfirmDialog(targets)
 }
 
 // 删除入库单
@@ -431,7 +451,7 @@ const handleView = (row: InboundVO) => {
 const onDetailConfirm = () => {
   if (!detailRow.value) return
   if (isPurchase(detailRow.value)) handleIqcPosting(detailRow.value)
-  else openPreview('inbound.confirm', detailRow.value)
+  else openConfirmDialog([detailRow.value])
 }
 const onDetailTrace = () => {
   if (detailRow.value) showTrace(detailRow.value)
@@ -488,7 +508,7 @@ const isPurchase = (row: InboundVO) =>
   !!row.sourceId &&
   (['PURCHASE', 'PURCHASE_ORDER'].includes(row.sourceType?.toUpperCase() || '') ||
     row.inboundType?.toUpperCase() === 'PURCHASE')
-const handleManualConfirm = (row: InboundVO) => openPreview('inbound.confirm', row)
+const handleManualConfirm = (row: InboundVO) => openConfirmDialog([row])
 const handleIqcPosting = (row: InboundVO) => {
   postingInboundId.value = Number(row.inboundId)
   postingInboundNo.value = row.inboundNo || ''

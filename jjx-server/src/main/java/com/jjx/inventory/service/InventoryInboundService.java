@@ -47,6 +47,9 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
     /**
      * 确认入库（执行库存增加）
      */
+    boolean confirm(Long inboundId, Long operatorId, String operatorName, Long locationId);
+
+    /** 内部/历史调用：不强制库位（返工退料、打样退料、客户拒收回库等自动过账）。 */
     boolean confirm(Long inboundId, Long operatorId, String operatorName);
 
     /** 原已批准、未过账采购明细补录多卷计划，原收货量与IQC不变。 */

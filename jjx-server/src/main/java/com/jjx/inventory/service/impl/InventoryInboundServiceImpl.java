@@ -92,6 +92,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final com.jjx.inventory.mapper.InventoryAlertLogMapper alertLogMapper;
     private final org.springframework.transaction.PlatformTransactionManager transactionManager;
     private final InventoryInboundOrderMapper inboundOrderMapper;
+    private final com.jjx.inventory.mapper.InventoryStorageLocationMapper locationMapper;
     private final InventoryInboundItemMapper inboundItemMapper;
     private final InventoryStockItemMapper stockItemMapper;
     @org.springframework.beans.factory.annotation.Autowired
@@ -455,12 +456,38 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public boolean confirm(Long inboundId, Long operatorId, String operatorName, Long locationId) {
+        return confirmInternal(inboundId, operatorId, operatorName, locationId, true);
+    }
+
+    /** 内部自动过账（返工退料/打样退料/客户拒收回库）：不强制库位，沿用单据现有库位。 */
+    @Override
     public boolean confirm(Long inboundId, Long operatorId, String operatorName) {
+        return confirmInternal(inboundId, operatorId, operatorName, null, false);
+    }
+
+    private boolean confirmInternal(Long inboundId, Long operatorId, String operatorName, Long locationId,
+                                    boolean requireLocation) {
         // DEV-651 方案A：行锁查询，锁住单据行直到事务提交，并发下第二个请求阻塞后状态校验失败，杜绝重复入库
         InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
         if (order == null) {
             log.error("入库单不存在: inboundId={}", inboundId);
             return false;
+        }
+        // dev-20261125-001：人工确认入库必须选库位，且库位必须属于本单仓库；内部自动过账不强制。
+        if (requireLocation && locationId == null) throw new BusinessException("请选择入库库位");
+        if (locationId != null) {
+            com.jjx.inventory.domain.InventoryStorageLocation location = locationMapper.selectById(locationId);
+            if (location == null || !java.util.Objects.equals(location.getWarehouseId(), order.getWarehouseId()))
+                throw new BusinessException("库位不属于本单仓库，请重新选择");
+            order.setLocationId(locationId);
+            inboundOrderMapper.updateById(order);
+            for (InventoryInboundItem item : inboundItemMapper.selectByInboundId(inboundId)) {
+                if (!java.util.Objects.equals(item.getLocationId(), locationId)) {
+                    item.setLocationId(locationId);
+                    inboundItemMapper.updateById(item);
+                }
+            }
         }
 
         // 手工入库保持 confirm 直接过账；采购来源必须走检验提交 + 品质主管 approve。

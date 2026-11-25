@@ -455,18 +455,6 @@ export const inboundOperations: OperationDef[] = [
     },
   },
   {
-    key: 'inbound.confirm',
-    bizType: 'inbound',
-    name: '确认入库',
-    fromStatus: [1, 2],
-    toStatus: 3,
-    events: ['inventory.inbound.confirmed'],
-    api: ({ bizId }) => {
-      const u = currentUser()
-      return inboundApi.confirm(String(bizId), u.id, u.name)
-    },
-  },
-  {
     key: 'inbound.cancel',
     bizType: 'inbound',
     name: '取消入库单',
