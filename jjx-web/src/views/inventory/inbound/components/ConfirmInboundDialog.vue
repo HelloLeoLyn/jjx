@@ -13,6 +13,21 @@
       :closable="false"
       show-icon
     />
+    <div class="bulk-bar">
+      <span class="bulk-label">统一设置库位</span>
+      <el-select v-model="bulkLocationId" filterable clearable placeholder="选择库位" style="width: 260px">
+        <el-option-group v-for="group in bulkGroups" :key="group.warehouseId" :label="group.label">
+          <el-option
+            v-for="loc in group.locations"
+            :key="loc.locationId"
+            :label="loc.locationName || loc.locationCode"
+            :value="loc.locationId"
+          />
+        </el-option-group>
+      </el-select>
+      <el-button :disabled="!bulkLocationId" @click="applyBulk">应用到本仓库所有行</el-button>
+      <span class="bulk-tip">只影响与所选库位同仓库的明细</span>
+    </div>
     <el-table v-loading="loading" :data="rows" border size="small" class="confirm-table" max-height="420">
       <el-table-column prop="inboundNo" label="入库单号" width="150" />
       <el-table-column prop="materialCode" label="物料编码" width="130" />
@@ -76,6 +91,27 @@ const emit = defineEmits<{
 
 const loading = ref(false)
 const rows = ref<ConfirmRow[]>([])
+const bulkLocationId = ref<number>()
+const warehouseNames = reactive<Record<string, string>>({})
+
+/** 统一设置：按仓库分组展示全部已加载库位 */
+const bulkGroups = computed(() =>
+  Object.entries(locations).map(([warehouseId, list]) => ({
+    warehouseId,
+    label: warehouseNames[warehouseId] || `仓库${warehouseId}`,
+    locations: list,
+  }))
+)
+
+/** 把所选库位应用到同仓库的全部明细行（不同仓库不动） */
+function applyBulk() {
+  if (!bulkLocationId.value) return
+  const target = Object.values(locations).flat().find((loc) => loc.locationId === bulkLocationId.value)
+  if (!target) return
+  rows.value.forEach((row) => {
+    if (String(row.warehouseId) === String(target.warehouseId)) row.locationId = target.locationId
+  })
+}
 const locations = reactive<Record<string, InventoryStorageLocation[]>>({})
 
 function locationsOf(warehouseId?: string | number): InventoryStorageLocation[] {
@@ -100,6 +136,7 @@ watch(
         await loadLocations(order.warehouseId)
         const detail = (await inboundApi.getById(String(order.inboundId))).data
         const items = detail?.items || []
+        warehouseNames[String(order.warehouseId ?? '')] = order.warehouseName || detail?.warehouseName || ''
         const list = locationsOf(order.warehouseId)
         const auto = list.length === 1 ? list[0].locationId : undefined
         for (const item of items) {
@@ -140,6 +177,21 @@ function submit() {
 </script>
 
 <style scoped>
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.bulk-label {
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+}
+.bulk-tip {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
 .confirm-table {
   margin-top: 12px;
 }
