@@ -67,6 +67,13 @@ export const outboundApi = {
     return request.put<R<boolean>>('/inventory/outbound/update', data)
   },
 
+  /** 生产领料按 FIFO 分配库位/批次（幂等） */
+  allocate(outboundId: string) {
+    return request.post<R<{ allocatedLines: number; shortageLines: number }>>(
+      `/inventory/outbound/${outboundId}/allocate`
+    )
+  },
+
   // 确认出库
   confirm(outboundId: string, operatorId: string, operatorName: string) {
     return request.post<R<boolean>>(`/inventory/outbound/confirm/${outboundId}`, null, {

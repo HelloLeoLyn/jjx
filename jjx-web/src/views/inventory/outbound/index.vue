@@ -222,6 +222,10 @@
         </el-descriptions>
 
         <el-divider content-position="left">出库明细</el-divider>
+        <div class="detail-actions">
+          <el-button size="small" :loading="allocating" @click="allocateDetail">按 FIFO 分配库位/批次</el-button>
+          <span class="tip">分配后按批次/库位拆行；库存不足的行保留为空库位</span>
+        </div>
         <PickDetailTable :rows="currentDetail.items || []" />
 
         <el-divider content-position="left">库存流水（DEV-661）</el-divider>
@@ -386,6 +390,22 @@ const handleRefresh = () => {
 
 // 查看详情（DEV-661：抽屉展示基本信息/明细/库存流水）
 const detailVisible = ref(false)
+const allocating = ref(false)
+
+/** 对当前出库单执行 FIFO 分配（生成后也可手动重排） */
+async function allocateDetail() {
+  if (!currentDetail.value?.outboundId || allocating.value) return
+  allocating.value = true
+  try {
+    const res = await outboundApi.allocate(String(currentDetail.value.outboundId))
+    const data = res.data
+    ElMessage.success(`分配完成：${data?.allocatedLines ?? 0} 行已分配，${data?.shortageLines ?? 0} 行欠料`)
+    await handleView(currentDetail.value)
+    getList()
+  } finally {
+    allocating.value = false
+  }
+}
 const detailNo = ref('')
 const currentDetail = ref<OutboundVO | null>(null)
 const detailTransactions = ref<TransactionVO[]>([])
