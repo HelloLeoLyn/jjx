@@ -4203,16 +4203,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 .map(InventoryInboundItem::getMaterialId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
-        Map<Long, String> supplierMaterialNames = materialIds.isEmpty()
-                ? Map.of()
-                : inventoryMaterialMapper.selectBatchIds(materialIds).stream()
-                        // dev-20261124-009：供商品名可为空；Collectors.toMap 遇到 null value 会 NPE
-                        //（HashMap.merge）。这里与采购侧一致，先过滤空值，无供商品名时详情留空。
-                        .filter(material -> material.getSupplierMaterialName() != null)
-                        .collect(Collectors.toMap(
-                                InventoryMaterial::getMaterialId,
-                                InventoryMaterial::getSupplierMaterialName,
-                                (left, right) -> left));
+        // dev-20261124-009：供商品名允许为空，按库中原值保留（空就是空）。
+        // 不用 Collectors.toMap：它内部的 HashMap.merge 不接受 null value，会在空值时抛 NPE。
+        Map<Long, String> supplierMaterialNames = new java.util.HashMap<>();
+        if (!materialIds.isEmpty()) {
+            inventoryMaterialMapper.selectBatchIds(materialIds)
+                    .forEach(material -> supplierMaterialNames.put(
+                            material.getMaterialId(), material.getSupplierMaterialName()));
+        }
         List<InboundItemVO> result = new ArrayList<>();
         for (InventoryInboundItem item : items) {
             result.add(convertToItemVO(item, supplierMaterialNames.get(item.getMaterialId())));
