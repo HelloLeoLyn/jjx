@@ -50,3 +50,29 @@ export const FilmCurrentFlagEnum = createNamedEnum(
   },
   { type: 'info' },
 )
+
+
+/**
+ * 图案版本状态（print_artwork_version.status，P03 后端既定状态）
+ * 仅做展示映射，不新增状态。
+ */
+export const ArtworkVersionStatusEnum = createNamedEnum(
+  {
+    DRAFT: { value: 'DRAFT', label: '草稿', tagProps: { type: 'info' } },
+    REVIEW: { value: 'REVIEW', label: '待审核', tagProps: { type: 'warning' } },
+    APPROVED: { value: 'APPROVED', label: '已批准', tagProps: { type: 'primary' } },
+    RELEASED: { value: 'RELEASED', label: '已发布', tagProps: { type: 'success' } },
+    DISABLED: { value: 'DISABLED', label: '已停用', tagProps: { type: 'danger' } },
+  },
+  { type: 'info' },
+)
+
+/** 实体底片状态（print_film_copy.status，P03 后端既定状态） */
+export const FilmCopyStatusEnum = createNamedEnum(
+  {
+    AVAILABLE: { value: 'AVAILABLE', label: '可用', tagProps: { type: 'success' } },
+    ARCHIVED: { value: 'ARCHIVED', label: '已封存', tagProps: { type: 'info' } },
+    DESTROYED: { value: 'DESTROYED', label: '已销毁', tagProps: { type: 'danger' } },
+  },
+  { type: 'info' },
+)

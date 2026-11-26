@@ -110,3 +110,22 @@ export const filmApi = {
     return request.put(`/engineering/films/${filmId}/release`)
   },
 }
+
+/** P06 图案/版本/底片（新模型，dev-20261125-012） */
+export const printingArtworkApi = {
+  detail: (id: number) => request.get(`/engineering/printing/artworks/${id}`),
+  create: (data: any) => request.post('/engineering/printing/artworks', data),
+  edit: (id: number, data: any) => request.put(`/engineering/printing/artworks/${id}`, data),
+  createVersion: (id: number, data: any) => request.post(`/engineering/printing/artworks/${id}/versions`, data),
+  editVersion: (id: number, data: any) => request.put(`/engineering/printing/versions/${id}`, data),
+  submit: (id: number, data: any) => request.post(`/engineering/printing/versions/${id}/submit`, data),
+  approve: (id: number, data: any) => request.post(`/engineering/printing/versions/${id}/approve`, data),
+  reject: (id: number, data: any) => request.post(`/engineering/printing/versions/${id}/reject`, data),
+  release: (id: number, data: any) => request.post(`/engineering/printing/versions/${id}/release`, data),
+  activate: (id: number, data: any) => request.post(`/engineering/printing/versions/${id}/activate`, data),
+  disable: (id: number, data: any) => request.post(`/engineering/printing/versions/${id}/disable`, data),
+  outputFilm: (versionId: number, data: any) => request.post(`/engineering/printing/versions/${versionId}/films`, data),
+  archiveFilm: (filmId: number, data: any) => request.post(`/engineering/printing/films/${filmId}/archive`, data),
+  destroyFilm: (filmId: number, data: any) => request.post(`/engineering/printing/films/${filmId}/destroy`, data),
+  impact: (versionId: number) => request.get(`/engineering/printing/versions/${versionId}/impact`),
+}
