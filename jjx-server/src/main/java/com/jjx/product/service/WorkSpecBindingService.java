@@ -12,8 +12,15 @@ import java.util.Objects;
 /** 版本选择仅用于新建/正式下达；历史读取永远使用持久化ID。 */
 @Service
 @RequiredArgsConstructor
-public class WorkSpecBindingService {
+public class WorkSpecBindingService implements com.jjx.engineering.printing.artwork.ArtworkService.SpecBindings {
     private final ProductWorkSpecVersionMapper versions;
+
+    /** P03 停用影响使用不可变文档快照；历史规范即使停用也可能仍被工单绑定。 */
+    @Override
+    public java.util.List<Long> referencing(long versionId) {
+        return versions.selectReferencingArtworkVersion(versionId,
+                com.jjx.product.enums.WorkSpecResourceType.DOCSET_JSON.getCode());
+    }
 
     /** 当前已发布版本ID；无已发布版本时返回 null（销售采用版本侧允许为空，不报错）。 */
     public Long latestPublishedId(Long productId) {

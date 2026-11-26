@@ -14,11 +14,9 @@
           <el-table-column label="色号" min-width="100"><template #default="{ row }">{{ printParams(row).colorNo ?? '-' }}</template></el-table-column>
           <el-table-column label="油墨编号" min-width="120"><template #default="{ row }">{{ printParams(row).inkNo ?? '-' }}</template></el-table-column>
           <el-table-column v-if="showFilm" label="菲林" min-width="120"><template #default="{ row }">{{ printParams(row).filmNo ?? '-' }}</template></el-table-column>
-          <el-table-column label="网框编号" min-width="120"><template #default="{ row }">{{ printParams(row).screenNo ?? '-' }}</template></el-table-column>
-          <el-table-column label="网板编号" min-width="140">
-            <template #header><el-tooltip :content="readOnly ? '历史版本只显示工序中记录的网板编号' : '按网框台账当前有效版面读取网板编号'" placement="top"><span>网板编号</span></el-tooltip></template>
-            <template #default="{ row }">{{ plateNumber(row) }}</template>
-          </el-table-column>
+          <el-table-column label="图案版本" min-width="160"><template #default="{ row }">{{ printingIdentity(row) }}</template></el-table-column>
+          <el-table-column label="固定工艺要求" min-width="200"><template #default="{ row }">{{ printingRequirements(row) }}</template></el-table-column>
+          <el-table-column label="建议网版 / 网框" min-width="180"><template #default="{ row }">{{ printingPlate(row) }}</template></el-table-column>
           <el-table-column label="人工工时(h)" width="120" align="right">
             <template #default="{ row }">{{ row.customLaborHours ?? row.standardLaborHours ?? 0 }}</template>
           </el-table-column>
@@ -69,8 +67,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store/modules/user'
 import { normalizeWorkSpec, productWorkSpecApi, type ProductWorkSpec, type PrintRemarkHistory } from '@/api/product/workSpec'
 import { flowGroups, printParams } from './docset'
-import { engineeringResourceApi } from '@/api/engineering/resource'
-import { processRowsForGroup, currentPlateForFrame, type SpecProcessRow } from './workSpecProcessRows'
+import { processRowsForGroup, printingIdentity, printingRequirements, printingPlate, type SpecProcessRow } from './workSpecProcessRows'
 
 /** 传入 routingItems 时直接展示，可附带 workSpec；仅传 productId 时自主取数。 */
 const props = defineProps<{ productId?: number; workSpec?: ProductWorkSpec; routingItems?: SpecProcessRow[]; loading?: boolean; readOnly?: boolean }>()
@@ -97,7 +94,6 @@ const historyError = ref('')
 const history = ref<PrintRemarkHistory[]>([])
 const nextBefore = ref<number>()
 let disposed = false
-let plateGeneration = 0
 const printTab = ref(flowGroups[0]?.value || '')
 const routeCategories = [...flowGroups, { value: '', label: '未分类', symbol: '' }]
 const normalizedRouteItems = computed(() => {
@@ -125,38 +121,6 @@ watch(
 )
 const printRows = computed(() => printGroups.value.flatMap(group => group.rows))
 const showFilm = computed(() => printRows.value.some(row => String(printParams(row).filmNo ?? '').length > 0))
-const frameNumbers = computed(() => [...new Set(printRows.value.map(row => String(printParams(row).screenNo || '').trim()).filter(Boolean))])
-const canReadFrames = computed(() => user.hasPermission('engineering:screen-resource:view'))
-const plateNumbers = ref<Record<string, string>>({})
-function plateNumber(row: SpecProcessRow): string {
-  const params = printParams(row)
-  if (params.plateNo) return String(params.plateNo)
-  if (props.readOnly) return '未记录'
-  const frameNo = String(params.screenNo || '').trim()
-  if (!frameNo) return '-'
-  if (!canReadFrames.value) return '无台账查看权限'
-  return plateNumbers.value[frameNo] ?? '读取中…'
-}
-async function loadPlates() {
-  const generation = ++plateGeneration
-  plateNumbers.value = {}
-  if (props.readOnly || !canReadFrames.value) return
-  // 按网框去重查询，避免同一网框在多组/多道印序中重复请求。
-  for (const frameNo of frameNumbers.value) {
-    if (generation !== plateGeneration || disposed) return
-    try {
-      const plate = await currentPlateForFrame(frameNo, async pageNum => {
-        const response = await engineeringResourceApi.frames({ frameNo, pageNum, pageSize: 200 })
-        return response.data || {}
-      })
-      if (generation === plateGeneration && !disposed) plateNumbers.value[frameNo] = plate || '-'
-    } catch (error) {
-      console.error('读取网板编号失败', frameNo, error)
-      if (generation === plateGeneration && !disposed) plateNumbers.value[frameNo] = '读取失败'
-    }
-  }
-}
-watch(() => [JSON.stringify(frameNumbers.value), props.productId, props.readOnly, canReadFrames.value], loadPlates, { immediate: true })
 
 function editRemarks() {
   const spec = currentWorkSpec.value
@@ -250,7 +214,7 @@ watch(() => [props.productId, props.workSpec, props.routingItems], () => { void 
 watch(() => editorVisible.value || saving.value, value => emit('busy', value))
 onBeforeRouteLeave(allowLeave)
 onMounted(() => window.addEventListener('beforeunload', beforeUnload))
-onBeforeUnmount(() => { disposed = true; loadGeneration++; plateGeneration++; window.removeEventListener('beforeunload', beforeUnload); emit('busy', false) })
+onBeforeUnmount(() => { disposed = true; loadGeneration++; window.removeEventListener('beforeunload', beforeUnload); emit('busy', false) })
 </script>
 
 <style scoped>

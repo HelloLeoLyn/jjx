@@ -9,7 +9,7 @@
         <col :style="{ width: page.showFilm ? '14%' : '17%' }" />
         <col style="width:22%" />
       </colgroup>
-      <thead><tr><th>{{ group.symbol }} {{ group.label }}印序</th><th>色号</th><th>油墨编号</th><th v-if="page.showFilm">菲林</th><th>网框编号</th><th>备注</th></tr></thead>
+      <thead><tr><th>{{ group.symbol }} {{ group.label }}印序 / 图案版本及要求</th><th>色号</th><th>油墨编号</th><th v-if="page.showFilm">菲林</th><th>建议网版 / 网框</th><th>备注</th></tr></thead>
       <tbody>
         <tr v-for="(row, i) in padded(group)" :key="i">
           <td v-for="field in columns" :key="field.key">
@@ -32,6 +32,7 @@
 import { computed, ref } from 'vue'
 import { printParams, type DocPage, type PaperTextLine } from './docset'
 import { useWorkSpecOverflow } from './useWorkSpecOverflow'
+import { printingIdentity, printingRequirements, printingPlate } from './workSpecProcessRows'
 
 const props = defineProps<{ page: DocPage }>()
 const emit = defineEmits<{ overflow: [lines: PaperTextLine[]] }>()
@@ -39,7 +40,7 @@ const paper = ref<HTMLElement>()
 type PrintGroup = NonNullable<DocPage['groups']>[number]
 const columns = computed(() => [
   { key: 'name', label: '印刷名称' }, { key: 'colorNo', label: '色号' }, { key: 'inkNo', label: '油墨编号' },
-  ...(props.page.showFilm ? [{ key: 'filmNo', label: '菲林' }] : []), { key: 'screenNo', label: '网框编号' },
+  ...(props.page.showFilm ? [{ key: 'filmNo', label: '菲林' }] : []), { key: 'screenNo', label: '建议网版 / 网框' },
 ])
 function padded(group: PrintGroup): (Record<string, any> | null)[] {
   return Array.from({ length: group.capacity || 1 }, (_, i) => group.rows[i] || null)
@@ -48,7 +49,9 @@ function sequence(group: PrintGroup, index: number) { return (props.page.continu
 function value(row: Record<string, any> | null, key: string): string {
   if (!row) return ''
   const params = printParams(row)
-  return String(key === 'name' ? (row.processName ?? params.printName ?? '') : (params[key] ?? ''))
+  if (key === 'name') return `${row.processName ?? params.printName ?? ''}｜${printingIdentity(row)}｜${printingRequirements(row)}`
+  if (key === 'screenNo') return printingPlate(row)
+  return String(params[key] ?? '')
 }
 const { measure } = useWorkSpecOverflow(paper, () => JSON.stringify(props.page), lines => emit('overflow', lines))
 defineExpose({ measure })

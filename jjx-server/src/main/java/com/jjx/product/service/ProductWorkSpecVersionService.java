@@ -410,6 +410,7 @@ public class ProductWorkSpecVersionService {
         List<Map<String, Object>> fields = compareSnapshots(
                 parseSafe(specSnapshot(a.getId())), parseSafe(specSnapshot(b.getId())));
         addDrawingSetDiff(fields, a, b);
+        addDiff(fields, "印刷版本与工艺要求", printingItems(a.getId()), printingItems(b.getId()));
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("productId", a.getProductId());
@@ -532,7 +533,17 @@ public class ProductWorkSpecVersionService {
         Map<String, Object> result = new HashMap<>();
         result.put("version", version);
         result.put("items", itemMapper.selectByVersionId(versionId));
+        result.put("printingItems", printingItems(versionId));
         return result;
+    }
+
+    /** 历史及生产读取同一发布快照，缺失时保留未知，绝不读取当前路线替代。 */
+    private JsonNode printingItems(Long versionId) {
+        for (ProductWorkSpecItem item : itemMapper.selectByVersionId(versionId)) {
+            if (WorkSpecResourceType.DOCSET_JSON.getCode().equals(item.getResourceType()))
+                return parseSafe(item.getSnapshotJson()).path("printingItems");
+        }
+        return json.missingNode();
     }
 
     // ==================== 内部 ====================

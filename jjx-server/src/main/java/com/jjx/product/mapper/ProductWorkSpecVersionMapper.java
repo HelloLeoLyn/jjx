@@ -12,6 +12,16 @@ import java.util.List;
 @Mapper
 public interface ProductWorkSpecVersionMapper extends BaseMapper<ProductWorkSpecVersion> {
 
+    /** 从发布时的路线快照反查；保留已停用规范供在制工单影响查询，不读取当前路线。 */
+    @Select("SELECT DISTINCT v.id FROM product_work_spec_version v "
+            + "JOIN product_work_spec_item i ON i.spec_version_id=v.id "
+            + "WHERE i.resource_type=#{resourceType} "
+            + "AND JSON_CONTAINS(JSON_EXTRACT(CASE WHEN JSON_VALID(i.snapshot_json) "
+            + "THEN i.snapshot_json ELSE '{}' END, '$.routing**.artworkVersionId'), "
+            + "CAST(#{artworkVersionId} AS JSON)) = 1 ORDER BY v.id")
+    List<Long> selectReferencingArtworkVersion(@Param("artworkVersionId") Long artworkVersionId,
+                                               @Param("resourceType") String resourceType);
+
     @Select("SELECT * FROM product_work_spec_version WHERE product_id = #{productId} AND deleted = 0 "
             + "AND status = 'PUBLISHED' ORDER BY published_at DESC, id DESC LIMIT 1")
     ProductWorkSpecVersion selectLatestPublished(@Param("productId") Long productId);

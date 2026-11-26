@@ -4,6 +4,37 @@ export interface SpecProcessRow {
   children?: SpecProcessRow[]
 }
 
+/** 历史优先读取发布快照；缺失身份时明确未记录，不查询当前版面补历史。 */
+export function printingBinding(row: SpecProcessRow): Record<string, any> {
+  return row.printingSnapshot || row
+}
+export function printingIdentity(row: SpecProcessRow): string {
+  const binding = printingBinding(row)
+  if (!binding.artworkVersionId) return '图案版本未记录'
+  return `${binding.artworkNo || '图案'} / ${binding.artworkVersionNo || binding.artworkVersionId}`
+}
+export function printingRequirements(row: SpecProcessRow): string {
+  const binding = printingBinding(row)
+  let value = binding.requirements ?? binding.printRequirements
+  if (typeof value === 'string') { try { value = JSON.parse(value) } catch { return '要求未核验' } }
+  if (!value) return '要求未记录'
+  return [value.position && `位置 ${value.position}`,
+    (value.meshMin != null || value.meshMax != null) && `目数 ${value.meshMin ?? '不限'}—${value.meshMax ?? '不限'}`,
+    (value.tensionMin != null || value.tensionMax != null) && `张力 ${value.tensionMin ?? '不限'}—${value.tensionMax ?? '不限'} N/cm`,
+  ].filter(Boolean).join('；') || '未限定参数'
+}
+export function printingPlate(row: SpecProcessRow): string {
+  const binding = printingBinding(row)
+  if (binding.defaultPlateId) return `${binding.defaultPlateNo || binding.defaultPlateId} / ${binding.defaultFrameNo || '框号未记录'}`
+  if (!row.printingSnapshot) {
+    try {
+      const legacy = typeof row.customProcessParams === 'string' ? JSON.parse(row.customProcessParams) : row.customProcessParams
+      if (legacy?.screenNo || legacy?.plateNo) return `历史记录：${legacy.plateNo || '版号未记录'} / ${legacy.screenNo || '框号未记录'}（未核验）`
+    } catch { /* 无法解析的历史文本不补造身份。 */ }
+  }
+  return '未指定建议网版'
+}
+
 export function processRowsForGroup(
   rows: SpecProcessRow[], major: 'ASSEMBLY' | 'PRINT', category: string,
   inheritedMajor = 'ASSEMBLY', inheritedCategory = ''

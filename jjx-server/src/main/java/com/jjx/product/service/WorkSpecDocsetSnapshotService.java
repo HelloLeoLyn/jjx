@@ -63,6 +63,11 @@ public class WorkSpecDocsetSnapshotService {
     private final ObjectMapper json;
     private final ProductCustomerDocumentService customerDocuments;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.jjx.engineering.printing.artwork.ArtworkService artworkService;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.jjx.engineering.printing.screen.ScreenService screenService;
+
     @Value("${file.upload.path:./upload}")
     private String uploadBasePath;
 
@@ -105,6 +110,68 @@ public class WorkSpecDocsetSnapshotService {
                                  List<IconRef> icons, int bomItemCount, int routingItemCount) {
     }
 
+    /** 只在新发布时捕获；历史详情与打印消费这些值，不按当前网框反推。 */
+    ArrayNode freezePrinting(JsonNode routing) {
+        ArrayNode frozen = json.createArrayNode();
+        if (routing == null || routing.isNull()) return frozen;
+        List<ObjectNode> rows = new ArrayList<>();
+        collectPrinting(routing.path("items"), "", rows);
+        if (rows.isEmpty()) return frozen;
+        if (!com.jjx.common.enums.ApproveStatusEnum.APPROVED.getValue().equals(
+                routing.hasNonNull("approveStatus") ? routing.get("approveStatus").intValue() : null))
+            throw new BusinessException("印刷规范必须使用已批准路线");
+        // 多个图案版本按稳定顺序加锁，避免发布与停用互相穿插。
+        TreeSet<Long> versions = new TreeSet<>();
+        for (ObjectNode row : rows) {
+            if (row.path("itemId").asLong() <= 0 || row.path("artworkVersionId").asLong() <= 0)
+                throw new BusinessException("印刷工序缺少稳定行ID或图案版本，不能定版");
+            versions.add(row.path("artworkVersionId").asLong());
+        }
+        for (Long id : versions) artworkService.requireUsableVersion(id);
+        for (ObjectNode row : rows) {
+            long versionId = row.path("artworkVersionId").asLong();
+            var identity = jdbc.queryForMap("SELECT a.artwork_id,a.artwork_no,a.name,v.version_no,v.technical_spec,v.drawing_file_id "
+                    + "FROM print_artwork_version v JOIN print_artwork a ON a.artwork_id=v.artwork_id WHERE v.version_id=? FOR SHARE", versionId);
+            String requirements = row.path("printRequirements").isObject()
+                    ? row.path("printRequirements").toString() : row.path("printRequirements").asText(null);
+            JsonNode required = screenService.validateRequirements(requirements);
+            if (row.hasNonNull("defaultPlateId")) screenService.requireUsablePlate(versionId,
+                    row.get("defaultPlateId").longValue(), requirements);
+            ObjectNode item = json.createObjectNode();
+            item.set("routingId",routing.path("routingId"));
+            item.set("routingVersion",routing.path("routingVersion"));
+            item.set("routingItemId",row.get("itemId"));
+            item.put("memberOrder",frozen.size()+1);
+            for (String key : List.of("parentId","workflowSeq","processOrder","processCategory","processName","workInstruction","customProcessParams","artworkVersionId","defaultPlateId"))
+                item.set(key,row.path(key).deepCopy());
+            item.set("requirements",required.deepCopy());
+            item.set("artworkId",json.valueToTree(identity.get("artwork_id")));
+            item.set("artworkNo",json.valueToTree(identity.get("artwork_no")));
+            item.set("artworkName",json.valueToTree(identity.get("name")));
+            item.set("artworkVersionNo",json.valueToTree(identity.get("version_no")));
+            item.set("technicalSpec",json.valueToTree(identity.get("technical_spec")));
+            item.set("drawingFileId",json.valueToTree(identity.get("drawing_file_id")));
+            if (row.hasNonNull("defaultPlateId")) {
+                var plate = jdbc.queryForMap("SELECT p.plate_no,f.frame_no FROM engineering_screen_plate p "
+                        + "JOIN engineering_screen_frame f ON f.frame_id=p.frame_id WHERE p.plate_id=? FOR SHARE",row.get("defaultPlateId").longValue());
+                item.set("defaultPlateNo",json.valueToTree(plate.get("plate_no")));
+                item.set("defaultFrameNo",json.valueToTree(plate.get("frame_no")));
+            }
+            row.set("printingSnapshot",item.deepCopy());
+            frozen.add(item);
+        }
+        return frozen;
+    }
+
+    private void collectPrinting(JsonNode nodes, String inheritedMajor, List<ObjectNode> out) {
+        if (!nodes.isArray()) return;
+        for (JsonNode row : nodes) {
+            String major = row.path("majorCategory").asText(inheritedMajor);
+            if ("PRINT".equals(major) && row instanceof ObjectNode object) out.add(object);
+            collectPrinting(row.path("children"),major,out);
+        }
+    }
+
     /**
      * 构建并校验整份快照。要求调用方已持有产品行锁（{@code SELECT ... FOR UPDATE}）。
      * 构建首尾对 BOM / 路线 / 产品附件 / 图标工序行加 {@code FOR SHARE} 锁读并比对源令牌，
@@ -141,6 +208,7 @@ public class WorkSpecDocsetSnapshotService {
 
         JsonNode bomNode = bomVo == null ? null : json.valueToTree(bomVo);
         JsonNode routingNode = routingVo == null ? null : json.valueToTree(routingVo);
+        ArrayNode printingItems = freezePrinting(routingNode);
 
         // 图标：解析为不可变资源（打包 SVG 字节归档 / 上传附件），回写 icon + iconSha256。
         Set<Long> processIds = new TreeSet<>();
@@ -202,6 +270,7 @@ public class WorkSpecDocsetSnapshotService {
         JsonNode materialSchemes = spec.path("sourceData").path("materialSchemes");
         if (materialSchemes.isObject()) content.set("materialSchemes", materialSchemes.deepCopy());
         content.set("routing", routingNode == null ? json.nullNode() : routingNode);
+        content.set("printingItems", printingItems);
 
         ObjectNode iconsNode = content.putObject("icons");
         for (IconRef ref : icons.values()) iconsNode.set(ref.value(), json.valueToTree(ref));
@@ -538,7 +607,7 @@ public class WorkSpecDocsetSnapshotService {
                     "SELECT routing_id,routing_version,approve_status,update_time FROM engineering_routing WHERE routing_id=? FOR SHARE",
                     product.getCurrentRouteId()));
             appendRows(token, jdbc.queryForList(
-                    "SELECT detail_id,process_id,parent_id,workflow_seq,process_order,custom_labor_hours,custom_process_params,update_time FROM engineering_routing_item WHERE routing_id=? FOR SHARE",
+                    "SELECT detail_id,process_id,parent_id,workflow_seq,process_order,custom_labor_hours,custom_process_params,artwork_version_id,default_plate_id,print_requirements,update_time FROM engineering_routing_item WHERE routing_id=? FOR SHARE",
                     product.getCurrentRouteId()));
         }
         appendRows(token, jdbc.queryForList(
