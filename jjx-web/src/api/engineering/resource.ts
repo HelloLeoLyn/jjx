@@ -33,4 +33,20 @@ export const engineeringResourceApi = {
   replaceProducts: (type: string, id: number, productIds: number[], purpose?: string) =>
     request.put(`${base}/${type}/${id}/products`, { productIds, purpose }),
   maintenance: (type: string, id: number) => request.get(`${base}/${type}/${id}/maintenance`),
+
+  // ===== P04 网框/网版（dev-20261125-013）=====
+  getPrintFrame: (id: number) => request.get(`/engineering/printing/frames/${id}`),
+  createPrintFrame: (data: any) => request.post('/engineering/printing/frames', data),
+  editPrintFrame: (id: number, data: any) => request.put(`/engineering/printing/frames/${id}`, data),
+  stretchPrintFrame: (id: number, data: any) => request.post(`/engineering/printing/frames/${id}/stretch`, data),
+  maintainPrintFrame: (id: number, data: any) => request.post(`/engineering/printing/frames/${id}/maintain`, data),
+  resumePrintFrame: (id: number, data: any) => request.post(`/engineering/printing/frames/${id}/resume`, data),
+  scrapPrintFrame: (id: number, data: any) => request.post(`/engineering/printing/frames/${id}/scrap`, data),
+  cleanPrintFrame: (id: number, data: any) => request.post(`/engineering/printing/frames/${id}/clean`, data),
+  getPrintPlate: (id: number) => request.get(`/engineering/printing/plates/${id}`),
+  createPrintPlate: (data: any) => request.post('/engineering/printing/plates', data),
+  releasePrintPlate: (id: number, data: any) => request.post(`/engineering/printing/plates/${id}/release`, data),
+  failPrintPlate: (id: number, data: any) => request.post(`/engineering/printing/plates/${id}/fail`, data),
+  washPrintPlate: (id: number, data: any) => request.post(`/engineering/printing/plates/${id}/wash`, data),
+  scrapPrintPlate: (id: number, data: any) => request.post(`/engineering/printing/plates/${id}/scrap`, data),
 }
