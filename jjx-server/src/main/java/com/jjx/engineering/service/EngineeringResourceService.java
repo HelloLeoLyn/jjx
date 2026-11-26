@@ -224,8 +224,8 @@ public class EngineeringResourceService {
     @Transactional
     public void replaceProducts(String type, Long id, Map<String, Object> body) {
         ResourceType resourceType = ResourceType.valueOf(type);
-        if (resourceType == ResourceType.SCREEN_FRAME || resourceType == ResourceType.SCREEN_PLATE)
-            throw new BusinessException("网版的适用产品由图案关联确定");
+        if (resourceType != ResourceType.DIE)
+            throw new BusinessException("菲林和网版的适用产品由图案关联确定");
         syncProducts(resourceType, id, productIds(body), text(body.get("purpose")));
     }
 
