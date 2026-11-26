@@ -54,7 +54,7 @@ class ScreenLifecycleTest {
         var jdbc = new JdbcTemplate(source);
         var repo = new ScreenRepository(jdbc);
         var json = new ObjectMapper();
-        var mvc = MockMvcBuilders.standaloneSetup(new ScreenController(new ScreenService(repo,json),new ScreenView(repo)),
+        var mvc = MockMvcBuilders.standaloneSetup(new ScreenController(new ScreenService(repo,json),new ScreenView(repo),repo),
                 new EngineeringResourceController(new EngineeringResourceService(jdbc))).build();
         var tx = new TransactionTemplate(new DataSourceTransactionManager(source));
         tx.executeWithoutResult(transaction -> {

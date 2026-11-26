@@ -37,8 +37,8 @@ class DeliveryCapacityServiceTest {
         InventoryItem item=new InventoryItem();item.setInventoryItemId(2089L);
         when(itemMapper.selectBySource(anyString(),eq(2L))).thenReturn(item);
         InventoryStock stock=new InventoryStock();stock.setTotalQuantity(BigDecimal.valueOf(total));stock.setTotalReserved(BigDecimal.valueOf(reserved));
-        if(lock) when(stockMapper.selectByInventoryItemIdForUpdate(2089L)).thenReturn(stock);
-        else when(stockMapper.selectByInventoryItemId(2089L)).thenReturn(stock);
+        if(lock) when(stockMapper.lockByInventoryItemId(2089L)).thenReturn(List.of(stock));
+        when(stockMapper.selectByInventoryItemId(2089L)).thenReturn(stock);
     }
     private DeliveryPendingQuantityVO pending(long orderId,int quantity) {
         var p=new DeliveryPendingQuantityVO();p.setOrderId(orderId);p.setQuantity(BigDecimal.valueOf(quantity));return p;
@@ -49,7 +49,9 @@ class DeliveryCapacityServiceTest {
         assertEquals(BigDecimal.valueOf(700),capacity.get(2L).forOrder(5L));
         service.validate(List.of(line(4,700)),Map.of(4L,p),capacity);
         assertThrows(BusinessException.class,()->service.validate(List.of(line(4,1000)),Map.of(4L,p),capacity));
-        verify(stockMapper).selectByInventoryItemIdForUpdate(2089L);
+        var stockCalls = inOrder(stockMapper);
+        stockCalls.verify(stockMapper).lockByInventoryItemId(2089L);
+        stockCalls.verify(stockMapper).selectByInventoryItemId(2089L);
         verify(stockMapper,never()).updateById(any(InventoryStock.class));
     }
     @Test void ownPending200Leaves500WithoutDeductingPhysicalStockTwice() {
