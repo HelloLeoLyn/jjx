@@ -19,7 +19,7 @@ public interface PrintSearchRepository {
             "prod.product_code, prod.product_name, " +
             "CASE WHEN a.artwork_no = #{q} OR f.film_no = #{q} OR p.plate_no = #{q} OR fr.frame_no = #{q} THEN 0 " +
             "WHEN a.artwork_no LIKE CONCAT(#{q},'%') OR f.film_no LIKE CONCAT(#{q},'%') " +
-            "OR p.plate_no LIKE CONCAT(#{q},'%') OR fr.frame_no LIKE CONCAT(#{q},'%') THEN 1 ELSE 2 END AS rank " +
+            "OR p.plate_no LIKE CONCAT(#{q},'%') OR fr.frame_no LIKE CONCAT(#{q},'%') THEN 1 ELSE 2 END AS `rank` " +
             "FROM print_artwork_version v " +
             "JOIN print_artwork a ON a.artwork_id = v.artwork_id " +
             "LEFT JOIN print_film_copy f ON f.version_id = v.version_id " +
@@ -34,7 +34,7 @@ public interface PrintSearchRepository {
             "NULL film_no, NULL film_status, NULL plate_no, NULL plate_status, NULL position, " +
             "f.frame_no, f.status AS frame_status, st.mesh, st.tension_n_cm, st.qualified, " +
             "NULL product_code, NULL product_name, " +
-            "CASE WHEN f.frame_no = #{q} THEN 0 WHEN f.frame_no LIKE CONCAT(#{q},'%') THEN 1 ELSE 2 END AS rank " +
+            "CASE WHEN f.frame_no = #{q} THEN 0 WHEN f.frame_no LIKE CONCAT(#{q},'%') THEN 1 ELSE 2 END AS `rank` " +
             "FROM engineering_screen_frame f " +
             "LEFT JOIN (SELECT s1.* FROM print_frame_stretch s1 JOIN (SELECT frame_id, MAX(stretch_id) mid FROM print_frame_stretch GROUP BY frame_id) m ON m.mid=s1.stretch_id) st ON st.frame_id=f.frame_id ";
 
@@ -54,7 +54,7 @@ public interface PrintSearchRepository {
             "AND (f.frame_no LIKE CONCAT('%',#{t},'%') OR f.frame_type LIKE CONCAT('%',#{t},'%'))",
             "</foreach>",
             ")",
-            ") t ORDER BY t.rank, t.version_id, t.plate_id, t.frame_id",
+            ") t ORDER BY t.`rank`, t.version_id, t.plate_id, t.frame_id",
             "</script>"})
     IPage<PrintSearchRow> search(Page<PrintSearchRow> page,
                                  @Param("tokens") List<String> tokens,
