@@ -57,6 +57,10 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
     @org.springframework.beans.factory.annotation.Autowired
     private com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
 
+    /** P08（dev-20261125-014）：印刷工序绑定图案版本时校验其已发布；字段注入避免改变既有测试构造参数。 */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.jjx.engineering.printing.artwork.ArtworkService artworkService;
+
     @Override
     public List<RoutingVersionRow> getObjectVersions(String outputType, Long outputId) {
         if (outputId == null) throw new BusinessException("产出对象不能为空");
@@ -964,6 +968,7 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         java.util.LinkedHashMap<String, Integer> workflowSeqByCategory = new java.util.LinkedHashMap<>();
         java.util.HashMap<String, Integer> nextOrderByCategory = new java.util.HashMap<>();
         for (EngineeringRoutingItemDTO dto : itemDTOs) {
+            validateArtworkVersion(dto);
             // 父行（工序）
             EngineeringRoutingItem parent = buildItem(dto, routingId);
             String category = parent.getProcessCategory();
@@ -988,6 +993,21 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
                     child.setGroupOrder(null);
                     routingDetailMapper.insert(child);
                 }
+            }
+        }
+    }
+
+    /** P08：印刷工序若绑定图案版本，必须是已发布可用版本（不存在/已停用直接拒绝）。 */
+    private void validateArtworkVersion(EngineeringRoutingItemDTO dto) {
+        if (dto == null) return;
+        Long versionId = dto.getArtworkVersionId();
+        if (versionId != null) {
+            if (versionId <= 0) throw new BusinessException("图案版本无效");
+            artworkService.requireUsableVersion(versionId);
+        }
+        if (dto.getChildren() != null) {
+            for (EngineeringRoutingItemDTO child : dto.getChildren()) {
+                validateArtworkVersion(child);
             }
         }
     }

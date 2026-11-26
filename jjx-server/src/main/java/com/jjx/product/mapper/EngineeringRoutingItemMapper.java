@@ -54,6 +54,8 @@ public interface EngineeringRoutingItemMapper extends BaseMapper<EngineeringRout
             "i.group_id, i.group_order, i.group_name, " +
             "i.parent_id, " +
             "i.index_number, i.precondition, i.precondition_display, i.is_optional, " +
+            // P08（dev-20261125-014）：印刷工序绑定的图案版本，读回图案编号与版本号
+            "i.artwork_version_id, a.artwork_no AS artwork_no, av.version_no AS artwork_version_no, " +
             // 2026-08-12：印刷等自定义工序名称冗余在 i.process_name（COALESCE 兑底）
             "p.process_id, p.process_code, COALESCE(p.process_name, i.process_name) AS process_name, " +
             // 路线明细的 process_category 表示面板/上线/下线分组，不能被标准工序自身类别覆盖。
@@ -63,6 +65,8 @@ public interface EngineeringRoutingItemMapper extends BaseMapper<EngineeringRout
             "p.is_enabled, p.display_order, p.icon, p.has_index, p.has_work_instruction " +
             "FROM engineering_routing_item i " +
             "LEFT JOIN engineering_standard_process p ON i.process_id = p.process_id " +
+            "LEFT JOIN print_artwork_version av ON av.version_id = i.artwork_version_id " +
+            "LEFT JOIN print_artwork a ON a.artwork_id = av.artwork_id " +
             "LEFT JOIN engineering_routing_item pr ON pr.detail_id = i.parent_id " +
             "WHERE i.routing_id = #{routingId} " +
             // dev-20260929-027：先按组（workflow_seq），组内按工序序号；子件取父行序号跟随父行（子件 group_order 排其后）

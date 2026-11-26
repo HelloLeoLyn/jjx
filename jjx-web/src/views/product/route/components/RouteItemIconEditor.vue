@@ -331,6 +331,26 @@
                     />
                   </template>
                 </el-table-column>
+                <el-table-column label="图案版本" width="210">
+                  <template #default="{ row }">
+                    <div v-if="row.artworkVersionId" class="artwork-version-cell">
+                      <span class="artwork-version-label">
+                        {{ row.artworkNo || '已选版本'
+                        }}{{ row.artworkVersionNo ? ' / ' + row.artworkVersionNo : '' }}
+                      </span>
+                      <el-button link type="danger" size="small" @click="clearArtworkVersion(row)"
+                        >清除</el-button
+                      >
+                    </div>
+                    <PrintResourceSelector
+                      v-else
+                      :model-value="null"
+                      size="small"
+                      placeholder="按图案/菲林号搜索"
+                      @select="(item: any) => onPickArtworkVersion(row, item)"
+                    />
+                  </template>
+                </el-table-column>
                 <el-table-column label="网框编号" width="170">
                   <template #default="{ row }">
                     <PrintFieldAutocomplete
@@ -439,6 +459,7 @@ import RouteRemarkAutocomplete from './RouteRemarkAutocomplete.vue'
 import { moveWithinSubset, reorderSubset } from './routePrintOrder'
 import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
+import PrintResourceSelector from '@/components/Selector/PrintResourceSelector.vue'
 import type { StandardProcessOption } from '@/types/product'
 import type { EngineeringRoutingItemVO } from '@/types/product/routing'
 import { ProcessCategoryEnum } from '@/enums/product'
@@ -585,6 +606,25 @@ function setPrintParam(row: any, key: string, val: string) {
   } catch {
     row.customProcessParams = JSON.stringify({ [key]: val })
   }
+}
+
+/** P08（dev-20261125-014）：印刷工序绑定图案版本；只接受带 versionId 的候选。 */
+function onPickArtworkVersion(row: any, item: any) {
+  if (!item?.versionId) {
+    ElMessage.warning('请选择带图案版本的候选（网框候选不能直接绑定）')
+    return
+  }
+  row.artworkVersionId = Number(item.versionId)
+  row.artworkNo = item.artworkNo || ''
+  row.artworkVersionNo = item.versionNo || ''
+  syncToParent()
+}
+
+function clearArtworkVersion(row: any) {
+  row.artworkVersionId = null
+  row.artworkNo = ''
+  row.artworkVersionNo = ''
+  syncToParent()
 }
 
 function isFirstPrint(row: any) {

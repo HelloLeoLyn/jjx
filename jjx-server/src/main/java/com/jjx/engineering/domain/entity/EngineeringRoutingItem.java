@@ -118,6 +118,9 @@ public class EngineeringRoutingItem {
      */
     private Integer isOptional;
 
+    /** 印刷工序绑定的图案版本（P08，dev-20261125-014） */
+    private Long artworkVersionId;
+
     /**
      * 创建时间
      */

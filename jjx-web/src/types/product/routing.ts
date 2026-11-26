@@ -140,6 +140,11 @@ export interface EngineeringRoutingItemVO {
   // 大类：ASSEMBLY冲型组装/PRINT印刷（2026-08-12）
   majorCategory?: string
 
+  /** 印刷工序绑定的图案版本（P08，dev-20261125-014） */
+  artworkVersionId?: number | null
+  artworkNo?: string | null
+  artworkVersionNo?: string | null
+
   // 标准工序字段（平铺）
   processId: number
   processCode: string
@@ -196,6 +201,8 @@ export interface EngineeringRoutingItemDTO {
   processId?: number | null
   processName?: string
   majorCategory?: string
+  /** 印刷工序绑定的图案版本（P08，dev-20261125-014） */
+  artworkVersionId?: number | null
   parentId?: number | null
   children?: EngineeringRoutingItemDTO[]
   processOrder?: number

@@ -55,6 +55,11 @@ public class EngineeringRoutingItemVO {
     private String processTypeName;
     private String processCategory;
     private String processCategoryName;
+
+    /** 印刷工序绑定的图案版本（P08，dev-20261125-014） */
+    private Long artworkVersionId;
+    private String artworkNo;
+    private String artworkVersionNo;
     private BigDecimal standardLaborHours;
     private BigDecimal standardMachineHours;
     private String processParamTemplate;

@@ -473,6 +473,7 @@ const toItemDTO = (item: EngineeringRoutingItemVO): EngineeringRoutingItemDTO =>
   remark: item.remark,
   processCategory: item.processCategory,
   majorCategory: item.majorCategory,
+  artworkVersionId: item.artworkVersionId ?? undefined,
   workInstruction: item.workInstruction,
   indexNumber: item.indexNumber ?? undefined,
   precondition: item.precondition ?? undefined,
