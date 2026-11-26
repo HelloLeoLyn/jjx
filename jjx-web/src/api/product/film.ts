@@ -113,6 +113,8 @@ export const filmApi = {
 
 /** P06 图案/版本/底片（新模型，dev-20261125-012） */
 export const printingArtworkApi = {
+  list: (params: { keyword?: string; family?: string; status?: string; pageNum?: number; pageSize?: number }) =>
+    request.get('/engineering/printing/artworks', { params }),
   detail: (id: number) => request.get(`/engineering/printing/artworks/${id}`),
   create: (data: any) => request.post('/engineering/printing/artworks', data),
   edit: (id: number, data: any) => request.put(`/engineering/printing/artworks/${id}`, data),

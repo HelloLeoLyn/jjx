@@ -35,6 +35,8 @@ export const engineeringResourceApi = {
   maintenance: (type: string, id: number) => request.get(`${base}/${type}/${id}/maintenance`),
 
   // ===== P04 网框/网版（dev-20261125-013）=====
+  listPrintFrames: (params: { keyword?: string; status?: string; pageNum?: number; pageSize?: number }) =>
+    request.get('/engineering/printing/frames', { params }),
   getPrintFrame: (id: number) => request.get(`/engineering/printing/frames/${id}`),
   createPrintFrame: (data: any) => request.post('/engineering/printing/frames', data),
   editPrintFrame: (id: number, data: any) => request.put(`/engineering/printing/frames/${id}`, data),

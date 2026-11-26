@@ -3,16 +3,20 @@
     <!-- 查询区 -->
     <el-card shadow="never" class="search-card">
       <el-form inline>
-        <el-form-item label="产品">
-          <div style="width: 280px">
-            <ProductSelector
-              v-model="queryProductId"
-              :options="productOptions"
-              value-type="productId"
-              placeholder="选择产品查看其图案"
-              @change="onProductChange"
+        <el-form-item label="类别">
+          <el-select v-model="queryFamily" placeholder="全部" clearable style="width: 140px" @change="loadArtworks(1)">
+            <el-option v-for="family in familyTabs" :key="family.value" :label="family.label" :value="family.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="queryStatus" placeholder="全部" clearable style="width: 140px" @change="loadArtworks(1)">
+            <el-option
+              v-for="s in ArtworkVersionStatusEnum.items"
+              :key="s.value"
+              :label="s.label"
+              :value="s.value"
             />
-          </div>
+          </el-select>
         </el-form-item>
         <el-form-item label="关键字">
           <el-input
@@ -29,7 +33,7 @@
         </el-form-item>
       </el-form>
       <div class="search-tip">
-        选产品按「面板 / 上线 / 下线」展示图案与版本；关键字走统一搜索，可同时命中图案、菲林、网版、网框。
+        按类别与状态筛选图案；关键字走统一搜索，可同时命中图案、菲林、网版、网框。
       </div>
     </el-card>
 
@@ -92,18 +96,8 @@
           「上线」= 当前有生效版本的图案；「下线 / 草稿」= 尚未生效。
         </span>
       </div>
-      <el-empty v-if="!queryProductId" description="请选择产品后查看图案" />
-      <el-tabs v-else v-model="activeFamily" @tab-change="onFamilyChange">
-        <el-tab-pane
-          v-for="family in familyTabs"
-          :key="family.value"
-          :label="`${family.label}（${groupsOf(family.value).length}）`"
-          :name="family.value"
-        />
-      </el-tabs>
       <el-table
-        v-if="queryProductId"
-        :data="currentGroups"
+        :data="artworks"
         v-loading="listLoading"
         border
         stripe
@@ -111,17 +105,22 @@
       >
         <el-table-column label="图案编号" prop="artworkNo" width="160" />
         <el-table-column label="名称" prop="name" min-width="160" show-overflow-tooltip />
+        <el-table-column label="类别" width="100" align="center">
+          <template #default="scope">
+            <el-tag size="small">{{ scope.row.family || '面板' }}</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="用途" prop="purpose" min-width="120" show-overflow-tooltip />
         <el-table-column label="生效版本" width="130" align="center">
           <template #default="scope">
-            <el-tag v-if="scope.row.currentVersionNo" type="success" size="small">
-              {{ scope.row.currentVersionNo }}
+            <el-tag v-if="scope.row.defaultVersionNo" type="success" size="small">
+              {{ scope.row.defaultVersionNo }}
             </el-tag>
             <span v-else class="muted">未生效</span>
           </template>
         </el-table-column>
         <el-table-column label="版本数" width="90" align="center">
-          <template #default="scope">{{ scope.row.versions.length }}</template>
+          <template #default="scope">{{ scope.row.versionCount || 0 }}</template>
         </el-table-column>
         <el-table-column label="最新状态" width="120" align="center">
           <template #default="scope">
@@ -161,6 +160,16 @@
           </template>
         </el-table-column>
       </el-table>
+      <el-pagination
+        v-model:current-page="page.pageNum"
+        v-model:page-size="page.pageSize"
+        :total="page.total"
+        :page-sizes="[20, 50, 100]"
+        layout="total, sizes, prev, pager, next"
+        style="margin-top: 12px; justify-content: flex-end"
+        @current-change="(p: number) => loadArtworks(p)"
+        @size-change="() => loadArtworks(1)"
+      />
     </el-card>
 
     <!-- 图案详情 -->
@@ -564,12 +573,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { Search, Refresh, Plus } from '@element-plus/icons-vue'
-import { filmApi } from '@/api/product/film'
 import { printingArtworkApi } from '@/api/product/film'
 import { printingSearchApi, type PrintSearchRow } from '@/api/engineering/printingSearch'
 import { listProductPage, searchProduct } from '@/api/product'
@@ -577,14 +585,12 @@ import { attachmentApi } from '@/api/system/attachment'
 import type { ProductItem } from '@/types/product'
 import type { ArtworkCommand, ArtworkView } from '@/types/engineering/printingArtwork'
 import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
-import ProductSelector from '@/components/Selector/ProductSelector.vue'
 import { ArtworkVersionStatusEnum, FilmCopyStatusEnum } from '@/enums/product/film'
 
 defineOptions({ name: 'EngineeringFilm' })
 
 const router = useRouter()
 
-import { groupArtworkRows, type ArtworkGroup } from './artworkGroups'
 
 const familyTabs = [
   { value: '面板', label: '面板' },
@@ -592,27 +598,31 @@ const familyTabs = [
   { value: '下线', label: '下线' },
 ]
 
-const activeFamily = ref('面板')
 const listLoading = ref(false)
 const searchLoading = ref(false)
 const saving = ref(false)
 const searched = ref(false)
 const keyword = ref('')
 const searchRows = ref<PrintSearchRow[]>([])
-const queryProductId = ref<number | null>(null)
+const queryFamily = ref('')
+const queryStatus = ref('')
 const productOptions = ref<ProductItem[]>([])
 const productSearching = ref(false)
-const groups = ref<ArtworkGroup[]>([])
-
-const currentGroups = computed(() => groupsOf(activeFamily.value))
-
-function groupsOf(family: string) {
-  return groups.value.filter((g) => (g.family || '面板') === family)
-}
+const artworks = ref<any[]>([])
+const page = reactive({ pageNum: 1, pageSize: 20, total: 0 })
 
 function productLabel(pid: number) {
   const p = productOptions.value.find((item) => item.productId === pid)
   return p ? `${p.productCode || ''} ${p.productName || ''}`.trim() || String(pid) : String(pid)
+}
+
+/** 图案编号自动生成：PW-yyMM-序号（可手改，唯一性由后端兜底） */
+function nextArtworkNo(): string {
+  const d = new Date()
+  const yy = String(d.getFullYear()).slice(2)
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const seq = String(Date.now() % 1000).padStart(3, '0')
+  return `PW-${yy}${mm}-${seq}`
 }
 
 function genRequestId() {
@@ -648,46 +658,25 @@ async function searchProducts(text: string) {
   }
 }
 
-async function loadByProduct() {
-  if (!queryProductId.value) {
-    groups.value = []
-    return
-  }
+async function loadArtworks(pageNo = page.pageNum) {
+  page.pageNum = pageNo
   listLoading.value = true
   try {
-    const res: any = await filmApi.getByProductId(queryProductId.value)
-    groups.value = groupArtworkRows(res?.data || [])
-    // 列表接口不含类别，逐条取详情补 family/purpose（仅当数量不大时）
-    await enrichFamilies()
+    const res: any = await printingArtworkApi.list({
+      keyword: keyword.value.trim() || undefined,
+      family: queryFamily.value || undefined,
+      status: queryStatus.value || undefined,
+      pageNum: page.pageNum,
+      pageSize: page.pageSize,
+    })
+    artworks.value = res?.data?.records || []
+    page.total = res?.data?.total || 0
   } catch {
-    groups.value = []
+    artworks.value = []
+    page.total = 0
   } finally {
     listLoading.value = false
   }
-}
-
-async function enrichFamilies() {
-  const targets = groups.value.slice(0, 30)
-  for (const group of targets) {
-    try {
-      const res: any = await printingArtworkApi.detail(group.artworkId)
-      const data: ArtworkView | undefined = res?.data
-      if (data) {
-        group.family = data.family || '面板'
-        group.purpose = data.purpose
-      }
-    } catch {
-      /* 忽略单条失败 */
-    }
-  }
-}
-
-function onFamilyChange() {
-  /* 计算属性自动刷新 */
-}
-
-function onProductChange() {
-  loadByProduct()
 }
 
 async function doSearch() {
@@ -697,6 +686,7 @@ async function doSearch() {
   }
   searchLoading.value = true
   searched.value = true
+  loadArtworks(1)
   try {
     const res: any = await printingSearchApi.search({
       q: keyword.value.trim(),
@@ -712,11 +702,12 @@ async function doSearch() {
 }
 
 function resetQuery() {
-  queryProductId.value = null
   keyword.value = ''
+  queryFamily.value = ''
+  queryStatus.value = ''
   searchRows.value = []
   searched.value = false
-  groups.value = []
+  loadArtworks(1)
 }
 
 /* ==================== 详情 ==================== */
@@ -805,12 +796,12 @@ async function openArtworkDialog(artworkId?: number) {
   } else {
     Object.assign(artworkForm, {
       artworkId: undefined,
-      artworkNo: '',
+      artworkNo: nextArtworkNo(),
       name: '',
       purpose: '',
-      family: activeFamily.value,
+      family: queryFamily.value || '面板',
       setCode: '',
-      productIds: queryProductId.value ? [queryProductId.value] : [],
+      productIds: [],
       sampleOrderId: undefined,
       revision: 0,
     })
@@ -838,7 +829,7 @@ async function saveArtwork() {
     else await printingArtworkApi.create(command)
     ElMessage.success('保存成功')
     artworkDialogVisible.value = false
-    if (queryProductId.value) await loadByProduct()
+    await loadArtworks()
     if (detail.value) await reloadDetail()
   } catch {
     /* 拦截器已提示 */
@@ -919,7 +910,7 @@ async function saveVersion() {
     ElMessage.success('保存成功')
     versionDialogVisible.value = false
     await reloadDetail()
-    if (queryProductId.value) await loadByProduct()
+    await loadArtworks()
   } catch {
     /* 拦截器已提示 */
   } finally {
@@ -1028,7 +1019,7 @@ async function runVersionAction(row: any, action: string, label: string, needRea
     await api(row.versionId, command)
     ElMessage.success(label + '成功')
     await reloadDetail()
-    if (queryProductId.value) await loadByProduct()
+    await loadArtworks()
   } catch {
     /* 拦截器已提示 */
   }
@@ -1136,6 +1127,7 @@ function goPlate(versionId: number) {
 
 onMounted(async () => {
   await loadProducts()
+  await loadArtworks(1)
 })
 </script>
 

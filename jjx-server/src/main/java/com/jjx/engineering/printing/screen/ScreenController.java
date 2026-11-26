@@ -12,12 +12,24 @@ import java.util.Map;
 public class ScreenController {
     private final ScreenService service;
     private final ScreenView view;
+    private final ScreenRepository repository;
 
     @ExceptionHandler(ScreenService.RevisionConflict.class)
     public Result<Map<String,Object>> revisionConflict(ScreenService.RevisionConflict error) {
         Result<Map<String,Object>> result = Result.error(error.getCode(),error.getMessage());
         result.setData(Map.of("reasonCode","REVISION_CHANGED","revision",error.revision));
         return result;
+    }
+
+    @GetMapping("/frames")
+    @SaCheckPermission("engineering:screen-resource:view")
+    public Result<Map<String, Object>> listFrames(@RequestParam(required = false) String keyword,
+                                                  @RequestParam(required = false) String status,
+                                                  @RequestParam(defaultValue = "1") int pageNum,
+                                                  @RequestParam(defaultValue = "20") int pageSize) {
+        int pn = Math.max(pageNum, 1);
+        int ps = Math.min(Math.max(pageSize, 1), 200);
+        return Result.success(repository.listFrames(keyword, status, pn, ps));
     }
 
     @GetMapping("/frames/{id}")

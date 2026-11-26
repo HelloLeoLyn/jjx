@@ -4,6 +4,9 @@ import com.jjx.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Repository
@@ -39,6 +42,41 @@ class ScreenRepository {
             released_time releasedTime,washed_time washedTime,end_reason endReason,create_by createdBy
             from engineering_screen_plate where plate_id=? and v2_registered=1
             """ + (lock ? " for update" : ""), id);
+    }
+
+    /** P07/M1：新模型网框分页列表（只读，仅 v2_registered=1）。 */
+    Map<String, Object> listFrames(String keyword, String status, int pageNum, int pageSize) {
+        StringBuilder where = new StringBuilder(" WHERE f.v2_registered=1 AND f.del_flag='0'");
+        List<Object> args = new ArrayList<>();
+        if (keyword != null && !keyword.isBlank()) {
+            where.append(" AND (f.frame_no LIKE ? OR f.frame_type LIKE ? OR f.location LIKE ?)");
+            String like = "%" + keyword.trim() + "%";
+            args.add(like);
+            args.add(like);
+            args.add(like);
+        }
+        if (status != null && !status.isBlank()) {
+            where.append(" AND f.status=?");
+            args.add(status);
+        }
+        Integer total = db.queryForObject("SELECT COUNT(*) FROM engineering_screen_frame f" + where, Integer.class, args.toArray());
+        List<Object> pageArgs = new ArrayList<>(args);
+        pageArgs.add(pageSize);
+        pageArgs.add((pageNum - 1) * pageSize);
+        var rows = db.queryForList("""
+            SELECT f.frame_id AS frameId, f.frame_no AS frameNo, f.frame_type AS frameType, f.location,
+                   f.status, f.revision, f.remark,
+                   s.mesh, s.stretch_id AS stretchId,
+                   p.plate_id AS plateId, p.plate_no AS plateNo
+            FROM engineering_screen_frame f
+            LEFT JOIN print_frame_stretch s ON s.open_frame_id=f.frame_id
+            LEFT JOIN engineering_screen_plate p ON p.occupied_frame_id=f.frame_id
+            """ + where + " ORDER BY f.frame_no LIMIT ? OFFSET ?",
+            pageArgs.toArray());
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("records", rows);
+        result.put("total", total == null ? 0 : total);
+        return result;
     }
 
     boolean occupied(long frame) {

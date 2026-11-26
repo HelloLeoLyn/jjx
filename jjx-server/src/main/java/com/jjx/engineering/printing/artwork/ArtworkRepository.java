@@ -9,7 +9,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Repository
 @RequiredArgsConstructor
@@ -40,6 +43,46 @@ public class ArtworkRepository {
             (String) header.get("purpose"), (String) header.get("family"), (String) header.get("set_code"),
             (Long) header.get("sample_order_id"), (Long) header.get("default_version_id"),
             ((Number) header.get("lock_version")).intValue(), products, versions, films);
+    }
+
+    /** P06/M1：图案分页列表（只读）。keyword 匹配图案编号/名称；status 匹配“存在该状态版本”。 */
+    @Transactional(readOnly = true)
+    public Map<String, Object> listArtworks(String keyword, String family, String status, int pageNum, int pageSize) {
+        StringBuilder where = new StringBuilder(" WHERE 1=1");
+        List<Object> args = new ArrayList<>();
+        if (keyword != null && !keyword.isBlank()) {
+            where.append(" AND (a.artwork_no LIKE ? OR a.name LIKE ?)");
+            String like = "%" + keyword.trim() + "%";
+            args.add(like);
+            args.add(like);
+        }
+        if (family != null && !family.isBlank()) {
+            where.append(" AND a.family=?");
+            args.add(family);
+        }
+        if (status != null && !status.isBlank()) {
+            where.append(" AND EXISTS (SELECT 1 FROM print_artwork_version x WHERE x.artwork_id=a.artwork_id AND x.status=?)");
+            args.add(status);
+        }
+        Integer total = jdbc.queryForObject("SELECT COUNT(*) FROM print_artwork a" + where, Integer.class, args.toArray());
+        List<Object> pageArgs = new ArrayList<>(args);
+        pageArgs.add(pageSize);
+        pageArgs.add((pageNum - 1) * pageSize);
+        var rows = jdbc.queryForList("""
+            SELECT a.artwork_id AS artworkId, a.artwork_no AS artworkNo, a.name, a.purpose, a.family,
+                   a.set_code AS setCode, a.default_version_id AS defaultVersionId, dv.version_no AS defaultVersionNo,
+                   (SELECT COUNT(*) FROM print_artwork_version v WHERE v.artwork_id=a.artwork_id) AS versionCount,
+                   (SELECT v2.status FROM print_artwork_version v2 WHERE v2.artwork_id=a.artwork_id
+                     ORDER BY v2.version_id DESC LIMIT 1) AS latestStatus,
+                   a.update_time AS updateTime
+            FROM print_artwork a
+            LEFT JOIN print_artwork_version dv ON dv.version_id=a.default_version_id
+            """ + where + " ORDER BY a.update_time IS NULL, a.update_time DESC, a.artwork_id DESC LIMIT ? OFFSET ?",
+            pageArgs.toArray());
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("records", rows);
+        result.put("total", total == null ? 0 : total);
+        return result;
     }
 
     public List<EngineeringFilmVO> productVersions(long productId, boolean currentOnly) {

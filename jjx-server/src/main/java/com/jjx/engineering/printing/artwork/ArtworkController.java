@@ -27,6 +27,18 @@ public class ArtworkController {
         return result;
     }
 
+    @GetMapping("/artworks")
+    @SaCheckPermission("engineering:film:view")
+    public Result<Map<String, Object>> list(@RequestParam(required = false) String keyword,
+                                            @RequestParam(required = false) String family,
+                                            @RequestParam(required = false) String status,
+                                            @RequestParam(defaultValue = "1") int pageNum,
+                                            @RequestParam(defaultValue = "20") int pageSize) {
+        int pn = Math.max(pageNum, 1);
+        int ps = Math.min(Math.max(pageSize, 1), 200);
+        return Result.success(repository.listArtworks(keyword, family, status, pn, ps));
+    }
+
     @GetMapping("/artworks/{id}")
     @SaCheckPermission("engineering:film:view")
     public Result<ArtworkView> detail(@PathVariable long id) {
