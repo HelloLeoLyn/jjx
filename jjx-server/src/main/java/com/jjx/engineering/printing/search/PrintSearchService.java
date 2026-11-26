@@ -48,8 +48,16 @@ public class PrintSearchService {
         row.setMatchedCode(codeOf(row, token));
         row.setDisplayName(buildName(row));
         List<String> reasons = new ArrayList<>();
-        if (!"PLATED".equalsIgnoreCase(Objects.toString(row.getVersionStatus(), ""))) {
+        if (row.getVersionId() != null
+                && !"PLATED".equalsIgnoreCase(Objects.toString(row.getVersionStatus(), ""))) {
             reasons.add("VERSION_NOT_READY");
+        }
+        if (row.getVersionId() == null && row.getFrameId() != null) {
+            String frameStatus = Objects.toString(row.getFrameStatus(), "").toUpperCase();
+            if ("SCRAPPED".equals(frameStatus) || "DISABLED".equals(frameStatus)
+                    || "MAINTENANCE".equals(frameStatus) || "REPAIR".equals(frameStatus)) {
+                reasons.add("FRAME_DISABLED");
+            }
         }
         if ("DESTROYED".equalsIgnoreCase(Objects.toString(row.getFilmStatus(), ""))) {
             reasons.add("FILM_DESTROYED");
@@ -65,6 +73,10 @@ public class PrintSearchService {
     }
 
     private String buildName(PrintSearchRow row) {
+        if (row.getArtworkNo() == null && row.getVersionNo() == null && row.getFrameNo() != null) {
+            String mesh = row.getMesh() == null ? "" : " / " + row.getMesh() + "目";
+            return "网框 " + row.getFrameNo() + mesh;
+        }
         String code = Objects.toString(row.getArtworkNo(), "");
         String name = Objects.toString(row.getName(), "");
         String version = Objects.toString(row.getVersionNo(), "");
