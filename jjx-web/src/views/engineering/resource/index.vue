@@ -16,9 +16,6 @@
       </template>
 
       <template v-else-if="tab === 'SCREEN'">
-        <el-divider content-position="left">网框作业（按框号操作）</el-divider>
-        <ScreenWorkPanel />
-        <el-divider content-position="left">网框台账</el-divider>
         <el-form :inline="true" class="frame-search" @submit.prevent>
           <el-form-item label="网框编号"><el-input v-model="frameQuery.frameNo" clearable style="width:130px" @keyup.enter="searchFrames" /></el-form-item>
           <el-form-item label="型号"><el-input v-model="frameQuery.frameType" clearable style="width:110px" @keyup.enter="searchFrames" /></el-form-item>
@@ -142,7 +139,6 @@ import { engineeringResourceApi as api } from '@/api/engineering/resource'
 import { filmApi } from '@/api/product/film'
 import { searchProduct } from '@/api/product'
 import { DieActionEnum, DieStatusEnum, ScreenFrameStatusEnum } from '@/enums/engineering/resource'
-import ScreenWorkPanel from './components/ScreenWorkPanel.vue'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
 defineOptions({ name: 'EngineeringResource' })
