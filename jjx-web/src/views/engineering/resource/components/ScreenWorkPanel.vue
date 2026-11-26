@@ -143,8 +143,11 @@ function onSelect(row: PrintSearchRow) {
   selected.value = row
   if (row?.frameId) {
     void loadFrame(Number(row.frameId))
-  } else {
-    ElMessage.warning('该候选没有 frameId，请选择网框候选')
+    return
+  }
+  // 图案版本/菲林候选用于制版，没有 frameId 属正常
+  if (!row?.versionId) {
+    ElMessage.warning('该候选缺少实体或版本 ID，请重新搜索')
   }
 }
 
