@@ -3,6 +3,7 @@ import { defineComponent, nextTick } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 import RouteFormDialog from '../RouteFormDialog.vue'
 import { productRouteApi } from '@/api/product/routing'
+import PrintResourceSelector from '@/components/Selector/PrintResourceSelector.vue'
 
 vi.mock('@/api/product/routing', () => ({
   productRouteApi: {
@@ -101,9 +102,32 @@ async function save(wrapper: ReturnType<typeof mount>, close = false) {
 const printInput = (wrapper: ReturnType<typeof mount>) =>
   wrapper.find('input[placeholder="如：丝印/移印/网印"]')
 describe('新增工艺路线印刷名称保存', () => {
+  it('选择建议网版后保存并重开保留实体ID，工艺要求不从版面参数覆盖', async () => {
+    const wrapper = await open()
+    await addPrint(wrapper, '面板丝印')
+    const artwork = wrapper.findAllComponents(PrintResourceSelector).find(c => c.props('placeholder') === '按图案/菲林号搜索')!
+    artwork.vm.$emit('select', { versionId: 3, artworkNo: 'A1', versionNo: 'V2' })
+    await nextTick()
+    const plate = wrapper.findAllComponents(PrintResourceSelector).find(c => c.props('placeholder') === '选择同版本实体网版')!
+    plate.vm.$emit('select', { versionId: 3, plateId: 4, plateNo: 'P4', frameNo: 'F1', mesh: 200 })
+    await nextTick()
+    await wrapper.find('input[placeholder="目数下限"]').setValue('100')
+    await save(wrapper)
+    expect(stored.items[0]).toMatchObject({ artworkVersionId: 3, defaultPlateId: 4 })
+    expect(JSON.parse(stored.items[0].printRequirements)).toEqual({ meshMin: 100 })
+    await wrapper.setProps({ modelValue: false })
+    await wrapper.setProps({ routingId: 77, modelValue: true })
+    await flushPromises()
+    await save(wrapper)
+    expect(stored.items[0]).toMatchObject({ artworkVersionId: 3, defaultPlateId: 4 })
+    expect(JSON.parse(stored.items[0].printRequirements)).toEqual({ meshMin: 100 })
+  })
   it('真实编辑器输入后新增请求带名称，保存回读和关闭重开保持名称，再次编辑使用相同字段', async () => {
     const wrapper = await open()
     await addPrint(wrapper, '面板丝印')
+    await wrapper.find('input[placeholder="印刷位置"]').setValue('面板')
+    await wrapper.find('input[placeholder="目数下限"]').setValue('100')
+    await wrapper.find('input[placeholder="张力上限 N/cm"]').setValue('25')
     await save(wrapper)
     expect(productRouteApi.addProductRoute).toHaveBeenCalledTimes(1)
     const created = vi.mocked(productRouteApi.addProductRoute).mock.calls[0][0].items[0]
@@ -113,10 +137,12 @@ describe('新增工艺路线印刷名称保存', () => {
       processCategory: 'PANEL',
     })
     expect((printInput(wrapper).element as HTMLInputElement).value).toBe('面板丝印')
+    expect(JSON.parse(created.printRequirements!)).toEqual({ position: '面板', meshMin: 100, tensionMax: 25 })
     await wrapper.setProps({ modelValue: false })
     await wrapper.setProps({ routingId: 77, modelValue: true })
     await flushPromises()
     expect((printInput(wrapper).element as HTMLInputElement).value).toBe('面板丝印')
+    expect((wrapper.find('input[placeholder="目数下限"]').element as HTMLInputElement).value).toBe('100')
     await printInput(wrapper).setValue('面板移印')
     await save(wrapper)
     expect(productRouteApi.addProductRoute).toHaveBeenCalledTimes(1)

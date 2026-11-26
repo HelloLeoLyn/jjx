@@ -120,6 +120,10 @@ public class EngineeringRoutingItem {
 
     /** 印刷工序绑定的图案版本（P08，dev-20261125-014） */
     private Long artworkVersionId;
+    /** 工程建议版可空；实际生产用版单独记录。 */
+    private Long defaultPlateId;
+    /** 独立印刷要求 JSON：position、meshMin/Max、tensionMin/Max（N/cm）。 */
+    private String printRequirements;
 
     /**
      * 创建时间

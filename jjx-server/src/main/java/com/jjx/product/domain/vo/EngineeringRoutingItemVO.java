@@ -58,6 +58,10 @@ public class EngineeringRoutingItemVO {
 
     /** 印刷工序绑定的图案版本（P08，dev-20261125-014） */
     private Long artworkVersionId;
+    private Long defaultPlateId;
+    private String defaultPlateNo;
+    private String defaultFrameNo;
+    private String printRequirements;
     private String artworkNo;
     private String artworkVersionNo;
     private BigDecimal standardLaborHours;

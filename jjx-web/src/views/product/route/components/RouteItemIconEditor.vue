@@ -351,14 +351,30 @@
                     />
                   </template>
                 </el-table-column>
-                <el-table-column label="网框编号" width="170">
+                <el-table-column label="建议网版（可不选）" width="230">
                   <template #default="{ row }">
-                    <PrintFieldAutocomplete
-                      :model-value="getPrintParam(row, 'screenNo')"
-                      field="screenNo"
-                      width="160px"
-                      @update:model-value="(v: string) => setPrintParam(row, 'screenNo', v)"
+                    <span v-if="row.defaultPlateId">{{ row.defaultPlateNo || row.defaultPlateId }} / {{ row.defaultFrameNo || '—' }}</span>
+                    <el-button v-if="row.defaultPlateId" link @click="clearDefaultPlate(row)">清除</el-button>
+                    <PrintResourceSelector
+                      v-else
+                      :model-value="null"
+                      :disabled="!row.artworkVersionId"
+                      placeholder="选择同版本实体网版"
+                      @select="(item: any) => onPickDefaultPlate(row, item)"
                     />
+                  </template>
+                </el-table-column>
+                <el-table-column label="固定印刷要求" width="280">
+                  <template #default="{ row }">
+                    <el-input :model-value="printRequirement(row, 'position')" placeholder="印刷位置" @update:model-value="(v: string) => setPrintRequirement(row, 'position', v)" />
+                    <div style="display:flex;gap:4px;margin-top:4px">
+                      <el-input :model-value="printRequirement(row, 'meshMin')" placeholder="目数下限" @update:model-value="(v: string) => setPrintRequirement(row, 'meshMin', v)" />
+                      <el-input :model-value="printRequirement(row, 'meshMax')" placeholder="目数上限" @update:model-value="(v: string) => setPrintRequirement(row, 'meshMax', v)" />
+                    </div>
+                    <div style="display:flex;gap:4px;margin-top:4px">
+                      <el-input :model-value="printRequirement(row, 'tensionMin')" placeholder="张力下限 N/cm" @update:model-value="(v: string) => setPrintRequirement(row, 'tensionMin', v)" />
+                      <el-input :model-value="printRequirement(row, 'tensionMax')" placeholder="张力上限 N/cm" @update:model-value="(v: string) => setPrintRequirement(row, 'tensionMax', v)" />
+                    </div>
                   </template>
                 </el-table-column>
                 <el-table-column label="人工工时(h)" width="100" align="center">
@@ -617,6 +633,7 @@ function onPickArtworkVersion(row: any, item: any) {
   row.artworkVersionId = Number(item.versionId)
   row.artworkNo = item.artworkNo || ''
   row.artworkVersionNo = item.versionNo || ''
+  clearDefaultPlate(row)
   syncToParent()
 }
 
@@ -624,6 +641,41 @@ function clearArtworkVersion(row: any) {
   row.artworkVersionId = null
   row.artworkNo = ''
   row.artworkVersionNo = ''
+  clearDefaultPlate(row)
+  syncToParent()
+}
+
+function clearDefaultPlate(row: any) {
+  row.defaultPlateId = null
+  row.defaultPlateNo = ''
+  row.defaultFrameNo = ''
+  syncToParent()
+}
+
+function onPickDefaultPlate(row: any, item: any) {
+  if (!item?.plateId || Number(item.versionId) !== Number(row.artworkVersionId)) {
+    ElMessage.warning('请选择当前图案版本的实体网版')
+    return
+  }
+  row.defaultPlateId = Number(item.plateId)
+  row.defaultPlateNo = item.plateNo || ''
+  row.defaultFrameNo = item.frameNo || ''
+  syncToParent()
+}
+
+function printRequirements(row: any): Record<string, string | number> {
+  try { return JSON.parse(row.printRequirements || '{}') } catch { return {} }
+}
+function printRequirement(row: any, key: string): string {
+  return String(printRequirements(row)[key] ?? '')
+}
+function setPrintRequirement(row: any, key: string, value: string) {
+  const requirements = printRequirements(row)
+  if (!value.trim()) delete requirements[key]
+  else requirements[key] = key === 'position' ? value.trim() : value
+  // 数值合法性由后端统一校验；保留无效输入以明确报错，不静默清空。
+  if (key !== 'position' && value.trim() && Number.isFinite(Number(value))) requirements[key] = Number(value)
+  row.printRequirements = JSON.stringify(requirements)
   syncToParent()
 }
 

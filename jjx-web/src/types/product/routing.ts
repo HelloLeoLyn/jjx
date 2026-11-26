@@ -116,6 +116,10 @@ export interface ProductRouteItemFormData {
  * 产品路线明细VO
  */
 export interface EngineeringRoutingItemVO {
+  defaultPlateId?: number | null
+  defaultPlateNo?: string
+  defaultFrameNo?: string
+  printRequirements?: string
   /** 独立的工序作业说明 */
   workInstruction?: string
   // 路线明细字段
@@ -191,6 +195,8 @@ export interface EngineeringRoutingItemVO {
  * 对应后端 EngineeringRoutingItemDTO
  */
 export interface EngineeringRoutingItemDTO {
+  defaultPlateId?: number | null
+  printRequirements?: string
   /** 独立的工序作业说明 */
   workInstruction?: string
   itemId?: number

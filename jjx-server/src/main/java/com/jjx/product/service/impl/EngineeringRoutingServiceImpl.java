@@ -61,6 +61,9 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
     @org.springframework.beans.factory.annotation.Autowired
     private com.jjx.engineering.printing.artwork.ArtworkService artworkService;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.jjx.engineering.printing.screen.ScreenService screenService;
+
     @Override
     public List<RoutingVersionRow> getObjectVersions(String outputType, Long outputId) {
         if (outputId == null) throw new BusinessException("产出对象不能为空");
@@ -317,6 +320,9 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         diffText(changes, label + " 前置依赖", oldItem.getPrecondition(), next.getPrecondition());
         diffText(changes, label + " 前置依赖名称", oldItem.getPreconditionDisplay(), next.getPreconditionDisplay());
         changeRecorder.diff(changes, label + " 可选", oldItem.getIsOptional(), next.getIsOptional());
+        changeRecorder.diff(changes, label + " 图案版本", oldItem.getArtworkVersionId(), next.getArtworkVersionId());
+        changeRecorder.diff(changes, label + " 建议网版", oldItem.getDefaultPlateId(), next.getDefaultPlateId());
+        diffText(changes, label + " 固定印刷要求", oldItem.getPrintRequirements(), next.getPrintRequirements());
         diffRoutingParameters(changes, label, oldItem.getCustomProcessParams(), next.getCustomProcessParams());
     }
 
@@ -660,6 +666,7 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
             throw new BusinessException(BusinessExceptionEnum.ROUTING_ALREADY_APPROVED);
         }
 
+        validateStoredPrintBindings(routingId);
         routing.setApproveStatus(ApproveStatusEnum.PENDING.getValue());
         updateById(routing);
 
@@ -679,6 +686,7 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
             throw new BusinessException(BusinessExceptionEnum.ROUTING_ALREADY_APPROVED);
         }
 
+        validateStoredPrintBindings(routingId);
         routing.setApproveStatus(ApproveStatusEnum.APPROVED.getValue());
         updateById(routing);
 
@@ -960,6 +968,7 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
      */
     private void saveItems(Long routingId, List<EngineeringRoutingItemDTO> itemDTOs) {
         if (itemDTOs == null || itemDTOs.isEmpty()) return;
+        lockArtworkVersions(itemDTOs);
 
         // 2026-09-05 父子结构落库：每个 dto = 一道工序（父行），children = 组合作业项（子行）
         // 兼容旧平铺数据：无 children 的行作为单作业父行直接落（process_id 自带）
@@ -997,13 +1006,50 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         }
     }
 
+    private void validateStoredPrintBindings(Long routingId) {
+        var rows = routingDetailMapper.selectList(new LambdaQueryWrapper<EngineeringRoutingItem>()
+                .eq(EngineeringRoutingItem::getRoutingId, routingId));
+        List<EngineeringRoutingItemDTO> bindings = new ArrayList<>();
+        for (var row : rows) {
+            if ("PRINT".equals(row.getMajorCategory()) && row.getArtworkVersionId() == null)
+                throw new BusinessException("印刷工序必须绑定图案版本后才能提交或批准");
+            var dto = new EngineeringRoutingItemDTO();
+            BeanUtil.copyProperties(row, dto);
+            bindings.add(dto);
+        }
+        lockArtworkVersions(bindings);
+        bindings.forEach(this::validateArtworkVersion);
+    }
+
+    private void lockArtworkVersions(List<EngineeringRoutingItemDTO> rows) {
+        TreeSet<Long> versions = new TreeSet<>();
+        collectArtworkVersions(rows, versions);
+        for (Long id : versions) {
+            if (id <= 0) throw new BusinessException("图案版本无效");
+            artworkService.requireUsableVersion(id);
+        }
+    }
+
+    private void collectArtworkVersions(List<EngineeringRoutingItemDTO> rows, Set<Long> versions) {
+        if (rows == null) return;
+        for (var row : rows) {
+            if (row == null) throw new BusinessException("工序行不能为空");
+            if (row.getArtworkVersionId() != null) versions.add(row.getArtworkVersionId());
+            collectArtworkVersions(row.getChildren(), versions);
+        }
+    }
+
     /** P08：印刷工序若绑定图案版本，必须是已发布可用版本（不存在/已停用直接拒绝）。 */
     private void validateArtworkVersion(EngineeringRoutingItemDTO dto) {
         if (dto == null) return;
         Long versionId = dto.getArtworkVersionId();
         if (versionId != null) {
             if (versionId <= 0) throw new BusinessException("图案版本无效");
-            artworkService.requireUsableVersion(versionId);
+        }
+        if (dto.getPrintRequirements() != null) screenService.validateRequirements(dto.getPrintRequirements());
+        if (dto.getDefaultPlateId() != null) {
+            if (versionId == null || dto.getDefaultPlateId() <= 0) throw new BusinessException("默认网版必须绑定图案版本");
+            screenService.requireUsablePlate(versionId, dto.getDefaultPlateId(), dto.getPrintRequirements());
         }
         if (dto.getChildren() != null) {
             for (EngineeringRoutingItemDTO child : dto.getChildren()) {
@@ -1039,6 +1085,9 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         // 空字符串转 null，避免数据库约束问题
         if (item.getCustomProcessParams() != null && item.getCustomProcessParams().isBlank()) {
             item.setCustomProcessParams(null);
+        }
+        if (item.getPrintRequirements() != null && item.getPrintRequirements().isBlank()) {
+            item.setPrintRequirements(null);
         }
         if (item.getDescription() != null && item.getDescription().isBlank()) {
             item.setDescription(null);

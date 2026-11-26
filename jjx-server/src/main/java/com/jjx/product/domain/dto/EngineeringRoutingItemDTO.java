@@ -114,6 +114,8 @@ public class EngineeringRoutingItemDTO {
 
     /** 印刷工序绑定的图案版本（P08，dev-20261125-014） */
     private Long artworkVersionId;
+    private Long defaultPlateId;
+    private String printRequirements;
 
     /** 2026-09-05 父子结构：子行挂父行（父行 parentId=null） */
     private Long parentId;

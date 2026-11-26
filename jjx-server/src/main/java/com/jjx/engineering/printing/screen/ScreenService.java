@@ -23,6 +23,58 @@ public class ScreenService {
     private final ScreenRepository repo;
     private final ObjectMapper json;
 
+    /** 工程、齐套和生产共用要求口径；张力单位固定 N/cm，不接受自由单位换算。 */
+    public com.fasterxml.jackson.databind.JsonNode validateRequirements(String raw) {
+        try {
+            var value = raw == null || raw.isBlank() ? json.createObjectNode() : json.readTree(raw);
+            if (!value.isObject()) throw new BusinessException(422, "印刷要求必须是JSON对象");
+            var allowed = java.util.Set.of("position", "meshMin", "meshMax", "tensionMin", "tensionMax");
+            value.fieldNames().forEachRemaining(key -> {
+                if (!allowed.contains(key)) throw new BusinessException(422, "未知印刷要求：" + key);
+            });
+            if (value.has("position") && (!value.path("position").isTextual()
+                    || value.path("position").asText().isBlank() || value.path("position").asText().length() > 64))
+                throw new BusinessException(422, "印刷位置必须为1至64字文本");
+            for (String prefix : java.util.List.of("mesh", "tension")) {
+                for (String suffix : java.util.List.of("Min", "Max")) {
+                    var bound = value.get(prefix + suffix);
+                    if (bound != null && (!bound.isNumber() || bound.decimalValue().signum() <= 0
+                            || (prefix.equals("mesh") && !bound.isIntegralNumber())))
+                        throw new BusinessException(422, "目数必须为正整数，张力必须为正数（N/cm）");
+                }
+                if (value.has(prefix + "Min") && value.has(prefix + "Max")
+                        && value.get(prefix + "Min").decimalValue().compareTo(value.get(prefix + "Max").decimalValue()) > 0)
+                    throw new BusinessException(422, "印刷要求下限不能大于上限");
+            }
+            return value;
+        } catch (JsonProcessingException e) {
+            throw new BusinessException(422, "印刷要求JSON格式无效");
+        }
+    }
+
+    /** 调用方先持有图案版本锁，再按版本→框→版顺序锁定；不把默认版写成实际用版。 */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void requireUsablePlate(long versionId, long plateId, String requirements) {
+        var required = validateRequirements(requirements);
+        var identity = repo.plate(plateId, false);
+        conflict(((Number) identity.get("versionId")).longValue() != versionId, "默认网版不属于指定图案版本");
+        var frame = repo.frame(((Number) identity.get("frameId")).longValue(), true);
+        var plate = repo.plate(plateId, true);
+        conflict(((Number) plate.get("versionId")).longValue() != versionId, "默认网版不属于指定图案版本");
+        conflict(!PlateStatus.RELEASED.name().equals(plate.get("status")), "默认网版尚未放行或已经结束");
+        conflict(!FrameStatus.READY.name().equals(frame.get("status")), "默认网版的网框不可用");
+        var stretch = repo.one("select mesh,tension_n_cm,qualified,end_time from print_frame_stretch where stretch_id=? and frame_id=? for update",
+                plate.get("stretchId"), plate.get("frameId"));
+        conflict(!Boolean.TRUE.equals(stretch.get("qualified")) && !Integer.valueOf(1).equals(stretch.get("qualified")), "默认网版的绷网未合格");
+        conflict(stretch.get("end_time") != null, "默认网版的绷网已结束");
+        if (required.has("position")) conflict(!required.path("position").asText().equals(plate.get("position")), "默认网版位置不符");
+        for (String prefix : java.util.List.of("mesh", "tension")) {
+            var actual = new java.math.BigDecimal(stretch.get(prefix.equals("mesh") ? "mesh" : "tension_n_cm").toString());
+            if (required.has(prefix + "Min")) conflict(actual.compareTo(required.get(prefix + "Min").decimalValue()) < 0, "默认网版参数低于要求");
+            if (required.has(prefix + "Max")) conflict(actual.compareTo(required.get(prefix + "Max").decimalValue()) > 0, "默认网版参数高于要求");
+        }
+    }
+
     enum PlateStatus {
         PENDING, FAILED, RELEASED, WASHED, SCRAPPED;
 
