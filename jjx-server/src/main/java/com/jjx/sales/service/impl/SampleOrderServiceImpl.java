@@ -1525,6 +1525,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
     /** 转标准行数据载体：group_id 非空且同组多行 = 组合工序；否则独立工序（父行直接带作业） */
     private static class RoutingRowData {
+        Long sampleProcessId;
         Long artworkVersionId;
         Long defaultPlateId;
         String printRequirements;
@@ -1622,7 +1623,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     /** 消费P08公开写入口，成员只带计划，不复制打样实际用版。 */
-    private Long createTransferredRouting(EngineeringRouting header,List<RoutingRowData> rows) {
+    private Long createTransferredRouting(EngineeringRouting header,List<RoutingRowData> rows, List<Map<String,Long>> mappings) {
         var dto=new com.jjx.product.domain.dto.EngineeringRoutingDTO();
         cn.hutool.core.bean.BeanUtil.copyProperties(header,dto);
         var groups=new LinkedHashMap<Long,List<RoutingRowData>>();
@@ -1641,7 +1642,30 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             items.add(parent);
         }
         dto.setItems(items);
-        return routingService.createRouting(dto).getRoutingId();
+        var created = routingService.createRouting(dto);
+        // P08 inserts each parent and its children in request order. Its read API sorts by
+        // workflow category; restore insertion order within each level before pairing IDs.
+        var byId = java.util.Comparator.comparing(com.jjx.product.domain.vo.EngineeringRoutingItemVO::getItemId);
+        var parents = created.getItems().stream().sorted(byId).toList();
+        if (parents.size() != groups.size()) throw new BusinessException("路线返回的工序数量与确认方案不一致");
+        var parentIterator = parents.iterator();
+        for (var group : groups.values()) {
+            var parent = parentIterator.next();
+            var jobs = parent.getChildren() == null || parent.getChildren().isEmpty()
+                    ? List.of(parent) : parent.getChildren().stream().sorted(byId).toList();
+            if (jobs.size() != group.size()) throw new BusinessException("路线返回的作业项与确认方案不一致");
+            for (int i=0; i<jobs.size(); i++) {
+                var source = group.get(i);
+                var job = jobs.get(i);
+                if (source.sampleProcessId == null || !java.util.Objects.equals(source.artworkVersionId,job.getArtworkVersionId())
+                        || !java.util.Objects.equals(source.processId,job.getProcessId())
+                        || (source.processId == null && !java.util.Objects.equals(source.processName,job.getProcessName())))
+                    throw new BusinessException("无法核对打样来源与路线作业项");
+                mappings.add(Map.of("sampleProcessId",source.sampleProcessId,"routingItemId",job.getItemId(),
+                        "routingId",created.getRoutingId(),"productId",header.getProductId()));
+            }
+        }
+        return created.getRoutingId();
     }
 
     private com.jjx.product.domain.dto.EngineeringRoutingItemDTO toTransferredRoutingItem(RoutingRowData row) {
@@ -2926,6 +2950,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         java.util.List<String> details = new java.util.ArrayList<>();
         String productAction = "NONE", bomAction = "NONE", routingAction = "NONE";
         Long builtProductId = null, builtBomId = null, builtRoutingId = null;
+        List<Map<String,Long>> sourceMappings = new ArrayList<>();
 
         // 产品明细：样品单若无明细则从报价单补复制（数据断链兜底）
         java.util.List<com.jjx.sales.domain.vo.SalesOrderProductVO> prodList =
@@ -2939,7 +2964,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             }
         }
 
-        if (prodList==null || prodList.isEmpty()) throw new BusinessException("归档方案缺少产品明细，请先核实产品归属");
+        if (prodList==null || prodList.isEmpty()) {
+            if (dto.getTargetProductId()==null) throw new BusinessException("归档方案缺少产品明细，请明确目标产品");
+            prodList=List.of(new com.jjx.sales.domain.vo.SalesOrderProductVO());
+        }
         if (dto.getTargetProductId()!=null) {
             if (prodList.size()!=1) throw new BusinessException("多产品打样不能用单一目标产品覆盖");
             productCustomerValidator.validateBelongsToCustomer(dto.getTargetProductId(),sampleOrder.getCustomerId());
@@ -3142,9 +3170,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                 groupOrder,
                                 pm.getIndexNumber())); // DEV-777：对照版下标透传到工艺路线
                         var binding=routingRows.getLast();
+                        binding.sampleProcessId=pm.getSampleProcessId();
                         binding.artworkVersionId=pm.getArtworkVersionId();binding.defaultPlateId=pm.getDefaultPlateId();binding.printRequirements=pm.getPrintRequirements();
                     }
-                    newRouting.setRoutingId(createTransferredRouting(newRouting,routingRows));
+                    newRouting.setRoutingId(createTransferredRouting(newRouting,routingRows,sourceMappings));
                     int processCnt = (int)routingRows.stream().map(row->row.groupId==null ? row : row.groupId).distinct().count();
                     builtRoutingId = newRouting.getRoutingId();
                     routingAction = "CREATE";
@@ -3173,7 +3202,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         var frozen=new com.jjx.sales.dto.transfer.SampleTransferConfirmDTO();
         frozen.setOrderId(orderId);frozen.setRoundId(selectedRound.getRoundId());frozen.setConfirmedSchemeId(selectedRound.getRoundId());
         frozen.setProcessMappings(processMappings);frozen.setMaterialMappings(materialMappings);
-        var audit=new LinkedHashMap<String,Object>();audit.put("messages",details);audit.put("canonical",frozen);audit.put("version",transferredVersion);
+        var audit=new LinkedHashMap<String,Object>();audit.put("messages",details);audit.put("canonical",frozen);audit.put("sourceMappings",sourceMappings);audit.put("version",transferredVersion);
         try { transfer.setDetail(objectMapper.writeValueAsString(audit)); }
         catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new BusinessException("无法保存转移结果快照"); }
         transfer.setCreateBy(SecurityUtils.getUsername());
@@ -3199,6 +3228,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         result.put("routingId", builtRoutingId);
         result.put("version", transferredVersion);
         result.put("roundId",selectedRound.getRoundId());result.put("confirmedSchemeId",selectedRound.getRoundId());
+        result.put("sourceMappings",sourceMappings);
         result.put("detail", details);
         log.info("样品单[{}] 打样转标准确认完成[{}] 产品={} BOM={} 路线={} 版本={}",
                 sampleOrder.getOrderNo(), transferNo, productAction, bomAction, routingAction, transferredVersion);
@@ -3242,6 +3272,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         result.put("roundId",transfer.getSourceRoundId());result.put("confirmedSchemeId",transfer.getSourceRoundId());
         try {
             var audit=objectMapper.readTree(transfer.getDetail());
+            if (audit.has("sourceMappings"))
+                result.put("sourceMappings",objectMapper.convertValue(audit.get("sourceMappings"),
+                        new com.fasterxml.jackson.core.type.TypeReference<List<Map<String,Long>>>() {}));
             result.put("detail",objectMapper.convertValue(audit.path("messages"),new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {}));
             result.put("version",audit.path("version").isNull() ? null : audit.path("version").asText());
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new BusinessException("转移结果快照损坏"); }

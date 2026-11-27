@@ -46,10 +46,10 @@
             </el-table-column>
             <el-table-column label="图案版本 / 默认实体版" min-width="260">
               <template #default="{ row }">
-                <PrintResourceSelector :model-value="null" :disabled="readonly || row.status !== ProcessStatusEnum.TODO.value"
+                <PrintResourceSelector :model-value="row.artworkVersionId ? { versionId: row.artworkVersionId, displayName: [row.artworkNo, row.artworkVersionNo || row.artworkVersionId].filter(Boolean).join(' / ') } : null" :disabled="readonly || row.status !== ProcessStatusEnum.TODO.value"
                   :placeholder="row.artworkVersionId ? `${row.artworkNo || '图案'} / ${row.artworkVersionNo || row.artworkVersionId}` : '选择图案版本（未定稿可留空）'"
-                  @select="resource => { row.artworkVersionId = resource.versionId ?? null; row.artworkNo = resource.artworkNo; row.artworkVersionNo = resource.versionNo; row.defaultPlateId = resource.plateId ?? null; row.defaultPlateNo = resource.plateNo; row.defaultFrameNo = resource.frameNo }"
-                  @clear="row.artworkVersionId = null; row.defaultPlateId = null" />
+                  @select="resource => selectPlanVersion(row, resource)"
+                  @clear="selectPlanVersion(row, null)" />
                 <span>建议网版：{{ row.defaultPlateNo || row.defaultPlateId || '未指定' }}</span>
                 <el-button v-if="!readonly && row.status === ProcessStatusEnum.TODO.value" link @click="row.defaultPlateId = null; row.defaultPlateNo = ''">清空建议版</el-button>
               </template>
@@ -58,7 +58,7 @@
               <template #default="{ row }">
                 <PrintResourceSelector v-if="row.status === ProcessStatusEnum.TODO.value" :disabled="readonly || row.advancing"
                   :model-value="row.selectedActualResource ?? null"
-                  @select="resource => { row.selectedActualResource = resource; row.selectedActualPlateId = resource.plateId ?? null }"
+                  @select="resource => selectActualPlate(row, resource)"
                   @clear="row.selectedActualResource = null; row.selectedActualPlateId = null" />
                 <span>实际版：{{ row.actualPlateId ?? row.selectedActualPlateId ?? '未选' }}</span>
                 <div v-if="row.executionSnapshot">{{ executionSummary(row) }}</div>
@@ -269,6 +269,7 @@
 </template>
 
 <script setup lang="ts">
+import type { PrintSearchRow } from '@/api/engineering/printingSearch'
 import PrintResourceSelector from '@/components/Selector/PrintResourceSelector.vue'
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -353,6 +354,32 @@ function isEmptyRow(r: any) {
     !(r.inkNo || '').trim() &&
     !(r.screenNo || '').trim()
   )
+}
+
+function selectPlanVersion(row: any, resource: PrintSearchRow | null) {
+  if (resource && !resource.versionId) {
+    ElMessage.warning('请选择带图案版本的候选')
+    return
+  }
+  if (row.artworkVersionId !== resource?.versionId) {
+    row.selectedActualResource = null
+    row.selectedActualPlateId = null
+  }
+  row.artworkVersionId = resource?.versionId ?? null
+  row.artworkNo = resource?.artworkNo
+  row.artworkVersionNo = resource?.versionNo
+  row.defaultPlateId = resource?.plateId ?? null
+  row.defaultPlateNo = resource?.plateNo
+  row.defaultFrameNo = resource?.frameNo
+}
+
+function selectActualPlate(row: any, resource: PrintSearchRow) {
+  if (!resource.plateId || !row.artworkVersionId || resource.versionId !== row.artworkVersionId) {
+    ElMessage.warning('请选择当前计划版本的实体网版')
+    return
+  }
+  row.selectedActualResource = resource
+  row.selectedActualPlateId = resource.plateId
 }
 
 function requirementObject(row: any): Record<string, unknown> {

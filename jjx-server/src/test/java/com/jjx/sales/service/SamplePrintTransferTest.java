@@ -77,6 +77,9 @@ class SamplePrintTransferTest {
         when(orderProductService.getListByOrderId(10L)).thenReturn(List.of(line));
         var captured=ArgumentCaptor.forClass(com.jjx.product.domain.dto.EngineeringRoutingDTO.class);
         var route=new com.jjx.product.domain.vo.EngineeringRoutingVO();route.setRoutingId(70L);
+        var routeItem = new com.jjx.product.domain.vo.EngineeringRoutingItemVO();
+        routeItem.setItemId(71L);routeItem.setProcessName("面板印刷");routeItem.setArtworkVersionId(200L);
+        route.setItems(List.of(routeItem));
         when(routingService.createRouting(captured.capture())).thenReturn(route);
         var transferred=new java.util.concurrent.atomic.AtomicReference<SalesSampleTransfer>();
         when(sampleTransferMapper.insert(any(SalesSampleTransfer.class))).thenAnswer(call->{SalesSampleTransfer record=call.getArgument(0);record.setTransferId(90L);transferred.set(record);return 1;});
@@ -84,21 +87,54 @@ class SamplePrintTransferTest {
             security.when(SecurityUtils::getUsername).thenReturn("p09-tester");
             var result=service.confirmTransfer(request());
             assertEquals(20L,result.get("roundId"));assertEquals(70L,result.get("routingId"));
+            assertEquals(List.of(Map.of("sampleProcessId",200L,"productId",42L,"routingId",70L,"routingItemId",71L)),result.get("sourceMappings"));
             SampleTransferConfirmDTO explicit=ReflectionTestUtils.invokeMethod(service,"buildRoundTransferMappings",10L,20L);
             explicit.setRequestId("same-scheme-new-request");
             when(sampleTransferMapper.selectOne(any())).thenReturn(null,transferred.get());
-            doThrow(new BusinessException("后续已停用")).when(artworkService).requireUsableVersion(200L);
+            verify(artworkService).requireUsableVersion(200L);
+            clearInvocations(artworkService);
             // 当前标准库已变化也不应重算首次映射；重放只读首次冻结的canonical。
             clearInvocations(standardProcessMapper,inventoryMaterialMapper);
             var replay=service.confirmTransfer(explicit);
             assertEquals(result,replay);
-            verifyNoInteractions(standardProcessMapper,inventoryMaterialMapper);
+            verifyNoInteractions(standardProcessMapper,inventoryMaterialMapper,artworkService);
         }
         assertEquals(200L,captured.getValue().getItems().getFirst().getArtworkVersionId());
         assertEquals("{\"meshMin\":100}",captured.getValue().getItems().getFirst().getPrintRequirements());
-        verify(artworkService).requireUsableVersion(200L);verify(artworkService,never()).requireUsableVersion(300L);
         verify(sampleProcessMapper,never()).selectByOrderId(anyLong());verify(sampleProcessMapper).linkArtworkProduct(5L,42L);
         verify(routingService).createRouting(any());verify(sampleTransferMapper).insert(any(SalesSampleTransfer.class));
+    }
+
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named="P09_ISO_TEST_PASSWORD", matches=".+")
+    void sampleArtworkUsesProfileIdEvenWhenAnotherOrderHasThatNumber() throws Exception {
+        var url = "jdbc:mysql://127.0.0.1/jjx_erp_db_p02_iso";
+        try (var connection = java.sql.DriverManager.getConnection(url,"root",System.getenv("P09_ISO_TEST_PASSWORD"));
+             var ddl = connection.createStatement()) {
+            // Connection-local tables keep colliding test identities independent of existing business data.
+            ddl.execute("create temporary table sales_sample_order(sample_order_id bigint primary key, order_id bigint unique)");
+            ddl.execute("create temporary table sales_order_product(order_id bigint,product_id bigint)");
+            ddl.execute("create temporary table engineering_resource_product_rel(resource_type varchar(20),resource_id bigint,product_id bigint,is_active int)");
+            ddl.execute("create temporary table print_artwork(artwork_id bigint primary key,artwork_no varchar(20),name varchar(40),sample_order_id bigint)");
+            ddl.execute("create temporary table print_artwork_version(version_id bigint primary key,version_no varchar(20),artwork_id bigint)");
+            ddl.execute("insert into sales_sample_order values (77,100),(88,77)");
+            ddl.execute("insert into print_artwork values (1,'TEST','面板',77)");
+            ddl.execute("insert into print_artwork_version values (5,'A',1)");
+            var source = new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection,true);
+            var environment = new org.apache.ibatis.mapping.Environment("sample-test",
+                    new org.apache.ibatis.transaction.jdbc.JdbcTransactionFactory(),source);
+            var configuration = new org.apache.ibatis.session.Configuration(environment);
+            configuration.addMapper(SalesSampleProcessMapper.class);
+            try (var session = new org.apache.ibatis.session.SqlSessionFactoryBuilder().build(configuration).openSession()) {
+                var mapper = session.getMapper(SalesSampleProcessMapper.class);
+                assertEquals(1L,mapper.planningVersion(5L,100L).get("artworkId"));
+                assertNull(mapper.planningVersion(5L,77L));
+                ddl.execute("insert into sales_order_product values (77,42)");
+                ddl.execute("insert into engineering_resource_product_rel values ('ARTWORK',1,42,1)");
+                session.clearCache();
+                assertEquals(1L,mapper.planningVersion(5L,77L).get("artworkId"));
+            }
+        }
     }
 
     @Test void missingOrRejectedSelectionNeverFallsBackToLatest() throws Exception {

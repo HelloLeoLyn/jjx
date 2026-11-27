@@ -22,16 +22,17 @@ public interface SalesSampleProcessMapper extends BaseMapper<SalesSampleProcess>
     @Select("SELECT * FROM sales_sample_process WHERE process_id=#{id} FOR UPDATE")
     SalesSampleProcess selectForUpdate(@Param("id") Long id);
 
-    @Select("SELECT a.sample_order_id AS sampleOrderId,a.artwork_id AS artworkId,v.version_no AS versionNo,a.artwork_no AS artworkNo "
+    @Select("SELECT a.sample_order_id AS sampleOrderId,a.artwork_id AS artworkId,a.name AS artworkName,v.version_no AS versionNo,a.artwork_no AS artworkNo "
             + "FROM print_artwork_version v JOIN print_artwork a ON a.artwork_id=v.artwork_id "
-            + "WHERE v.version_id=#{versionId} AND (a.sample_order_id=#{orderId} OR EXISTS "
+            + "WHERE v.version_id=#{versionId} AND (EXISTS "
+            + "(SELECT 1 FROM sales_sample_order s WHERE s.order_id=#{orderId} AND s.sample_order_id=a.sample_order_id) OR EXISTS "
             + "(SELECT 1 FROM engineering_resource_product_rel r WHERE r.resource_type='ARTWORK' "
             + "AND r.resource_id=a.artwork_id AND r.is_active=1 AND EXISTS "
             + "(SELECT 1 FROM sales_order_product op WHERE op.order_id=#{orderId} AND op.product_id=r.product_id)))")
     java.util.Map<String,Object> planningVersion(@Param("versionId") Long versionId,
             @Param("orderId") Long orderId);
 
-    @Select("SELECT p.plate_no AS plateNo,f.frame_no AS frameNo,p.version_id AS versionId,"
+    @Select("SELECT p.plate_no AS plateNo,f.frame_no AS frameNo,p.version_id AS versionId,p.film_copy_id AS filmId,p.stretch_id AS stretchId,"
             + "s.mesh,s.tension_n_cm AS tensionNcm,p.position FROM engineering_screen_plate p "
             + "JOIN engineering_screen_frame f ON f.frame_id=p.frame_id "
             + "JOIN print_frame_stretch s ON s.stretch_id=p.stretch_id WHERE p.plate_id=#{plateId}")

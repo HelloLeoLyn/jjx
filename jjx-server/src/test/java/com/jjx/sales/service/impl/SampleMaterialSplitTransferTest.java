@@ -172,7 +172,7 @@ class SampleMaterialSplitTransferTest {
         var dto=manual("50mm");
         dto.getMaterialMappings().getFirst().setSplit("120mm");
         var error=assertThrows(BusinessException.class,()->service.confirmTransfer(dto));
-        assertTrue(error.getMessage().contains("???"));
+        assertEquals("不能在转产时修改已确认材料数量、单位或跳距",error.getMessage());
         verifyNoInteractions(redisSequenceService,bomService,bomItemMapper,routingService,productMapper,orderProductService);
         verify(sampleTransferMapper,never()).insert(any(SalesSampleTransfer.class));
         verify(orderMapper,never()).updateById(any(SalesOrder.class));

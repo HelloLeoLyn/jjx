@@ -98,7 +98,8 @@ describe('BOM公共选择器结果写回及整单保存', () => {
     const payload = api.saveScheme.mock.calls[0][1]
     const secondMaterials = JSON.parse(payload.items[1].materials)
     expect(secondMaterials.every((row: any) => row.sourceLabel === undefined)).toBe(true)
-    expect(secondMaterials).toHaveLength(2)
+    expect(JSON.parse(payload.items[0].materials)).toMatchObject([{ processItemKey: 'one', materialId: 1 }])
+    expect(secondMaterials).toHaveLength(1)
     expect(secondMaterials.find((row: any) => row.processItemKey === 'two')).toMatchObject({ materialId: 11, name: 'PET', spec: '008', processItemKey: 'two' })
     expect(payload.standaloneMaterials[0]).toMatchObject({ materialId: 11, materialName: 'PET', specification: '008' })
     bom.clearBomMaterial(bom.bomList.value.find(row => row.ownerUid == null)!)

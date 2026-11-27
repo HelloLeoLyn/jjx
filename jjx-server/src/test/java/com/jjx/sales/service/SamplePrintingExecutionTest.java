@@ -55,7 +55,7 @@ class SamplePrintingExecutionTest {
         when(sampleProcessMapper.planningVersion(200L,10L)).thenReturn(Map.of("artworkId",7L,"artworkNo","A7","versionNo","V2"));
         when(sampleProcessMapper.executionPlate(4L)).thenReturn(Map.of("plateNo","PL4","frameNo","FR1","mesh",120));
         var requirements=objectMapper.createObjectNode();when(screenService.validateRequirements(null)).thenReturn(requirements);
-        when(sampleProcessMapper.selectByOrderAndRound(10L,1)).thenReturn(List.of(stored));
+        when(sampleProcessMapper.selectById(100L)).thenReturn(before,stored);
         var dto=new SampleProcessItemStatusDTO();dto.setStatus(SampleProcessStatusEnum.IN_PROGRESS.getValue());dto.setActualPlateId(4L);
         try(var security=mockStatic(SecurityUtils.class)) {
             security.when(SecurityUtils::getUsername).thenReturn("operator");

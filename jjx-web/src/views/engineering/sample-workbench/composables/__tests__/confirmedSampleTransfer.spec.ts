@@ -19,3 +19,18 @@ it('requires explicit confirmed archive and submits preview identity', async () 
   expect(api.previewConfirmedRound).toHaveBeenCalledWith(8, 1)
   expect(api.confirmArchivedScheme.mock.calls[0][0]).toMatchObject({ orderId: 8, roundId: 1, confirmedSchemeId: 1, requestId: expect.any(String) })
 })
+
+it('discards late preview after the operator clears the selected archive', async () => {
+  let finish!: (response: any) => void
+  api.previewConfirmedRound.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  const store = useSampleTransferStore()
+  store.selectedRoundId.value = 2
+  const pending = store.loadPreview(8)
+  store.selectedRoundId.value = null
+  await store.loadPreview(8)
+  finish({ data: { orderId: 8, roundId: 2, confirmedSchemeId: 2 } })
+  await pending
+  expect(store.loading.value).toBe(false)
+  expect(store.preview.value).toBeNull()
+  expect(await store.confirmTransfer()).toBeNull()
+})

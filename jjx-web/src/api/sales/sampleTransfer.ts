@@ -145,6 +145,7 @@ export interface SampleTransferConfirmDTO {
 
 /** 确认转移返回 */
 export interface SampleTransferConfirmResult {
+  sourceMappings?: { sampleProcessId: number; routingItemId: number; routingId: number; productId: number }[]
   roundId?: number
   confirmedSchemeId?: number
   transferNo: string

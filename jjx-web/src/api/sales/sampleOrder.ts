@@ -1,3 +1,4 @@
+import type { SampleTransferPreview, SampleTransferConfirmResult } from './sampleTransfer'
 import rawRequest from '@/utils/request'
 import type { AxiosRequestConfig } from 'axios'
 import type { PageResult, R as ApiResult } from '@/types'
@@ -71,10 +72,10 @@ export type { SampleOrderQueryParams } from '@/types/sales/sampleOrder'
 // 样品单接口
 export const sampleOrderApi = {
   previewConfirmedRound(orderId: number, roundId: number) {
-    return request({ url: `/sample/transfer/preview/${orderId}`, method: 'get', params: { roundId } })
+    return request<R<SampleTransferPreview>>({ url: `/sample/transfer/preview/${orderId}`, method: 'get', params: { roundId } })
   },
   confirmArchivedScheme(data: { orderId: number; roundId: number; confirmedSchemeId: number; requestId: string; targetProductId?: number | null; materialProjects?: import('@/api/sales/sampleTransfer').MaterialProjectSelection[] }) {
-    return request({ url: '/sample/transfer/confirm', method: 'post', data })
+    return request<R<SampleTransferConfirmResult>>({ url: '/sample/transfer/confirm', method: 'post', data })
   },
   getOrderSampleOptions(sourceOrderId: number) {
     return request<R<OrderSampleOptions>>({

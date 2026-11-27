@@ -19,14 +19,6 @@
         </el-descriptions>
 
         <el-alert
-          v-if="transferredFlag"
-          type="warning"
-          show-icon
-          :closable="false"
-          title="该样品单已转移过，再次确认将生成新的 BOM/工艺路线版本"
-          class="notice"
-        />
-        <el-alert
           v-if="!store.allMatched"
           type="error"
           show-icon
@@ -47,7 +39,7 @@
           type="success"
           show-icon
           :closable="false"
-          title="已完成自动匹配，确认后将直接建档并生成新版本 BOM/工艺路线"
+          title="已匹配当前归档方案。首次确认生成转产资料，同一方案重复提交相同内容会返回首次结果。"
           class="notice"
         />
 
@@ -235,8 +227,6 @@ const emit = defineEmits<{
 
 const store = reactive(useSampleTransferStore())
 const visible = ref(props.modelValue)
-const transferredFlag = ref(false)
-const TRANSFER_FLAG_KEY = 'sample_transferred_orders'
 const activeStep = ref(0)
 const activeProcessModule = ref<'ASSEMBLY' | 'PRINT'>('ASSEMBLY')
 const activeAssemblyCategory = ref('PANEL')
@@ -276,23 +266,6 @@ function projectOptions(row: any): { id: number; label: string }[] {
   return source.map((id) => ({ id, label: projectNameMap.value.get(id) || `#${id}` }))
 }
 
-function getTransferredIds(): number[] {
-  try {
-    const value = JSON.parse(localStorage.getItem(TRANSFER_FLAG_KEY) || '[]')
-    return Array.isArray(value) ? value : []
-  } catch {
-    return []
-  }
-}
-
-function markTransferred(orderId: number) {
-  const ids = getTransferredIds()
-  if (!ids.includes(orderId)) {
-    ids.push(orderId)
-    localStorage.setItem(TRANSFER_FLAG_KEY, JSON.stringify(ids))
-  }
-}
-
 watch(
   () => props.modelValue,
   (value) => {
@@ -304,14 +277,12 @@ watch(visible, (value) => emit('update:modelValue', value))
 async function onOpen() {
   if (!props.orderId) return
   activeStep.value = 0
-  transferredFlag.value = getTransferredIds().includes(props.orderId)
   await store.loadRounds(props.orderId)
 }
 
 async function onConfirm() {
   const result = await store.confirmTransfer()
   if (!result) return
-  if (props.orderId) markTransferred(props.orderId)
   ElMessage.success('建档/版本化完成，可去产品档案/BOM/工艺路线完善后提交审核')
   visible.value = false
   emit('success')

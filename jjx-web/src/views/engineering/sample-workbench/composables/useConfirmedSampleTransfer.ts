@@ -107,8 +107,8 @@ export function useSampleTransferStore() {
   let generation = 0
   let requestId = ''
   async function loadRounds(id: number) {
-    const token = ++generation
     reset()
+    const token = generation
     selectedRoundId.value = null
     confirmedRounds.value = []
     const res = await sampleOrderApi.getRounds(id)
@@ -124,13 +124,13 @@ export function useSampleTransferStore() {
     const token = ++generation
     preview.value = null
     requestId = ''
-    if (roundId == null) return
+    if (roundId == null) { loading.value = false; return }
     loading.value = true
     try {
       const res = await sampleOrderApi.previewConfirmedRound(id, roundId)
-      const data = res.data as unknown as SampleTransferPreview
+      const data = res.data
       if (token !== generation) return
-      if (data.roundId !== roundId || data.confirmedSchemeId !== roundId) throw new Error('预览方案身份不一致')
+      if (data.orderId !== id || data.roundId !== roundId || data.confirmedSchemeId !== roundId) throw new Error('预览方案身份不一致')
       requestId = crypto.randomUUID()
       preview.value = data
       orderId.value = data.orderId
@@ -143,6 +143,9 @@ export function useSampleTransferStore() {
   }
 
   function reset() {
+    generation++
+    requestId = ''
+    loading.value = false
     orderId.value = null
     orderNo.value = ''
     preview.value = null
@@ -151,7 +154,7 @@ export function useSampleTransferStore() {
   }
 
   async function confirmTransfer(): Promise<SampleTransferConfirmResult | null> {
-    if (confirming.value || loading.value || !preview.value || !requestId || orderId.value == null) return null
+    if (confirming.value || loading.value || !preview.value || !requestId || orderId.value == null || preview.value.roundId !== selectedRoundId.value) return null
     if (!allMatched.value) {
       ElMessage.warning('存在未匹配的工序或物料，请先完成标准库建档')
       return null
@@ -161,6 +164,7 @@ export function useSampleTransferStore() {
       return null
     }
     confirming.value = true
+    const token = generation
     try {
       // 自动模式：工序/物料映射由服务端重建，本前端只提交用户对材料的项目确认。
       const res = await sampleOrderApi.confirmArchivedScheme({
@@ -177,7 +181,8 @@ export function useSampleTransferStore() {
           }
         }),
       })
-      transferResult.value = res.data as unknown as SampleTransferConfirmResult
+      if (token !== generation) return null
+      transferResult.value = res.data
       return transferResult.value
     } finally {
       confirming.value = false
