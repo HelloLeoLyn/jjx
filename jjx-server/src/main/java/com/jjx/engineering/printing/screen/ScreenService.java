@@ -154,8 +154,10 @@ public class ScreenService {
         String operator = SecurityUtils.getUsername();
         String type = frame ? "SCREEN_FRAME" : "SCREEN_PLATE";
         try {
+            var payload=(com.fasterxml.jackson.databind.node.ObjectNode)json.valueToTree(cmd);
+            if (cmd.remark()==null) payload.remove("remark"); // 保持部署前命令的摘要与重放能力。
             String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(
-                    json.writeValueAsBytes(List.of(type,target,action,operator,cmd))));
+                    json.writeValueAsBytes(List.of(type,target,action,operator,payload))));
             repo.db.update("""
                 insert into engineering_resource_maintenance(resource_type,resource_id,action_type,operator,request_id,request_hash)
                 values (?,?,?,?,?,?) on duplicate key update maintenance_id=maintenance_id

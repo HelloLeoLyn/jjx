@@ -81,6 +81,19 @@ class ScreenRemarkTest {
         assertEquals(500,audit.path("remark").asText().length());
     }
 
+    @Test void historicalRequestWithoutRemarkFieldStillReplays() throws Exception {
+        var command=json.convertValue(java.util.Map.of("requestId","old-clean","expectedRevision",0,"reason","清洁"),ScreenCommands.class);
+        var old=(com.fasterxml.jackson.databind.node.ObjectNode)json.valueToTree(command);old.remove("remark");
+        var hash=com.jjx.common.utils.Sha256Utils.ofText(json.writeValueAsString(java.util.List.of("SCREEN_FRAME",1L,"clean","remark-test",old)));
+        db.update("INSERT INTO engineering_resource_maintenance(resource_type,resource_id,action_type,operator,request_id,request_hash,result_snapshot) VALUES('SCREEN_FRAME',1,'clean','remark-test','old-clean',?,?)",
+                hash,"{\"frameId\":1,\"status\":\"READY\",\"revision\":1}");
+        try(var user=mockStatic(SecurityUtils.class)) {
+            user.when(SecurityUtils::getUsername).thenReturn("remark-test");
+            assertEquals("READY",tx.execute(status->service.execute(true,1,"clean",command)).get("status"));
+        }
+        assertEquals(0,db.queryForObject("SELECT revision FROM engineering_screen_frame",Integer.class));
+    }
+
     @Test void endpointRequiresResourceEditPermission() throws Exception {
         var permission=ScreenController.class.getMethod("editFrameRemark",long.class,ScreenCommands.class)
                 .getAnnotation(SaCheckPermission.class);
