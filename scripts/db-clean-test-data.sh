@@ -323,6 +323,8 @@ RETAINED_TABLES=(
   product product_category product_config_model product_config_option
   sys_tag sys_tag_rel hr_employee hr_dept_mapping
   engineering_die engineering_screen_frame engineering_screen_plate
+  # 出片申请随实物来源保留（dev-20261127-002），与SQL第12节同步。
+  print_film_request
   # Legacy tables still present in this database; preserve their rows/schema until separately retired.
   archive_production_quality_inspection archive_production_quality_inspection_item
   quality_sampling_plan sales_order_review

@@ -105,30 +105,12 @@ public class ArtworkController {
         return Result.success(service.execute("disable",id,command));
     }
 
-    @PostMapping("/versions/{id}/films")
-    @SaCheckPermission("engineering:film:edit")
-    public Result<Map<String,Object>> requestFilms(@PathVariable long id, @RequestBody ArtworkCommands command) {
-        return Result.success(service.execute("requestFilms",id,command));
-    }
-
     @GetMapping("/films")
     @SaCheckPermission("engineering:film:view")
     public Result<Map<String,Object>> films(@RequestParam(required=false) String keyword,
             @RequestParam(required=false) String family, @RequestParam(required=false) String status,
             @RequestParam(defaultValue="1") int pageNum, @RequestParam(defaultValue="20") int pageSize) {
         return Result.success(repository.listFilms(keyword,family,status,Math.max(1,pageNum),Math.min(200,Math.max(1,pageSize))));
-    }
-
-    @PostMapping("/films/{id}/send")
-    @SaCheckPermission("engineering:film:edit")
-    public Result<Map<String,Object>> sendFilm(@PathVariable long id,@RequestBody ArtworkCommands command) {
-        return Result.success(service.execute("sendFilm",id,command));
-    }
-
-    @PostMapping("/films/{id}/receive")
-    @SaCheckPermission("engineering:film:edit")
-    public Result<Map<String,Object>> receiveFilm(@PathVariable long id,@RequestBody ArtworkCommands command) {
-        return Result.success(service.execute("receiveFilm",id,command));
     }
 
     @PostMapping("/films/{id}/archive")

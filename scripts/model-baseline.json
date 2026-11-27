@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-20",
-  "tableCountBaseline": 141,
+  "generatedAt": "2026-11-27",
+  "tableCountBaseline": 142,
   "tables": [
     "archive_production_quality_inspection",
     "archive_production_quality_inspection_item",
@@ -58,6 +58,7 @@
     "portal_language_config",
     "portal_page_content",
     "portal_product_display",
+    "print_film_request",
     "print_kit_shortage",
     "product",
     "product_category",
@@ -319,6 +320,13 @@
       "date": "2026-11-27",
       "proposalLink": "jjx-docs/history/printing-resource-v2-contract-dev-20261125-007.md",
       "reason": "多资源齐套缺口台账：按工单/产品+工序行+资源去重，记录责任人、首次发现、复查与关闭原因"
+    },
+    {
+      "table": "print_film_request",
+      "taskCode": "dev-20261127-002",
+      "date": "2026-11-27",
+      "proposalLink": "jjx-docs/task-docs/dev-20261127-002-plan.md",
+      "reason": "Owner明确批准新增1张申请表和实物关联：申请一对多实际菲林片，分次回片防超收；不以实物占位或审计JSON代替申请主数据"
     }
   ],
   "typeSuffixAllowlist": [

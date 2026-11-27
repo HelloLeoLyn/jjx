@@ -105,6 +105,8 @@
 
 ## 4. scripts/db-clean-test-data.sh —— 清理测试数据入口
 
+出片申请 `print_film_request` 随实际菲林片来源保留，不作测试数据清理；SQL 第12节与 RETAINED_TABLES 同步（dev-20261127-002）。
+
 - 用途：`jjx-docs/sql/00_clean_test_data.sql`（整表 TRUNCATE + 条件 DELETE，表清单以脚本实际解析为准）的**唯一**入口。
 - 危险等级：🟢 无参数/`--domains`=只读体检（不写库）／🔴 `--execute` 真清理（固定顺序：体检 → 校验手工备份 → 人工确认 → 执行）。
 - 前置：`--execute` 必须**在终端手工执行**（agent/管道一律拒绝）；确认方式=手工输入库名 `jjx_erp_db`；**已有今天的全库备份**（默认 `JJX_BACKUP_DIR`＝仓库内 `jjx-docs/sql/backups/`，或 `--backup`/`JJX_CLEAN_BACKUP` 指定）——2026-09-28 起脚本**不再自动备份**、只校验手工备份存在才放行；备份必须排除 `hr_employee`。

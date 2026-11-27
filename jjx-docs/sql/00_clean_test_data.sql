@@ -491,6 +491,7 @@ DELETE FROM inventory_item WHERE item_type = 'PRODUCT' AND NOT EXISTS (SELECT 1 
 --   engineering_die（刀模实体，老台账 12,134 条）/ engineering_screen_frame（网框 7,291 条）
 --   engineering_screen_plate（网版当前版面 4,503 条；v15 曾误列清理清单，清理会清掉网版内容）
 -- （engineering_bom_backup_20260809 当前 0 行且无代码/外键依赖，迁移 241 退役）
+-- print_film_request：保留，来源申请随实际菲林片追溯，不能清成悬空来源（dev-20261127-002）。
 -- 以上保留
 
 -- Legacy-table coverage decision (2026-09-30): archive_production_quality_inspection(_item)

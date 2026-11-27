@@ -67,14 +67,22 @@ export const ArtworkVersionStatusEnum = createNamedEnum(
   { type: 'info' },
 )
 
-/** 菲林片需求与实物状态（print_film_copy.status，P03 后端既定状态） */
+/** 菲林片实物状态（print_film_copy.status，P03 后端既定状态） */
 export const FilmCopyStatusEnum = createNamedEnum(
   {
-    REQUESTED: { value: 'REQUESTED', label: '待出片', tagProps: { type: 'warning' } },
-    SENT: { value: 'SENT', label: '已发出', tagProps: { type: 'primary' } },
     AVAILABLE: { value: 'AVAILABLE', label: '可用', tagProps: { type: 'success' } },
     ARCHIVED: { value: 'ARCHIVED', label: '已封存', tagProps: { type: 'info' } },
     DESTROYED: { value: 'DESTROYED', label: '已销毁', tagProps: { type: 'danger' } },
+  },
+  { type: 'info' },
+)
+
+/** 出片申请进度：后端从关联实物数量派生，申请量不随回片覆盖。 */
+export const FilmRequestProgressEnum = createNamedEnum(
+  {
+    PENDING: { value: 'PENDING', label: '待回片', tagProps: { type: 'warning' } },
+    PARTIAL: { value: 'PARTIAL', label: '部分回片', tagProps: { type: 'primary' } },
+    RECEIVED: { value: 'RECEIVED', label: '已回齐', tagProps: { type: 'success' } },
   },
   { type: 'info' },
 )

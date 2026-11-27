@@ -5,6 +5,8 @@ export interface ArtworkVersion {
   versionNo: string
   status?: string
   drawingFileId?: number | null
+  drawingFileName?: string | null
+  drawingFileType?: string | null
   contentDigest?: string | null
   contentAlgorithm?: string | null
   drawingSha256?: string | null
@@ -21,6 +23,7 @@ export interface ArtworkFilm {
   filmId: number
   versionId: number
   filmNo: string
+  filmRequestId?: number | null
   location?: string | null
   status?: string
   material?: string | null
@@ -35,6 +38,7 @@ export interface ArtworkView {
   artworkId: number
   artworkNo: string
   name: string
+  productsText?: string | null
   purpose?: string | null
   family?: string | null
   setCode?: string | null
@@ -70,4 +74,49 @@ export interface ArtworkCommand {
   size?: string
   quantity?: number
   dueDate?: string
+}
+
+/** 菲林主档分页，不以图纸/版本/菲林片是否存在过滤主档。 */
+export interface ArtworkListRow {
+  artworkId: number
+  artworkNo: string
+  name: string
+  family: string
+  purpose?: string
+  productsText?: string | null
+  defaultVersionId?: number | null
+  defaultVersionNo?: string | null
+  releasedVersionCount?: number
+  versionCount?: number
+  copyCount?: number | null
+  pendingFilmCount?: number | null
+}
+
+export interface FilmRequest {
+  requestId: number
+  requestNo: string
+  versionId: number
+  requestedQuantity: number
+  receivedQuantity: number
+  remainingQuantity: number
+  progress: string
+  material: string
+  thicknessMm: number
+  size: string
+  dueDate: string
+  remark?: string
+  revision: number
+  createBy?: string
+  createTime?: string
+}
+export interface FilmRequestCommand {
+  requestId: string
+  expectedRevision: number
+  quantity?: number
+  material?: string
+  thicknessMm?: number
+  size?: string
+  dueDate?: string
+  remark?: string
+  copies?: { filmNo: string; location: string }[]
 }

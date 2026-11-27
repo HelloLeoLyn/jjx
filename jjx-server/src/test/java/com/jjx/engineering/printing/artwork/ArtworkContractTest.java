@@ -25,7 +25,7 @@ class ArtworkContractTest {
             var service=org.mockito.Mockito.mock(ArtworkService.class);
             var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new ArtworkController(null,service))
                 .addInterceptors(new cn.dev33.satoken.interceptor.SaInterceptor()).build();
-            for(String path:java.util.List.of("/versions/1/approve","/versions/1/disable","/films/1/archive","/films/1/destroy","/films/1/send","/films/1/receive","/versions/1/films")) {
+            for(String path:java.util.List.of("/versions/1/approve","/versions/1/disable","/films/1/archive","/films/1/destroy")) {
                 mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/engineering/printing"+path)
                         .contentType("application/json").content("{}"))
                     .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
@@ -134,20 +134,20 @@ class ArtworkContractTest {
                 assertThrows(BusinessException.class,()->svc.execute("editVersion",v,cmd.make(6,java.util.Map.of("versionNo","X"))));
                 var numbers=org.mockito.Mockito.mock(com.jjx.framework.common.RedisSequenceService.class);
                 var sequence=new java.util.concurrent.atomic.AtomicInteger();
-                org.mockito.Mockito.when(numbers.generateBusinessNumberByType("PRINT_FILM_COPY","FL-","yyMM'-'",3))
+                org.mockito.Mockito.when(numbers.generateBusinessNumberByType("PRINT_FILM_REQUEST","CP-","yyMM'-'",3))
                         .thenAnswer(call -> tag+"-"+sequence.incrementAndGet());
-                org.springframework.test.util.ReflectionTestUtils.setField(svc,"filmNumbers",numbers);
-                var demand=svc.execute("requestFilms",v,cmd.make(6,java.util.Map.of("quantity",2,
-                        "dueDate",java.time.LocalDate.now().plusDays(7).toString(),"material","PET","size","A4","thicknessMm",0.1)));
-                int index=0;
-                for(Object value:(java.util.List<?>)demand.get("filmIds")) {
-                    long film=((Number)value).longValue();
-                    svc.execute("sendFilm",film,cmd.make(0,java.util.Map.of()));
-                    svc.execute("receiveFilm",film,cmd.make(1,java.util.Map.of("filmNo",tag+index,"location","测试架",
-                            "material","PET","size","A4","thicknessMm",0.1)));
-                    if(index++==0) {
-                        svc.execute("archive",film,cmd.make(2,java.util.Map.of("reason","封存")));
-                        svc.execute("destroy",film,cmd.make(3,java.util.Map.of("reason","销毁")));
+                var requests=new FilmRequestService(jdbc,json,numbers,svc);
+                var requestBody=new java.util.HashMap<String,Object>(java.util.Map.of("requestId",UUID.randomUUID().toString(),"expectedRevision",6,"quantity",2,
+                        "dueDate",java.time.LocalDate.now().plusDays(7).toString(),"material","PET","size","A4","thicknessMm",0.1));
+                long request=((Number)requests.execute(false,v,json.convertValue(requestBody,FilmRequestCommands.class)).get("requestId")).longValue();
+                for(int index=0;index<2;index++) {
+                    var receipt=json.convertValue(java.util.Map.of("requestId",UUID.randomUUID().toString(),"expectedRevision",index,
+                            "copies",java.util.List.of(java.util.Map.of("filmNo",tag+index,"location","测试架"))),FilmRequestCommands.class);
+                    var result=requests.execute(true,request,receipt);
+                    long film=((Number)((java.util.List<?>)result.get("filmIds")).getFirst()).longValue();
+                    if(index==0) {
+                        svc.execute("archive",film,cmd.make(0,java.util.Map.of("reason","封存")));
+                        svc.execute("destroy",film,cmd.make(1,java.util.Map.of("reason","销毁")));
                     }
                 }
                 var view=new ArtworkRepository(jdbc).detail(art);

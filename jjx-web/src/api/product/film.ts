@@ -1,5 +1,6 @@
 import request from '@/utils/request'
 import type { AxiosPromise } from 'axios'
+import type { FilmRequestCommand } from '@/types/engineering/printingArtwork'
 
 // 菲林/薄膜管理API（对接 /engineering/films）
 export interface EngineeringFilm {
@@ -127,9 +128,9 @@ export const printingArtworkApi = {
   activate: (id: number, data: any) => request.post(`/engineering/printing/versions/${id}/activate`, data),
   disable: (id: number, data: any) => request.post(`/engineering/printing/versions/${id}/disable`, data),
   listFilms: (params: { keyword?: string; family?: string; status?: string; pageNum?: number; pageSize?: number }) => request.get('/engineering/printing/films', { params }),
-  sendFilm: (id: number, data: any) => request.post(`/engineering/printing/films/${id}/send`, data),
-  receiveFilm: (id: number, data: any) => request.post(`/engineering/printing/films/${id}/receive`, data),
-  requestFilms: (versionId: number, data: any) => request.post(`/engineering/printing/versions/${versionId}/films`, data),
+  listRequests: (artworkId: number) => request.get(`/engineering/printing/artworks/${artworkId}/film-requests`),
+  applyFilmRequest: (versionId: number, data: FilmRequestCommand) => request.post(`/engineering/printing/versions/${versionId}/film-requests`, data),
+  receiveFilmRequest: (requestId: number, data: FilmRequestCommand) => request.post(`/engineering/printing/film-requests/${requestId}/receipts`, data),
   archiveFilm: (filmId: number, data: any) => request.post(`/engineering/printing/films/${filmId}/archive`, data),
   destroyFilm: (filmId: number, data: any) => request.post(`/engineering/printing/films/${filmId}/destroy`, data),
   impact: (versionId: number) => request.get(`/engineering/printing/versions/${versionId}/impact`),
