@@ -115,8 +115,8 @@
           <PrintResourceSelector :model-value="picked" size="small" placeholder="按菲林/菲林号搜索版本" @select="onPickVersion" />
         </el-form-item>
         <el-form-item v-if="picked" label="已选版本">{{ picked.artworkNo }} {{ picked.name }} / {{ picked.versionNo }}</el-form-item>
-        <el-form-item label="实体底片" required>
-          <el-select v-model="plateForm.filmId" placeholder="选择该版本可用底片" style="width: 100%">
+        <el-form-item label="菲林片" required>
+          <el-select v-model="plateForm.filmId" placeholder="选择该版本可用菲林片" style="width: 100%">
             <el-option v-for="f in filmOptions" :key="f.filmId" :label="f.filmNo + '（' + (f.location || '无位置') + '）'" :value="f.filmId" />
           </el-select>
         </el-form-item>
@@ -310,7 +310,7 @@ async function submitPlate() {
     return
   }
   if (!plateForm.filmId) {
-    ElMessage.warning('请选择实体底片')
+    ElMessage.warning('请选择菲林片')
     return
   }
   if (!plateForm.plateNo || !plateForm.position) {

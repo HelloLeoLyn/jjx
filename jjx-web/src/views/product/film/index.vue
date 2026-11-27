@@ -48,7 +48,7 @@
         <el-table-column label="候选" prop="displayName" min-width="240" show-overflow-tooltip />
         <el-table-column label="菲林编号" prop="artworkNo" width="140" />
         <el-table-column label="版本" prop="versionNo" width="100" />
-        <el-table-column label="底片号" prop="filmNo" width="130" />
+        <el-table-column label="菲林片号" prop="filmNo" width="130" />
         <el-table-column label="网版/网框" min-width="120">
           <template #default="scope">{{ scope.row.plateNo || scope.row.frameNo || '-' }}</template>
         </el-table-column>
@@ -324,7 +324,7 @@
                     v-hasPermi="['engineering:film:edit']"
                     @click="openFilmDialog(scope.row)"
                   >
-                    输出底片
+                    输出菲林片
                   </el-button>
                   <el-button link type="success" size="small" @click="goPlate(scope.row.versionId)">
                     制版
@@ -343,9 +343,9 @@
             </el-table-column>
           </el-table>
 
-          <div class="section-head"><span>实体底片</span></div>
+          <div class="section-head"><span>菲林片</span></div>
           <el-table :data="detail.films || []" border size="small">
-            <el-table-column label="底片号" prop="filmNo" width="150" />
+            <el-table-column label="菲林片号" prop="filmNo" width="150" />
             <el-table-column label="版本" width="110">
               <template #default="scope">{{ versionNoOf(scope.row.versionId) }}</template>
             </el-table-column>
@@ -520,12 +520,12 @@
       </template>
     </el-dialog>
 
-    <!-- 输出底片 -->
-    <el-dialog v-model="filmDialogVisible" title="输出实体底片" width="800px" append-to-body>
+    <!-- 输出菲林片 -->
+    <el-dialog v-model="filmDialogVisible" title="输出菲林片" width="800px" append-to-body>
       <el-form ref="filmFormRef" :model="filmForm" :rules="filmRules" label-width="100px">
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="底片编号" prop="filmNo">
+            <el-form-item label="菲林片编号" prop="filmNo">
               <el-input v-model="filmForm.filmNo" maxlength="64" placeholder="如 FL-0001" />
             </el-form-item>
           </el-col>
@@ -1037,7 +1037,7 @@ async function showImpact(row: any) {
 const impactVisible = ref(false)
 const impactText = ref('')
 
-/* ==================== 底片 ==================== */
+/* ==================== 菲林片 ==================== */
 const filmDialogVisible = ref(false)
 const filmFormRef = ref<FormInstance>()
 const filmForm = reactive<any>({
@@ -1049,7 +1049,7 @@ const filmForm = reactive<any>({
   size: '',
 })
 const filmRules: FormRules = {
-  filmNo: [{ required: true, message: '请输入底片编号', trigger: 'blur' }],
+  filmNo: [{ required: true, message: '请输入菲林片编号', trigger: 'blur' }],
   material: [{ required: true, message: '请输入材质', trigger: 'blur' }],
   thicknessMm: [{ required: true, message: '请输入厚度', trigger: 'blur' }],
   size: [{ required: true, message: '请输入尺寸', trigger: 'blur' }],
@@ -1082,7 +1082,7 @@ async function saveFilm() {
   }
   try {
     await printingArtworkApi.outputFilm(filmForm.versionId, command)
-    ElMessage.success('底片已登记')
+    ElMessage.success('菲林片已登记')
     filmDialogVisible.value = false
     await reloadDetail()
   } catch {
