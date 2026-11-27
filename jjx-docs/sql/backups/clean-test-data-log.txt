@@ -35,3 +35,4 @@
 2026-11-24 10:05 清理测试数据 由 Hermes Agent 执行 | 库 jjx_erp_db | 脚本 00_clean_test_data.sql | TRUNCATE 96 张(6870 行) + DELETE 11 条 | 备份 jjx_erp_db_backup_20261124-1004.sql md5=72031b8dd8857bd1cb09296007ee21ae | include_products=1 domains=all
 2026-11-24 16:10 清理测试数据 由 Hermes Agent 执行 | 库 jjx_erp_db | 脚本 00_clean_test_data.sql | TRUNCATE 96 张(469 行) + DELETE 17 条 | 备份 jjx_erp_db_backup_20261124-1004.sql md5=72031b8dd8857bd1cb09296007ee21ae | include_products=1 domains=all
 2026-11-25 18:32 清理测试数据 由 Hermes Agent 执行 | 库 jjx_erp_db | 脚本 00_clean_test_data.sql | TRUNCATE 93 张(1399 行) + DELETE 27 条 | 备份 jjx_erp_db_backup_20261125-1055-2.sql md5=5ed63592b14e3ac17049b092bd5d56c4 | include_products=1 domains=all
+2026-11-27 16:59 清理测试数据 由 Hermes Agent 执行 | 库 jjx_erp_db | 脚本 00_clean_test_data.sql | TRUNCATE 94 张(125 行) + DELETE 4 条 | 备份 jjx_erp_db_backup_20261127-1630_before-film-request.sql md5=8a7d64f3be750421267b1c8227cdeacc | include_products=1 domains=all

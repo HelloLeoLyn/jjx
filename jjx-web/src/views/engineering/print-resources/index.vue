@@ -3,11 +3,28 @@
     <el-card shadow="never" class="search-card">
       <el-form inline>
         <el-form-item label="关键字">
-          <el-input v-model="query.keyword" placeholder="框号/型号/位置" clearable style="width: 220px" @keyup.enter="load(1)" />
+          <el-input
+            v-model="query.keyword"
+            placeholder="框号/型号/位置"
+            clearable
+            style="width: 220px"
+            @keyup.enter="load(1)"
+          />
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="query.status" clearable placeholder="全部" style="width: 140px" @change="load(1)">
-            <el-option v-for="s in statusOptions" :key="s.value" :label="s.label" :value="s.value" />
+          <el-select
+            v-model="query.status"
+            clearable
+            placeholder="全部"
+            style="width: 140px"
+            @change="load(1)"
+          >
+            <el-option
+              v-for="s in statusOptions"
+              :key="s.value"
+              :label="s.label"
+              :value="s.value"
+            />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -15,41 +32,39 @@
           <el-button :icon="Refresh" @click="reset">重置</el-button>
         </el-form-item>
       </el-form>
-      <div class="tip">网框与「网版管理」同一张表；这里管理已登记新模型的网框：绷网、制版、洗版、维护。</div>
+      <div class="tip">
+        网框与「网版管理」同一张表；这里管理已登记新模型的网框：绷网、制版、洗版、维护。
+      </div>
     </el-card>
 
     <el-card shadow="never">
       <el-table :data="rows" v-loading="loading" border stripe>
-        <el-table-column prop="frameNo" label="网框编号" width="150" />
+        <el-table-column prop="frameNo" label="网框编号" width="150">
+          <template #default="{ row }">
+            <el-link type="primary" @click="openDetail(row)">{{ row.frameNo }}</el-link>
+          </template>
+        </el-table-column>
         <el-table-column prop="frameType" label="型号" width="110" />
         <el-table-column prop="mesh" label="目数" width="90" align="center" />
         <el-table-column label="状态" width="110" align="center">
           <template #default="{ row }">
-            <el-tag :type="statusTag(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
+            <el-tag :type="statusTag(row.status)" size="small">{{
+              statusLabel(row.status)
+            }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="plateNo" label="当前版面" width="150" />
         <el-table-column prop="location" label="位置" min-width="130" />
         <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip />
-        <el-table-column label="操作" width="350" fixed="right" align="center">
-          <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="openDetail(row)">详情</el-button>
-            <el-button v-hasPermi="['engineering:resource:edit']" link type="primary" size="small" @click="openRemark(row)">编辑备注</el-button>
-            <el-button link type="primary" size="small" @click="openStretch(row)">绷网</el-button>
-            <el-button link type="success" size="small" @click="openPlate(row)">制版</el-button>
-            <el-button link type="warning" size="small" @click="wash(row)">洗版</el-button>
-            <el-dropdown @command="(cmd: string) => maintain(row, cmd)">
-              <el-button link type="info" size="small">维护</el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="maintain">送修</el-dropdown-item>
-                  <el-dropdown-item command="resume">恢复使用</el-dropdown-item>
-                  <el-dropdown-item command="scrap">报废</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </template>
-        </el-table-column>
+        <TableActionColumn
+          :actions="frameActions"
+          :max-visible="4"
+          width="350"
+          fixed="right"
+          align="center"
+          display="text"
+          @action="handleFrameAction"
+        />
       </el-table>
       <el-pagination
         v-model:current-page="page.pageNum"
@@ -69,9 +84,13 @@
           <el-descriptions :column="2" border size="small">
             <el-descriptions-item label="框号">{{ detail.frameNo }}</el-descriptions-item>
             <el-descriptions-item label="型号">{{ detail.frameType || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="状态">{{ statusLabel(detail.status) }}</el-descriptions-item>
+            <el-descriptions-item label="状态">{{
+              statusLabel(detail.status)
+            }}</el-descriptions-item>
             <el-descriptions-item label="位置">{{ detail.location || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="备注" :span="2">{{ detail.remark || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="备注" :span="2">{{
+              detail.remark || '-'
+            }}</el-descriptions-item>
           </el-descriptions>
           <div class="section-head">绷网记录</div>
           <el-table :data="detail.stretches || []" size="small" border>
@@ -101,7 +120,14 @@
       <el-form label-width="80px">
         <el-form-item label="网框">{{ remarkForm.frameNo }}</el-form-item>
         <el-form-item label="备注">
-          <el-input v-model="remarkForm.remark" type="textarea" :rows="4" maxlength="500" show-word-limit placeholder="存放或使用注意事项，可留空" />
+          <el-input
+            v-model="remarkForm.remark"
+            type="textarea"
+            :rows="4"
+            maxlength="500"
+            show-word-limit
+            placeholder="存放或使用注意事项，可留空"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -112,9 +138,15 @@
 
     <el-dialog v-model="stretchVisible" title="绷网 / 重绷" width="520px" append-to-body>
       <el-form label-width="100px">
-        <el-form-item label="目数"><el-input-number v-model="stretchForm.mesh" :min="1" :precision="0" /></el-form-item>
-        <el-form-item label="张力(N/cm)"><el-input-number v-model="stretchForm.tensionNcm" :min="0" :precision="2" /></el-form-item>
-        <el-form-item label="网纱"><el-input v-model="stretchForm.material" maxlength="200" /></el-form-item>
+        <el-form-item label="目数"
+          ><el-input-number v-model="stretchForm.mesh" :min="1" :precision="0"
+        /></el-form-item>
+        <el-form-item label="张力(N/cm)"
+          ><el-input-number v-model="stretchForm.tensionNcm" :min="0" :precision="2"
+        /></el-form-item>
+        <el-form-item label="网纱"
+          ><el-input v-model="stretchForm.material" maxlength="200"
+        /></el-form-item>
         <el-form-item label="合格"><el-switch v-model="stretchForm.qualified" /></el-form-item>
       </el-form>
       <template #footer>
@@ -126,16 +158,36 @@
     <el-dialog v-model="plateVisible" title="制版" width="800px" append-to-body>
       <el-form label-width="110px">
         <el-form-item label="菲林版本" required>
-          <PrintResourceSelector :model-value="picked" size="small" placeholder="按菲林/菲林号搜索版本" @select="onPickVersion" />
+          <PrintResourceSelector
+            :model-value="picked"
+            size="small"
+            placeholder="按菲林/菲林号搜索版本"
+            @select="onPickVersion"
+          />
         </el-form-item>
-        <el-form-item v-if="picked" label="已选版本">{{ picked.artworkNo }} {{ picked.name }} / {{ picked.versionNo }}</el-form-item>
+        <el-form-item v-if="picked" label="已选版本"
+          >{{ picked.artworkNo }} {{ picked.name }} / {{ picked.versionNo }}</el-form-item
+        >
         <el-form-item label="菲林片" required>
-          <el-select v-model="plateForm.filmId" placeholder="选择该版本可用菲林片" style="width: 100%">
-            <el-option v-for="f in filmOptions" :key="f.filmId" :label="f.filmNo + '（' + (f.location || '无位置') + '）'" :value="f.filmId" />
+          <el-select
+            v-model="plateForm.filmId"
+            placeholder="选择该版本可用菲林片"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="f in filmOptions"
+              :key="f.filmId"
+              :label="f.filmNo + '（' + (f.location || '无位置') + '）'"
+              :value="f.filmId"
+            />
           </el-select>
         </el-form-item>
-        <el-form-item label="版号" required><el-input v-model="plateForm.plateNo" maxlength="80" /></el-form-item>
-        <el-form-item label="印刷位置" required><el-input v-model="plateForm.position" maxlength="100" /></el-form-item>
+        <el-form-item label="版号" required
+          ><el-input v-model="plateForm.plateNo" maxlength="80"
+        /></el-form-item>
+        <el-form-item label="印刷位置" required
+          ><el-input v-model="plateForm.position" maxlength="100"
+        /></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="plateVisible = false">取消</el-button>
@@ -156,10 +208,38 @@ import { engineeringResourceApi } from '@/api/engineering/resource'
 import { printingArtworkApi } from '@/api/product/film'
 import PrintResourceSelector from '@/components/Selector/PrintResourceSelector.vue'
 import type { PrintSearchRow } from '@/api/engineering/printingSearch'
+import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
 defineOptions({ name: 'PrintResources' })
 
-const statusOptions = [ScreenFrameStatusEnum.READY, ScreenFrameStatusEnum.MAINTENANCE, ScreenFrameStatusEnum.SCRAPPED]
+const frameActions: TableAction<any>[] = [
+  { key: 'remark', label: '编辑备注', type: 'primary', permission: 'engineering:resource:edit' },
+  { key: 'stretch', label: '绷网', type: 'primary' },
+  { key: 'plate', label: '制版', type: 'success' },
+  { key: 'wash', label: '洗版', type: 'warning' },
+  { key: 'maintain', label: '送修', type: 'info' },
+  { key: 'resume', label: '恢复使用', type: 'info' },
+  { key: 'scrap', label: '报废', type: 'info' },
+]
+
+function handleFrameAction(key: string, row: any) {
+  switch (key) {
+    case 'remark': return openRemark(row)
+    case 'stretch': return openStretch(row)
+    case 'plate': return openPlate(row)
+    case 'wash': return wash(row)
+    case 'maintain':
+    case 'resume':
+    case 'scrap': return maintain(row, key)
+  }
+}
+
+const statusOptions = [
+  ScreenFrameStatusEnum.READY,
+  ScreenFrameStatusEnum.MAINTENANCE,
+  ScreenFrameStatusEnum.SCRAPPED,
+]
 
 const query = reactive({ keyword: '', status: '' })
 const rows = ref<any[]>([])
@@ -172,7 +252,12 @@ const detailLoading = ref(false)
 const detail = ref<any>(null)
 
 const stretchVisible = ref(false)
-const stretchForm = reactive<any>({ mesh: undefined, tensionNcm: undefined, material: '', qualified: true })
+const stretchForm = reactive<any>({
+  mesh: undefined,
+  tensionNcm: undefined,
+  material: '',
+  qualified: true,
+})
 
 const plateVisible = ref(false)
 const plateForm = reactive<any>({ plateNo: '', position: '', filmId: undefined })
@@ -187,11 +272,17 @@ async function openRemark(row: any) {
   try {
     const res: any = await engineeringResourceApi.getPrintFrame(row.frameId)
     const frame = res.data
-    Object.assign(remarkForm, { frameId: frame.frameId, frameNo: frame.frameNo,
-      revision: frame.revision, remark: frame.remark || '' })
+    Object.assign(remarkForm, {
+      frameId: frame.frameId,
+      frameNo: frame.frameNo,
+      revision: frame.revision,
+      remark: frame.remark || '',
+    })
     remarkRequestId = newRequestId()
     remarkVisible.value = true
-  } catch { /* 拦截器已提示 */ }
+  } catch {
+    /* 拦截器已提示 */
+  }
 }
 
 async function saveRemark() {
@@ -206,14 +297,21 @@ async function saveRemark() {
     ElMessage.success('网框备注已保存')
     remarkVisible.value = false
     await load()
-  } catch { /* 失败保留输入和原 revision，不静默覆盖并发修改 */ }
-  finally { submitting.value = false }
+  } catch {
+    /* 失败保留输入和原 revision，不静默覆盖并发修改 */
+  } finally {
+    submitting.value = false
+  }
 }
 
 let currentFrame: any = null
 
-function statusLabel(status?: string) { return ScreenFrameStatusEnum.getLabel(status || '') || status || '-' }
-function statusTag(status?: string) { return ScreenFrameStatusEnum.getTagProps(status || '').type }
+function statusLabel(status?: string) {
+  return ScreenFrameStatusEnum.getLabel(status || '') || status || '-'
+}
+function statusTag(status?: string) {
+  return ScreenFrameStatusEnum.getTagProps(status || '').type
+}
 function newRequestId() {
   return 'm1-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
 }
@@ -332,7 +430,9 @@ async function onPickVersion(item: PrintSearchRow) {
   }
   picked.value = item
   const res: any = await printingArtworkApi.detail(Number(item.artworkId))
-  const films = (res?.data?.films || []).filter((f: any) => f.status === FilmCopyStatusEnum.AVAILABLE.value)
+  const films = (res?.data?.films || []).filter(
+    (f: any) => f.status === FilmCopyStatusEnum.AVAILABLE.value
+  )
   filmOptions.value = films
   plateForm.filmId = films.length === 1 ? films[0].filmId : undefined
 }
@@ -426,8 +526,10 @@ async function maintain(row: any, action: string) {
       expectedRevision: Number(currentFrame?.revision ?? 0),
       reason,
     }
-    if (action === 'maintain') await engineeringResourceApi.maintainPrintFrame(Number(row.frameId), command)
-    else if (action === 'resume') await engineeringResourceApi.resumePrintFrame(Number(row.frameId), command)
+    if (action === 'maintain')
+      await engineeringResourceApi.maintainPrintFrame(Number(row.frameId), command)
+    else if (action === 'resume')
+      await engineeringResourceApi.resumePrintFrame(Number(row.frameId), command)
     else await engineeringResourceApi.scrapPrintFrame(Number(row.frameId), command)
     ElMessage.success(label + '成功')
     await load()
@@ -440,7 +542,15 @@ onMounted(() => load(1))
 </script>
 
 <style scoped>
-.search-card { margin-bottom: 16px; }
-.tip { color: #909399; font-size: 12px; }
-.section-head { margin: 16px 0 8px; font-weight: 600; }
+.search-card {
+  margin-bottom: 16px;
+}
+.tip {
+  color: #909399;
+  font-size: 12px;
+}
+.section-head {
+  margin: 16px 0 8px;
+  font-weight: 600;
+}
 </style>
