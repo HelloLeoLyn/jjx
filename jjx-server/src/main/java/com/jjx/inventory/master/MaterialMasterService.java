@@ -653,6 +653,8 @@ public class MaterialMasterService {
                 "material_grade", "材料显示名", "model", "型号", "color", "颜色",
                 "specification", "规格", "brand", "品牌");
         for (String column : materialMapper.selectRequiredFields(config.category().categoryCode())) {
+            // 历史派生列保留兼容，不再作为独立名称要求用户填写。
+            if ("material_grade".equals(column)) continue;
             // BOM 快速建档场景颜色常未知：该入口不强制颜色，其它必填照常（dev-20261029-016）
             if (fromBom && "color".equals(column)) continue;
             String value = switch (column) {

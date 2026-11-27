@@ -268,6 +268,29 @@ describe('公共字段必填读取品类配置', () => {
   const rules = (fields = {}) => ({ data: { material_grade: false, model: false, color: false, specification: false, brand: false, ...fields } })
   const stateOf = (wrapper: ReturnType<typeof create>) => (wrapper.vm as any).$.setupState
 
+  it('旧配置仍勾选材料显示名时不展示或拦截，名称和供应商品名独立保存', async () => {
+    mocks.requiredFields.mockResolvedValue(rules({ material_grade: true }))
+    mocks.configuration.mockImplementation((id) => Promise.resolve({ data: {
+      ...config(id, '其他基材'), schema: { ...config(id, '其他基材').schema,
+        meta_options: ['PU', 'PP'], default_meta: null, default_form: null, meta_required: false },
+    } }))
+    const wrapper = create()
+    await flushPromises()
+    const state = stateOf(wrapper)
+    await state.selectCategory(2)
+    state.form.materialMeta = ''; state.form.materialForm = ''
+    state.form.nameManual = true; state.form.materialName = '其他基材名称'
+    state.form.supplierMaterialName = '供应商料号ABC'
+    expect(wrapper.find('[label="材料显示名"]').exists()).toBe(false)
+    expect(state.commonFieldRequired('material_grade')).toBe(false)
+    await state.save()
+    expect(mocks.save).toHaveBeenCalledWith(expect.objectContaining({
+      materialName: '其他基材名称', supplierMaterialName: '供应商料号ABC', materialMeta: '', materialForm: '',
+    }))
+    expect(mocks.warning).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('取消颜色必填后允许空颜色新建；下次打开读取最新配置', async () => {
     mocks.requiredFields.mockResolvedValue(rules({ color: true }))
     const wrapper = create()

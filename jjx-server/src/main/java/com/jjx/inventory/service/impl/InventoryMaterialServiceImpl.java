@@ -760,6 +760,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         String categoryCode = category == null ? null : (String) category.get("category_code");
         if (categoryCode != null) {
             for (String column : materialMapper.selectRequiredFields(categoryCode)) {
+                if ("material_grade".equals(column)) continue;
                 String key = MASTER_COLUMNS.entrySet().stream().filter(e -> e.getValue().equals(column))
                         .map(Map.Entry::getKey).findFirst().orElse(null);
                 if (key == null) throw new BusinessException("不支持的物料必填规则：" + column);
@@ -925,6 +926,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     private void validateImportRow(MaterialImportDTO dto, Map<String, Object> category) {
         String categoryCode = (String) category.get("category_code");
         for (String column : materialMapper.selectRequiredFields(categoryCode)) {
+            if ("material_grade".equals(column)) continue;
             String key = MASTER_COLUMNS.entrySet().stream().filter(e -> e.getValue().equals(column))
                     .map(Map.Entry::getKey).findFirst().orElse(null);
             if (key == null) throw new BusinessException("不支持的物料必填规则：" + column);

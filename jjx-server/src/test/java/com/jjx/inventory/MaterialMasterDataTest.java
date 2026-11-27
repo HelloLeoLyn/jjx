@@ -94,6 +94,18 @@ class MaterialMasterDataTest {
         assertEquals(m.getBrand(), vo.getBrand()); assertEquals(m.getSearchKeywords(), vo.getSearchKeywords());
     }
 
+    @Test void legacyCreateAndImportDoNotRequireDerivedGrade() throws Exception {
+        when(mapper.selectCategory(2L)).thenReturn(category());
+        when(mapper.selectRequiredFields("RM-FILM")).thenReturn(List.of("material_grade"));
+        when(mapper.insert(any(InventoryMaterial.class))).thenReturn(1);
+        var item = material(); item.setMaterialGrade(null);
+        assertTrue(service.create(item, List.of(), "codex"));
+        when(mapper.findCategory(anyString())).thenReturn(category());
+        when(sequence.generateBusinessNumberByTypeWithPrefix(anyString(), anyString(), anyString(), anyInt(), anyLong())).thenReturn("TEST012");
+        var sheet = workbook(new String[]{"物料名称", "品类"}, new String[]{"自定义名称", "RM-FILM"});
+        assertEquals(1, service.importMaterial(sheet, "codex").getSuccessCount());
+    }
+
     @Test void legacySaveWithExplicitRollWeightPolicyUsesSameNewLedgerRule() {
         when(mapper.selectCategory(2L)).thenReturn(category());
         when(mapper.insert(any(InventoryMaterial.class))).thenReturn(1);
@@ -206,7 +218,7 @@ class MaterialMasterDataTest {
         verify(mapper, never()).insert(any(InventoryMaterial.class));
     }
 
-    @Test void legacyEditDoesNotValidateMissingHistoricalFieldsButRejectsClearing() throws Exception {
+    @Test void legacyEditAllowsClearingDerivedGradeButStillRejectsClearingColor() throws Exception {
         InventoryMaterial old = material(); old.setMaterialId(12L); old.setColor(null); old.setSpecification(null);
         when(mapper.selectById(12L)).thenReturn(old);
         when(mapper.selectCategory(2L)).thenReturn(category());
@@ -216,7 +228,11 @@ class MaterialMasterDataTest {
         assertTrue(service.update(patch, null, "codex"));
         MaterialUpdateDTO dto = new ObjectMapper().readValue("{\"materialId\":12,\"materialGrade\":null}", MaterialUpdateDTO.class);
         InventoryMaterial clear = new InventoryMaterial(); BeanUtils.copyProperties(dto, clear);
-        assertTrue(assertThrows(BusinessException.class, () -> service.update(clear, null, "codex")).getMessage().contains("材料"));
+        assertTrue(service.update(clear, null, "codex"));
+        old.setColor("黑色");
+        MaterialUpdateDTO colorDto = new ObjectMapper().readValue("{\"materialId\":12,\"color\":null}", MaterialUpdateDTO.class);
+        InventoryMaterial clearColor = new InventoryMaterial(); BeanUtils.copyProperties(colorDto, clearColor);
+        assertTrue(assertThrows(BusinessException.class, () -> service.update(clearColor, null, "codex")).getMessage().contains("颜色"));
     }
 
     @Test void listAndSearchUseAttributesAndKeepTokenSearch() {

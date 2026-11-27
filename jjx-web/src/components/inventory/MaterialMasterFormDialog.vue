@@ -76,11 +76,6 @@
             form.materialCode
           }}</el-form-item>
           <el-row :gutter="16">
-            <el-col :span="24">
-              <el-form-item label="材料显示名" :required="commonFieldRequired('material_grade')">
-                {{ materialDisplayName || '选择材质和形态后生成' }}
-              </el-form-item>
-            </el-col>
             <el-col v-if="!categoryMaterialMeta" :span="12"
               ><el-form-item label="材质" :required="configuration?.schema.meta_required">
                 <el-select
@@ -469,17 +464,13 @@ const configuration = ref<MaterialMasterConfiguration>()
 const requiredFields = ref<MaterialRequiredFields>()
 function commonFieldRequired(key: MaterialRequiredFieldKey) {
   return (
+    key !== 'material_grade' &&
     !props.materialId &&
     !form.materialId &&
     !(props.fromBom && key === 'color') &&
     requiredFields.value?.[key] === true
   )
 }
-const materialDisplayName = computed(() => {
-  const label = (dict: string, code: string) =>
-    code ? dictionaries.value[dict]?.find((o) => o.code === code)?.label || code : ''
-  return `${label('material_meta', form.materialMeta)}${label('form', form.materialForm)}`.trim()
-})
 const tags = ref<SysTag[]>([])
 const loading = ref(false)
 const configurationLoading = ref(false)
@@ -1107,8 +1098,7 @@ async function save() {
   if (!form.unit && !form.measurementPolicy) return void ElMessage.warning('请选择库存单位或配置双单位')
   if (!props.materialId && !form.materialId) {
     if (!requiredFields.value) return void ElMessage.warning('必填字段尚未加载，请重新选择品类')
-    const values: Record<MaterialRequiredFieldKey, string> = {
-      material_grade: materialDisplayName.value,
+    const values: Record<Exclude<MaterialRequiredFieldKey, 'material_grade'>, string> = {
       model: form.model,
       color: form.color,
       specification: '',
@@ -1127,14 +1117,13 @@ async function save() {
         saving.value = false
       }
     }
-    const labels: Record<MaterialRequiredFieldKey, string> = {
-      material_grade: '材料显示名',
+    const labels: Record<Exclude<MaterialRequiredFieldKey, 'material_grade'>, string> = {
       model: '型号',
       color: '颜色',
       specification: '规格',
       brand: '品牌',
     }
-    const missingField = (Object.keys(labels) as MaterialRequiredFieldKey[]).find(
+    const missingField = (Object.keys(labels) as (keyof typeof labels)[]).find(
       (key) => commonFieldRequired(key) && !values[key]?.trim()
     )
     if (missingField)
