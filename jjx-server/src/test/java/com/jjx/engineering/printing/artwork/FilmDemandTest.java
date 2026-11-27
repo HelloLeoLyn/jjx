@@ -82,6 +82,18 @@ class FilmDemandTest {
         assertEquals("SENT",db.queryForObject("SELECT status FROM print_film_copy",String.class));
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM engineering_resource_maintenance WHERE request_id IN ('early','stale','disabled')",Integer.class));
     }
+    @Test void historicalRequestHashWithoutNewOptionalFieldsStillReplays() throws Exception {
+        var command=command("old-archive",0,Map.of("reason","封存"));
+        var old=(com.fasterxml.jackson.databind.node.ObjectNode)json.valueToTree(command);
+        old.remove("quantity");old.remove("dueDate");
+        String hash=com.jjx.common.utils.Sha256Utils.ofText(json.writeValueAsString(
+                List.of("FILM_COPY","archive",42L,"film-test",old)));
+        db.update("INSERT INTO engineering_resource_maintenance(resource_type,resource_id,action_type,operator,request_id,request_hash,result_snapshot) VALUES('FILM_COPY',42,'archive','film-test','old-archive',?,?)",
+                hash,"{\"filmId\":42,\"status\":\"ARCHIVED\",\"revision\":1}");
+        assertEquals("ARCHIVED",run("archive",42,command).get("status"));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM print_film_copy",Integer.class));
+    }
+
     @Test void invalidDemandDoesNotCreatePhysicalCopies() {
         assertThrows(BusinessException.class,()->run("requestFilms",1,demand("zero",0)));
         assertThrows(BusinessException.class,()->run("requestFilms",1,command("date",0,specs())));

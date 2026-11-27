@@ -5,6 +5,9 @@ export interface ArtworkVersion {
   versionNo: string
   status?: string
   drawingFileId?: number | null
+  contentDigest?: string | null
+  contentAlgorithm?: string | null
+  drawingSha256?: string | null
   technicalSpec?: string | null
   designerId?: string | null
   approvedBy?: string | null

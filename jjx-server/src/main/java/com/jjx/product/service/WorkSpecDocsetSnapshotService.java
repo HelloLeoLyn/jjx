@@ -151,6 +151,7 @@ public class WorkSpecDocsetSnapshotService {
             item.set("artworkVersionNo",json.valueToTree(identity.get("version_no")));
             item.set("technicalSpec",json.valueToTree(identity.get("technical_spec")));
             item.set("drawingFileId",json.valueToTree(identity.get("drawing_file_id")));
+            item.set("controlledContent",com.jjx.engineering.printing.artwork.ArtworkContentSnapshot.released(jdbc,json,versionId));
             if (row.hasNonNull("defaultPlateId")) {
                 var plate = jdbc.queryForMap("SELECT p.plate_no,f.frame_no FROM engineering_screen_plate p "
                         + "JOIN engineering_screen_frame f ON f.frame_id=p.frame_id WHERE p.plate_id=? FOR SHARE",row.get("defaultPlateId").longValue());

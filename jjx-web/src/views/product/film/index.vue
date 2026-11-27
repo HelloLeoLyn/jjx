@@ -274,6 +274,14 @@
                 <span v-else class="muted">无</span>
               </template>
             </el-table-column>
+            <el-table-column label="内容定版" width="120">
+              <template #default="{ row }">
+                <el-tooltip v-if="row.contentDigest" :content="`${row.contentAlgorithm} / ${row.contentDigest}`">
+                  <el-tag type="success" size="small">已核验</el-tag>
+                </el-tooltip>
+                <el-tag v-else type="info" size="small">未核验</el-tag>
+              </template>
+            </el-table-column>
             <el-table-column label="技术规格" prop="technicalSpec" min-width="160" show-overflow-tooltip />
             <el-table-column label="审批/发布时间" min-width="150">
               <template #default="scope">

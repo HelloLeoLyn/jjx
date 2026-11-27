@@ -29,9 +29,17 @@ public class ArtworkRepository {
             WHERE resource_type='ARTWORK' AND resource_id=? AND is_active=1 ORDER BY product_id
             """, Long.class, id);
         var versions = jdbc.query("""
-            SELECT version_id,version_no,status,drawing_file_id,technical_spec,designer_id,
-                   approved_by,approved_time,released_by,released_time,lock_version AS revision
-            FROM print_artwork_version WHERE artwork_id=? ORDER BY version_id
+            SELECT v.version_id,v.version_no,v.status,v.drawing_file_id,v.technical_spec,v.designer_id,
+                   v.approved_by,v.approved_time,v.released_by,v.released_time,v.lock_version AS revision,
+                   NULLIF(JSON_UNQUOTE(JSON_EXTRACT(m.result_snapshot,'$.controlledContent.contentDigest')),'null') AS content_digest,
+                   JSON_UNQUOTE(JSON_EXTRACT(m.result_snapshot,'$.controlledContent.algorithm')) AS content_algorithm,
+                   NULLIF(JSON_UNQUOTE(JSON_EXTRACT(m.result_snapshot,'$.controlledContent.drawingSha256')),'null') AS drawing_sha256
+            FROM print_artwork_version v
+            LEFT JOIN engineering_resource_maintenance m ON m.maintenance_id=(
+                SELECT MAX(x.maintenance_id) FROM engineering_resource_maintenance x
+                WHERE x.resource_type='ARTWORK_VERSION' AND x.resource_id=v.version_id AND x.action_type='release'
+                AND x.result_snapshot IS NOT NULL)
+            WHERE v.artwork_id=? ORDER BY v.version_id
             """, new DataClassRowMapper<>(ArtworkView.Version.class), id);
         var films = jdbc.query("""
             SELECT f.film_id,f.version_id,f.film_no,f.location,f.status,f.material,f.thickness_mm,

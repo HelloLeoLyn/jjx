@@ -28,6 +28,8 @@ public class ArtworkService {
     private final AttachmentRefService attachments;
     @org.springframework.beans.factory.annotation.Autowired
     private com.jjx.framework.common.RedisSequenceService filmNumbers;
+    @org.springframework.beans.factory.annotation.Value("${file.upload.path:./upload}")
+    private String uploadBasePath = "./upload";
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void requireUsableVersion(long versionId) {
@@ -48,7 +50,11 @@ public class ArtworkService {
         };
         if (action.equals("activate") && Boolean.TRUE.equals(c.disablePrevious()))
             StpUtil.checkPermission("engineering:film:disable");
-        String hash = hash(List.of(type,action,target,user,c));
+        var payload=(com.fasterxml.jackson.databind.node.ObjectNode)json.valueToTree(c);
+        // 新增可选字段为空时保持旧命令摘要，部署后重试旧requestId仍可重放。
+        if(c.quantity()==null) payload.remove("quantity");
+        if(c.dueDate()==null) payload.remove("dueDate");
+        String hash = hash(List.of(type,action,target,user,payload));
         try {
             jdbc.update("""
                 insert into engineering_resource_maintenance(resource_type,resource_id,action_type,operator,request_id,request_hash)
@@ -262,6 +268,8 @@ public class ArtworkService {
             where version_id=?
             """,next,user,action,user,action,action,user,action,id);
         Map<String,Object> result=new LinkedHashMap<>(Map.of("versionId",id,"revision",rev+1,"status",next));
+        if(action.equals("release"))
+            result.put("controlledContent",ArtworkContentSnapshot.capture(jdbc,json,uploadBasePath,v));
         result.put("defaultVersionId",current);
         result.put("artworkRevision",(int)a.get("lock_version") + (Objects.equals(current,a.get("default_version_id")) ? 0 : 1));
         return result;

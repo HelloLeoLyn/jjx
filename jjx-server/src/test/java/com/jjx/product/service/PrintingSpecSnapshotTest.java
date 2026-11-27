@@ -33,7 +33,11 @@ class PrintingSpecSnapshotTest {
         routing.put("approveStatus",ApproveStatusEnum.APPROVED.getValue());
         when(db.queryForMap(anyString(),eq(3L))).thenReturn(Map.of("artwork_id",1L,"artwork_no","A1","name","旧名称","version_no","V2"));
         when(db.queryForMap(anyString(),eq(4L))).thenReturn(Map.of("artwork_id",2L,"artwork_no","A2","name","第二图","version_no","V1"));
+        when(db.queryForList(contains("FROM engineering_resource_maintenance"),eq(3L))).thenReturn(java.util.List.of(
+                Map.of("result_snapshot","{\"controlledContent\":{\"contentDigest\":\"release-digest\",\"verification\":\"VERIFIED\"}}")));
         var frozen=service.freezePrinting(routing);
+        assertEquals("release-digest",frozen.get(0).path("controlledContent").path("contentDigest").asText());
+        assertEquals("UNVERIFIED",frozen.get(1).path("controlledContent").path("verification").asText());
         assertEquals(2,frozen.size());
         assertEquals(11,frozen.get(0).path("routingItemId").asInt());
         assertEquals(2,frozen.get(1).path("memberOrder").asInt());
