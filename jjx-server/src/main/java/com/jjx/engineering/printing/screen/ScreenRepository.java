@@ -79,6 +79,17 @@ class ScreenRepository {
         return result;
     }
 
+    /** 同一版本「可用网版」数：已放行、未洗版、网框未报废（唯一口径）。 */
+    int usablePlateCount(long versionId) {
+        Integer count = db.queryForObject("""
+            SELECT COUNT(*) FROM engineering_screen_plate p
+            JOIN engineering_screen_frame f ON f.frame_id=p.frame_id
+            WHERE p.version_id=? AND p.v2_registered=1 AND p.status='RELEASED'
+              AND p.washed_time IS NULL AND f.del_flag='0' AND f.status<>'SCRAPPED'
+            """, Integer.class, versionId);
+        return count == null ? 0 : count;
+    }
+
     boolean occupied(long frame) {
         return exists("select plate_id from engineering_screen_plate where occupied_frame_id=? for update", frame);
     }

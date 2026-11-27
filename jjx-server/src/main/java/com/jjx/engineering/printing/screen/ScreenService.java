@@ -54,6 +54,11 @@ public class ScreenService {
 
     /** 调用方先持有图案版本锁，再按版本→框→版顺序锁定；不把默认版写成实际用版。 */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    /** 同版本可用网版数（齐套与开工共用口径）。 */
+    public int countUsablePlate(long versionId) {
+        return repo.usablePlateCount(versionId);
+    }
+
     public void requireUsablePlate(long versionId, long plateId, String requirements) {
         var required = validateRequirements(requirements);
         var locked=lockPlateIdentity(versionId,plateId);

@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-11-20",
-  "tableCountBaseline": 140,
+  "tableCountBaseline": 141,
   "tables": [
     "archive_production_quality_inspection",
     "archive_production_quality_inspection_item",
@@ -58,6 +58,7 @@
     "portal_language_config",
     "portal_page_content",
     "portal_product_display",
+    "print_kit_shortage",
     "product",
     "product_category",
     "product_config_model",
@@ -311,6 +312,13 @@
       "date": "2026-11-26",
       "proposalLink": "jjx-docs/history/printing-resource-v2-contract-dev-20261125-007.md",
       "reason": "生产实际用版分段：一次执行多段、单版排他、换版追溯；既有 execution 一行无法表达换版前后"
+    },
+    {
+      "table": "print_kit_shortage",
+      "taskCode": "dev-20261126-002",
+      "date": "2026-11-27",
+      "proposalLink": "jjx-docs/history/printing-resource-v2-contract-dev-20261125-007.md",
+      "reason": "多资源齐套缺口台账：按工单/产品+工序行+资源去重，记录责任人、首次发现、复查与关闭原因"
     }
   ],
   "typeSuffixAllowlist": [
