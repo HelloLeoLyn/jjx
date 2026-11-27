@@ -30,6 +30,9 @@ public class ProductionOperationExecutionCreateDTO {
     @NotNull(message = "工序名称不能为空")
     private String processName;
 
+    /** 对应工艺路线明细行（P10 用版身份） */
+    private Long routingItemId;
+
     @Schema(description = "工序顺序", required = true, example = "1")
     @NotNull(message = "工序顺序不能为空")
     private Integer processOrder;

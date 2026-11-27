@@ -60,6 +60,9 @@ public interface ProductionOperationExecutionService {
     /**
      * 开始工序并可绑定设备。首次绑定直接落快照；更换既有设备需显式确认。
      */
+    boolean startExecution(Long executionId, Long plateId, Long equipmentId, String scannedDeviceCode,
+                                   boolean confirmEquipmentChange);
+
     boolean startExecution(Long executionId, Long equipmentId, String scannedDeviceCode,
                            boolean confirmEquipmentChange);
 

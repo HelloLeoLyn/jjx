@@ -49,6 +49,8 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     private final com.jjx.production.service.ProductionOperationRecordService productionOperationRecordService;
     /** 完工口径/阶段（新质检模型）—— dev-20260918-015 */
     private final com.jjx.quality.service.QualityLotService qualityLotService;
+    /** P10：生产实际用版（dev-20261125-017） */
+    private final com.jjx.production.printing.PrintUseService printUseService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -362,8 +364,14 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public boolean startExecution(Long executionId, Long equipmentId, String scannedDeviceCode,
+                                  boolean confirmEquipmentChange) {
+        return startExecution(executionId, null, equipmentId, scannedDeviceCode, confirmEquipmentChange);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean startExecution(Long executionId, Long plateId, Long equipmentId, String scannedDeviceCode,
                                   boolean confirmEquipmentChange) {
         log.info("开始工序执行: {}, scannedDeviceCode={}", executionId, scannedDeviceCode);
 
@@ -388,7 +396,20 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                     + (current == null ? String.valueOf(order.getOrderStatus()) : current.getLabel()) + "）");
         }
 
-        validatePrintFrame(execution);
+        if ("PRINT".equals(execution.getMajorCategory())) {
+            var plan = printUseService.requirePlan(order.getWorkSpecVersionId(), execution.getRoutingItemId());
+            if (plan != null) {
+                Long usePlate = plateId != null ? plateId : plan.defaultPlateId();
+                if (usePlate == null) throw new BusinessException("印刷工序需先选择实体网版再开工");
+                printUseService.start(new com.jjx.production.printing.PrintUseCommands(
+                        "exec-start-" + executionId + "-" + System.currentTimeMillis(),
+                        executionId, usePlate, plan.artworkVersionId(),
+                        order.getWorkSpecVersionId(), execution.getRoutingItemId(), null));
+            } else {
+                // 旧工单无冻结印刷要求时保留原网框校验，避免历史产线无法开工
+                validatePrintFrame(execution);
+            }
+        }
 
         bindStartEquipment(execution, equipmentId, scannedDeviceCode, confirmEquipmentChange);
 

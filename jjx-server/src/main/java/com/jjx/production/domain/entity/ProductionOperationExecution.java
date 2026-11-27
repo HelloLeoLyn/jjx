@@ -43,6 +43,9 @@ public class ProductionOperationExecution {
     @Schema(description = "工序名称冗余（印刷等自定义工序，2026-08-12）")
     private String processName;
 
+    /** 对应工艺路线明细行（P10 用版身份，dev-20261125-017） */
+    private Long routingItemId;
+
     @Schema(description = "计划工艺参数JSON（从工艺路线带入，2026-08-12）")
     private String customProcessParams;
 

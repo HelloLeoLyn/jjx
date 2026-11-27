@@ -1534,6 +1534,8 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             // 2026-08-12：印刷等自定义工序透传 大类/名称/计划参数（生产侧接入）
             execution.setMajorCategory(item.getMajorCategory() != null ? item.getMajorCategory() : "ASSEMBLY");
             execution.setProcessName(item.getProcessName());
+            // P10：记录对应路线明细行，供开工时核对工单固定印刷要求
+            execution.setRoutingItemId(item.getItemId());
             // 组合工序：父行 params 保留，子作业合并为 jobs 快照（2026-09-05）
             java.util.List<EngineeringRoutingItem> jobs = jobMap.get(item.getItemId());
             String params = item.getCustomProcessParams();

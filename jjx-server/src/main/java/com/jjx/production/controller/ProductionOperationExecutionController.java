@@ -111,11 +111,12 @@ public class ProductionOperationExecutionController {
 @Log(module = "工序执行管理", businessType = BusinessType.UPDATE, bizType = "'production_execution'", bizId = "#executionId", bizStatus = "T(com.jjx.production.enums.ExecutionStatusEnum).EXECUTING.getLabel()", action = LogActions.OP_EXEC_START)
     @SaCheckPermission("production:operation-execution:edit")
     public Result<Boolean> startExecution(@PathVariable Long executionId,
+                                          @RequestParam(required = false) Long plateId,
                                           @RequestParam(required = false) Long equipmentId,
                                           @RequestParam(required = false) String deviceCode,
                                           @RequestParam(defaultValue = "false") boolean confirmEquipmentChange) {
         boolean success = productionOperationExecutionService.startExecution(
-                executionId, equipmentId, deviceCode, confirmEquipmentChange);
+                executionId, plateId, equipmentId, deviceCode, confirmEquipmentChange);
         return Result.success(success);
     }
 

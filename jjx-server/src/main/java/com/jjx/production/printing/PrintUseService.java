@@ -25,6 +25,28 @@ public class PrintUseService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
 
+    /** 工单固定印刷要求（来自规范快照 printingItems）；无快照返回 null。 */
+    public record Plan(Long artworkVersionId, Long defaultPlateId) {}
+
+    @Transactional(readOnly = true)
+    public Plan requirePlan(Long specVersionId, Long routingItemId) {
+        if (specVersionId == null || routingItemId == null) return null;
+        var rows = jdbc.queryForList("""
+            SELECT j.artworkVersionId, j.defaultPlateId
+            FROM product_work_spec_item i,
+                 JSON_TABLE(i.snapshot_json, '$.printingItems[*]' COLUMNS (
+                     routingItemId BIGINT PATH '$.routingItemId',
+                     artworkVersionId BIGINT PATH '$.artworkVersionId',
+                     defaultPlateId BIGINT PATH '$.defaultPlateId')) j
+            WHERE i.spec_version_id=? AND j.routingItemId=? LIMIT 1
+            """, specVersionId, routingItemId);
+        if (rows.isEmpty()) return null;
+        var row = rows.get(0);
+        Long versionId = row.get("artworkVersionId") == null ? null : ((Number) row.get("artworkVersionId")).longValue();
+        Long plateId = row.get("defaultPlateId") == null ? null : ((Number) row.get("defaultPlateId")).longValue();
+        return new Plan(versionId, plateId);
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> start(PrintUseCommands c) {
         c.validate();
