@@ -399,6 +399,29 @@
           <el-empty v-if="!qualityList.length" description="暂无质检记录" :image-size="50" />
         </el-tab-pane>
 
+        <el-tab-pane :label="`用版历史 (${useSegments.length})`" name="printUse">
+          <el-table :data="useSegments" size="small" border>
+            <el-table-column label="网版" width="140">
+              <template #default="{ row }">{{ row.plateNo || row.plateId || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="网框" width="110">
+              <template #default="{ row }">{{ row.frameNo || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="图案版本" min-width="180">
+              <template #default="{ row }">
+                {{ row.artworkNo || '' }} {{ row.versionNo || (row.versionId ?? '') }}
+              </template>
+            </el-table-column>
+            <el-table-column label="开始" prop="startTime" width="160" />
+            <el-table-column label="结束" width="160">
+              <template #default="{ row }">{{ row.endTime || '使用中' }}</template>
+            </el-table-column>
+            <el-table-column label="操作人" prop="operatorName" width="100" />
+            <el-table-column label="原因" prop="reason" min-width="140" show-overflow-tooltip />
+          </el-table>
+          <el-empty v-if="!useSegments.length" description="暂无用版记录" :image-size="50" />
+        </el-tab-pane>
+
         <!-- 操作记录（现有 Timeline 能力，P2-D 不接线） -->
         <el-tab-pane label="操作记录" name="ops">
           <el-empty description="操作记录（P4 Trace 统一接线）" :image-size="50" />
@@ -846,6 +869,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { operationExecutionApi } from '@/api/production/operationExecution'
 import PrintResourceSelector from '@/components/Selector/PrintResourceSelector.vue'
+import { printingUseApi, type PrintUseSegment } from '@/api/production/printingUse'
 import type { PrintSearchRow } from '@/api/engineering/printingSearch'
 import { getEquipmentList, type ProductionEquipment } from '@/api/production/equipment'
 import {
@@ -1236,6 +1260,7 @@ const detailRootTask = ref<TaskTreeRow | null>(null)
 const detailChildren = ref<TaskTreeRow[]>([])
 const detailMyTasks = ref<TaskTreeRow[]>([])
 const qualityList = ref<QualityLotView[]>([])
+const useSegments = ref<PrintUseSegment[]>([])
 
 const loadExecutionContext = async (row: OperationExecutionVO) => {
   if (!row.executionId) return
@@ -1247,13 +1272,16 @@ const loadExecutionContext = async (row: OperationExecutionVO) => {
   detailChildren.value = []
   detailMyTasks.value = []
   qualityList.value = []
-  const [execResult, rootResult, mineResult, reportResult, qualityResult] = await Promise.allSettled([
-    operationExecutionApi.getInfo(row.executionId),
-    getExecutionRootTask(row.executionId),
-    getMyTasks(row.executionId),
-    getWorkReportsByExecution(row.executionId),
-    qualityLotApi.page({ pageNum: 1, pageSize: 100, lotType: InspectionType.FQC, executionId: row.executionId }),
-  ])
+  useSegments.value = []
+  const [execResult, rootResult, mineResult, reportResult, qualityResult, useResult] =
+    await Promise.allSettled([
+      operationExecutionApi.getInfo(row.executionId),
+      getExecutionRootTask(row.executionId),
+      getMyTasks(row.executionId),
+      getWorkReportsByExecution(row.executionId),
+      qualityLotApi.page({ pageNum: 1, pageSize: 100, lotType: InspectionType.FQC, executionId: row.executionId }),
+      printingUseApi.listByExecution(Number(row.executionId)),
+    ])
   // 真实工序状态（不要用任务状态推断；报工/开工都看它）
   if (execResult.status === 'fulfilled') {
     const real: any = (execResult.value as any)?.data
@@ -1282,6 +1310,7 @@ const loadExecutionContext = async (row: OperationExecutionVO) => {
     const records = Array.isArray(data) ? data : data?.records || []
     qualityList.value = records.map(toQualityLotView)
   }
+  if (useResult.status === 'fulfilled') useSegments.value = (useResult.value as any)?.data || []
   contextLoading.value = false
 }
 
