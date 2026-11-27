@@ -26,6 +26,7 @@ public class PrintKitService {
     private final JdbcTemplate jdbc;
     private final ScreenService screenService;
     private final com.jjx.inventory.service.InventoryAlertService alertService;
+    private final com.jjx.event.EventPublisher eventPublisher;
 
     /** 产品级预检：产品关联图案的生效版本是否有可用网版。不冒充工单确认。 */
     public Map<String, Object> productPrecheck(long productId) {
@@ -159,6 +160,25 @@ public class PrintKitService {
                 WHERE scope='ORDER' AND order_id=? AND status=0 AND resource_type='SCREEN_PLATE'
                   AND resource_key NOT IN (""" + placeholders + ")",
                     args.toArray());
+        }
+        // 通知：同一缺口只在首次（last_notified_at 为空）通知一次，重复复查不重复打扰
+        var pending = jdbc.queryForList("""
+            SELECT id FROM print_kit_shortage
+            WHERE scope='ORDER' AND order_id=? AND status=0 AND last_notified_at IS NULL
+            """, orderId);
+        if (!pending.isEmpty()) {
+            try {
+                eventPublisher.fire("printing.kit.shortage", Map.of(
+                        "bizNo", String.valueOf(kit.get("orderNo")),
+                        "gapCount", String.valueOf(pending.size()),
+                        "orderId", String.valueOf(orderId)));
+                jdbc.update("""
+                    UPDATE print_kit_shortage SET last_notified_at=NOW(3), update_time=NOW(3)
+                    WHERE scope='ORDER' AND order_id=? AND status=0 AND last_notified_at IS NULL
+                    """, orderId);
+            } catch (Exception ignore) {
+                // 通知失败不影响齐套计算结果
+            }
         }
         return kit;
     }
