@@ -22,6 +22,10 @@ export interface KitResult {
   checks?: KitCheckItem[]
   items?: KitCheckItem[]
   gaps?: KitCheckItem[]
+  verified?: boolean
+  verificationMessage?: string | null
+  warnings?: string[]
+  materialsWarning?: string
   ok?: boolean
   materials?: Record<string, unknown> | null
 }

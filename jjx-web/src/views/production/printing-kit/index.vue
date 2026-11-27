@@ -24,8 +24,9 @@
         <el-alert
           :type="productKit.ok ? 'success' : 'warning'"
           :closable="false"
-          :title="productKit.ok ? '菲林版本均有可用网版' : `缺版 ${productKit.gaps?.length || 0} 项`"
+          :title="productKit.verified === false ? productKit.verificationMessage || '网版需求未核验' : productKit.ok ? '菲林版本均有可用网版' : `缺版 ${productKit.gaps?.length || 0} 项`"
         />
+        <el-alert v-for="warning in productKit.warnings || []" :key="warning" :title="warning" type="warning" :closable="false" />
         <el-table :data="productKit.items || []" size="small" border style="margin-top: 10px">
           <el-table-column label="菲林编号" prop="artworkNo" width="160" />
           <el-table-column label="名称" prop="artworkName" min-width="160" show-overflow-tooltip />
@@ -66,10 +67,13 @@
           <el-descriptions-item label="产品">{{ orderKit.productId || '-' }}</el-descriptions-item>
           <el-descriptions-item label="结论">
             <el-tag :type="orderKit.ok ? 'success' : 'warning'" size="small">
-              {{ orderKit.ok ? '网版齐套' : '缺版 ' + (orderKit.gaps?.length || 0) + ' 项' }}
+              {{ orderKit.verified === false ? '未核验' : orderKit.ok ? '网版齐套' : '缺版 ' + (orderKit.gaps?.length || 0) + ' 项' }}
             </el-tag>
           </el-descriptions-item>
         </el-descriptions>
+        <el-alert v-if="orderKit.verified === false" :title="orderKit.verificationMessage || '网版需求未核验'" type="warning" :closable="false" />
+        <el-alert v-for="warning in orderKit.warnings || []" :key="warning" :title="warning" type="warning" :closable="false" />
+        <el-alert v-if="orderKit.materialsWarning" :title="orderKit.materialsWarning" type="warning" :closable="false" />
         <el-table :data="orderKit.checks || []" size="small" border style="margin-top: 10px">
           <el-table-column label="工序" prop="processName" min-width="140" />
           <el-table-column label="菲林编号" prop="resourceCode" width="160" />
@@ -93,8 +97,8 @@
         <div class="card-head">
           <span>缺口台账</span>
           <el-radio-group v-model="statusFilter" size="small" @change="loadShortages">
-            <el-radio-button :value="0">待处理</el-radio-button>
-            <el-radio-button :value="1">已关闭</el-radio-button>
+            <el-radio-button :value="PrintKitShortageStatusEnum.OPEN.value">待处理</el-radio-button>
+            <el-radio-button :value="PrintKitShortageStatusEnum.CLOSED.value">已关闭</el-radio-button>
             <el-radio-button :value="undefined">全部</el-radio-button>
           </el-radio-group>
         </div>
@@ -112,15 +116,15 @@
         <el-table-column label="最近复查" prop="lastCheckAt" width="160" />
         <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.status === 0 ? 'warning' : 'info'" size="small">
-              {{ row.status === 0 ? '待处理' : '已关闭' }}
+            <el-tag :type="PrintKitShortageStatusEnum.getTagProps(row.status).type" size="small">
+              {{ PrintKitShortageStatusEnum.getLabel(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="170" align="center">
           <template #default="{ row }">
             <el-button
-              v-if="row.status === 0"
+              v-if="row.status === PrintKitShortageStatusEnum.OPEN.value"
               link
               type="primary"
               size="small"
@@ -129,7 +133,7 @@
               去制版
             </el-button>
             <el-button
-              v-if="row.status === 0"
+              v-if="row.status === PrintKitShortageStatusEnum.OPEN.value"
               link
               type="danger"
               size="small"
@@ -151,6 +155,7 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
+import { PrintKitShortageStatusEnum } from '@/enums/engineering/resource'
 import ProductSelector from '@/components/Selector/ProductSelector.vue'
 import {
   printingKitApi,
@@ -166,7 +171,7 @@ const productKit = ref<KitResult | null>(null)
 const orderId = ref<number>()
 const orderKit = ref<KitResult | null>(null)
 const shortages = ref<KitShortage[]>([])
-const statusFilter = ref<number | undefined>(0)
+const statusFilter = ref<number | undefined>(PrintKitShortageStatusEnum.OPEN.value)
 const loading = ref(false)
 const rechecking = ref(false)
 

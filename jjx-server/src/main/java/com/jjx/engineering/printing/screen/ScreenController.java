@@ -50,6 +50,12 @@ public class ScreenController {
         return Result.success(service.execute(true,id,"edit",command));
     }
 
+    @PutMapping("/frames/{id}/remark")
+    @SaCheckPermission("engineering:resource:edit")
+    public Result<Map<String,Object>> editFrameRemark(@PathVariable long id, @RequestBody ScreenCommands command) {
+        return Result.success(service.execute(true,id,"remark",command));
+    }
+
     @PostMapping("/frames/{id}/stretch")
     @SaCheckPermission("engineering:resource:maintain")
     public Result<Map<String,Object>> stretchFrame(@PathVariable long id, @RequestBody ScreenCommands command) {

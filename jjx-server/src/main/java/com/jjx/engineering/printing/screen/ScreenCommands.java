@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 public record ScreenCommands(String requestId, Integer expectedRevision, String frameNo, String frameType,
         String location, Integer mesh, BigDecimal tensionNcm, String material, Boolean qualified,
         Long frameId, Long stretchId, Long filmId, Long versionId, String plateNo, String position,
-        String inspection, String reason) {
+        String inspection, String reason, String remark) {
     @JsonAnySetter
     public void rejectUnknown(String name, Object value) {
         throw new IllegalArgumentException("未知命令字段 " + name);
@@ -28,5 +28,6 @@ public record ScreenCommands(String requestId, Integer expectedRevision, String 
         require(frameType == null || frameType.length() <= 30, "型号超长");
         require(material == null || material.length() <= 200, "材料超长");
         require(reason == null || reason.length() <= 500, "原因超长");
+        require(remark == null || remark.length() <= 500, "备注不能超过500字");
     }
 }

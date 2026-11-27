@@ -30,7 +30,7 @@ class ScreenRepository {
 
     Map<String,Object> frame(long id, boolean lock) {
         return one("""
-            select frame_id frameId,frame_no frameNo,frame_type frameType,location,status,revision
+            select frame_id frameId,frame_no frameNo,frame_type frameType,location,status,revision,remark
             from engineering_screen_frame where frame_id=? and v2_registered=1 and del_flag='0'
             """ + (lock ? " for update" : ""), id);
     }
@@ -79,15 +79,19 @@ class ScreenRepository {
         return result;
     }
 
-    /** 同一版本「可用网版」数：已放行、未洗版、网框未报废（唯一口径）。 */
-    int usablePlateCount(long versionId) {
-        Integer count = db.queryForObject("""
-            SELECT COUNT(*) FROM engineering_screen_plate p
+    /** 状态和身份条件在此过滤；工艺参数由 ScreenService 的统一规则判断。 */
+    List<Map<String,Object>> usablePlateCandidates(long versionId) {
+        return db.queryForList("""
+            SELECT p.position,s.mesh,s.tension_n_cm
+            FROM engineering_screen_plate p
+            JOIN print_artwork_version v ON v.version_id=p.version_id AND v.status='RELEASED'
             JOIN engineering_screen_frame f ON f.frame_id=p.frame_id
+            JOIN print_frame_stretch s ON s.stretch_id=p.stretch_id AND s.open_frame_id=f.frame_id
             WHERE p.version_id=? AND p.v2_registered=1 AND p.status='RELEASED'
-              AND p.washed_time IS NULL AND f.del_flag='0' AND f.status<>'SCRAPPED'
-            """, Integer.class, versionId);
-        return count == null ? 0 : count;
+              AND p.washed_time IS NULL AND p.occupied_frame_id=f.frame_id
+              AND f.del_flag='0' AND f.v2_registered=1 AND f.status='READY'
+              AND s.qualified=1 AND s.end_time IS NULL
+            """, versionId);
     }
 
     boolean occupied(long frame) {

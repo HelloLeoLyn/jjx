@@ -398,17 +398,12 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
         if ("PRINT".equals(execution.getMajorCategory())) {
             var plan = printUseService.requirePlan(order.getWorkSpecVersionId(), execution.getRoutingItemId());
-            if (plan != null) {
-                Long usePlate = plateId != null ? plateId : plan.defaultPlateId();
-                if (usePlate == null) throw new BusinessException("印刷工序需先选择实体网版再开工");
-                printUseService.start(new com.jjx.production.printing.PrintUseCommands(
-                        "exec-start-" + executionId + "-" + System.currentTimeMillis(),
-                        executionId, usePlate, plan.artworkVersionId(),
-                        order.getWorkSpecVersionId(), execution.getRoutingItemId(), null));
-            } else {
-                // 旧工单无冻结印刷要求时保留原网框校验，避免历史产线无法开工
-                validatePrintFrame(execution);
-            }
+            Long usePlate = plateId != null ? plateId : plan.defaultPlateId();
+            if (usePlate == null) throw new BusinessException("印刷工序需先选择实体网版再开工");
+            printUseService.start(new com.jjx.production.printing.PrintUseCommands(
+                    "exec-start-" + executionId + "-" + System.currentTimeMillis(),
+                    executionId, usePlate, plan.artworkVersionId(),
+                    order.getWorkSpecVersionId(), execution.getRoutingItemId(), null));
         }
 
         bindStartEquipment(execution, equipmentId, scannedDeviceCode, confirmEquipmentChange);

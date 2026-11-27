@@ -24,6 +24,7 @@ import java.util.Map;
 public class PrintKitService {
 
     private final JdbcTemplate jdbc;
+    private final com.fasterxml.jackson.databind.ObjectMapper json;
     private final ScreenService screenService;
     private final com.jjx.inventory.service.InventoryAlertService alertService;
     private final com.jjx.event.EventPublisher eventPublisher;
@@ -56,7 +57,10 @@ public class PrintKitService {
         result.put("productId", productId);
         result.put("items", items);
         result.put("gaps", gaps);
-        result.put("ok", gaps.isEmpty());
+        result.put("verified", !items.isEmpty());
+        result.put("verificationMessage", items.isEmpty() ? "尚未关联菲林版本，网版需求未核验" : null);
+        result.put("warnings", dieWarnings(productId));
+        result.put("ok", !items.isEmpty() && gaps.isEmpty());
         return result;
     }
 
@@ -73,35 +77,42 @@ public class PrintKitService {
 
         List<Map<String, Object>> checks = new ArrayList<>();
         List<Map<String, Object>> gaps = new ArrayList<>();
+        boolean verified = false;
         if (specVersionId != null) {
-            var rows = jdbc.queryForList("""
-                SELECT j.routingItemId AS routingItemId, j.artworkVersionId AS artworkVersionId,
-                       j.processName AS processName, j.artworkNo AS artworkNo, j.artworkVersionNo AS artworkVersionNo
-                FROM product_work_spec_item i,
-                     JSON_TABLE(i.snapshot_json, '$.printingItems[*]' COLUMNS (
-                         routingItemId BIGINT PATH '$.routingItemId',
-                         artworkVersionId BIGINT PATH '$.artworkVersionId',
-                         processName VARCHAR(100) PATH '$.processName',
-                         artworkNo VARCHAR(64) PATH '$.artworkNo',
-                         artworkVersionNo VARCHAR(32) PATH '$.artworkVersionNo')) j
-                WHERE i.spec_version_id=?
+            var snapshots = jdbc.queryForList("""
+                SELECT snapshot_json FROM product_work_spec_item
+                WHERE spec_version_id=? AND resource_type='DOCSET_JSON'
                 """, specVersionId);
-            for (var row : rows) {
-                long versionId = row.get("artworkVersionId") == null ? 0 : ((Number) row.get("artworkVersionId")).longValue();
-                int usable = versionId > 0 ? screenService.countUsablePlate(versionId) : 0;
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("resourceType", "SCREEN_PLATE");
-                item.put("routingItemId", row.get("routingItemId"));
-                item.put("processName", row.get("processName"));
-                item.put("resourceKey", String.valueOf(versionId));
-                item.put("resourceCode", row.get("artworkNo"));
-                item.put("resourceName", row.get("artworkVersionNo"));
-                item.put("need", 1);
-                item.put("available", usable);
-                item.put("gap", usable > 0 ? 0 : 1);
-                item.put("unit", "张");
-                checks.add(item);
-                if (usable == 0) gaps.add(item);
+            if (snapshots.size() == 1) {
+                try {
+                    var snapshot = json.readTree(String.valueOf(snapshots.getFirst().get("snapshot_json")));
+                    var printing = snapshot == null ? null : snapshot.get("printingItems");
+                    verified = printing != null && printing.isArray();
+                    if (verified) for (var row : printing) {
+                        long versionId = row.path("artworkVersionId").asLong();
+                        long routingItemId = row.path("routingItemId").asLong();
+                        if (versionId <= 0 || routingItemId <= 0 || !row.path("requirements").isObject()) {
+                            verified = false;
+                            continue;
+                        }
+                        int usable = screenService.countUsablePlate(versionId, row.get("requirements").toString());
+                        Map<String, Object> item = new LinkedHashMap<>();
+                        item.put("resourceType", "SCREEN_PLATE");
+                        item.put("routingItemId", routingItemId);
+                        item.put("processName", row.path("processName").asText(""));
+                        item.put("resourceKey", String.valueOf(versionId));
+                        item.put("resourceCode", row.path("artworkNo").asText(""));
+                        item.put("resourceName", row.path("artworkVersionNo").asText(""));
+                        item.put("need", 1);
+                        item.put("available", usable);
+                        item.put("gap", usable > 0 ? 0 : 1);
+                        item.put("unit", "张");
+                        checks.add(item);
+                        if (usable == 0) gaps.add(item);
+                    }
+                } catch (com.fasterxml.jackson.core.JsonProcessingException | BusinessException error) {
+                    verified = false;
+                }
             }
         }
         Map<String, Object> result = new LinkedHashMap<>();
@@ -110,13 +121,29 @@ public class PrintKitService {
         result.put("productId", order.get("productId"));
         result.put("checks", checks);
         result.put("gaps", gaps);
-        result.put("ok", gaps.isEmpty());
+        result.put("verified", verified);
+        result.put("verificationMessage", verified ? null : "规范印刷快照缺失或不完整，网版需求未核验");
+        result.put("warnings", dieWarnings(((Number) order.get("productId")).longValue()));
+        result.put("ok", verified && gaps.isEmpty());
         try {
             result.put("materials", alertService.previewOrderShortage(orderId));
-        } catch (Exception ignore) {
+        } catch (Exception error) {
             result.put("materials", null);
+            result.put("materialsWarning", "物料预检失败，物料齐套未核验");
         }
         return result;
+    }
+
+    /** 刀模只提供产品关联资料提示，不把未关联直接认定为必需刀模缺失。 */
+    private List<String> dieWarnings(long productId) {
+        var dies = jdbc.queryForList("""
+            SELECT d.die_no,d.status FROM engineering_resource_product_rel r
+            JOIN engineering_die d ON d.die_id=r.resource_id AND d.del_flag='0'
+            WHERE r.resource_type='DIE' AND r.product_id=? AND r.is_active=1 ORDER BY d.die_no
+            """, productId);
+        if (dies.isEmpty()) return List.of("尚未关联刀模，请核实该产品是否需要刀模；此提示不拦截网版齐套");
+        return dies.stream().filter(die -> !"AVAILABLE".equals(die.get("status")))
+                .map(die -> "刀模 " + die.get("die_no") + " 当前不可用，请核实；此提示不拦截网版齐套").toList();
     }
 
     /** 复查：重算并同步缺口台账（仍缺保留、满足关闭）。 */
@@ -124,12 +151,14 @@ public class PrintKitService {
     @SuppressWarnings("unchecked")
     public Map<String, Object> recheck(long orderId) {
         Map<String, Object> kit = orderKit(orderId);
+        if (!Boolean.TRUE.equals(kit.get("verified")))
+            throw new BusinessException(422, "规范印刷资料未核验，不能更新或关闭缺口台账");
         String operator = SecurityUtils.getUsername();
         List<Map<String, Object>> gaps = (List<Map<String, Object>>) kit.getOrDefault("gaps", List.of());
         List<String> keys = new ArrayList<>();
         for (var gap : gaps) {
             String resourceKey = String.valueOf(gap.get("resourceKey"));
-            keys.add(resourceKey);
+            keys.add(gap.get("routingItemId") + ":" + resourceKey);
             jdbc.update("""
                 INSERT INTO print_kit_shortage(scope, order_id, product_id, routing_item_id, process_name,
                        resource_type, resource_key, resource_code, resource_name, need_qty, available_qty, gap_qty,
@@ -158,7 +187,7 @@ public class PrintKitService {
                 UPDATE print_kit_shortage SET status=1, closed_reason='复查已满足', closed_by=?, closed_at=NOW(3),
                        last_check_at=NOW(3), update_time=NOW(3)
                 WHERE scope='ORDER' AND order_id=? AND status=0 AND resource_type='SCREEN_PLATE'
-                  AND resource_key NOT IN (""" + placeholders + ")",
+                  AND CONCAT(routing_item_id,':',resource_key) NOT IN (""" + placeholders + ")",
                     args.toArray());
         }
         // 通知：同一缺口只在首次（last_notified_at 为空）通知一次，重复复查不重复打扰

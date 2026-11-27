@@ -31,9 +31,10 @@
         <el-table-column prop="plateNo" label="当前版面" width="150" />
         <el-table-column prop="location" label="位置" min-width="130" />
         <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip />
-        <el-table-column label="操作" width="280" fixed="right" align="center">
+        <el-table-column label="操作" width="350" fixed="right" align="center">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="openDetail(row)">详情</el-button>
+            <el-button v-hasPermi="['engineering:resource:edit']" link type="primary" size="small" @click="openRemark(row)">编辑备注</el-button>
             <el-button link type="primary" size="small" @click="openStretch(row)">绷网</el-button>
             <el-button link type="success" size="small" @click="openPlate(row)">制版</el-button>
             <el-button link type="warning" size="small" @click="wash(row)">洗版</el-button>
@@ -96,6 +97,19 @@
       </div>
     </el-drawer>
 
+    <el-dialog v-model="remarkVisible" title="编辑网框备注" width="520px" append-to-body>
+      <el-form label-width="80px">
+        <el-form-item label="网框">{{ remarkForm.frameNo }}</el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="remarkForm.remark" type="textarea" :rows="4" maxlength="500" show-word-limit placeholder="存放或使用注意事项，可留空" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="remarkVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="saveRemark">保存</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="stretchVisible" title="绷网 / 重绷" width="520px" append-to-body>
       <el-form label-width="100px">
         <el-form-item label="目数"><el-input-number v-model="stretchForm.mesh" :min="1" :precision="0" /></el-form-item>
@@ -136,6 +150,8 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh } from '@element-plus/icons-vue'
+import { ScreenFrameStatusEnum } from '@/enums/engineering/resource'
+import { FilmCopyStatusEnum } from '@/enums/product/film'
 import { engineeringResourceApi } from '@/api/engineering/resource'
 import { printingArtworkApi } from '@/api/product/film'
 import PrintResourceSelector from '@/components/Selector/PrintResourceSelector.vue'
@@ -143,11 +159,7 @@ import type { PrintSearchRow } from '@/api/engineering/printingSearch'
 
 defineOptions({ name: 'PrintResources' })
 
-const statusOptions = [
-  { value: 'READY', label: '可用' },
-  { value: 'MAINTENANCE', label: '维护中' },
-  { value: 'SCRAPPED', label: '已报废' },
-]
+const statusOptions = [ScreenFrameStatusEnum.READY, ScreenFrameStatusEnum.MAINTENANCE, ScreenFrameStatusEnum.SCRAPPED]
 
 const query = reactive({ keyword: '', status: '' })
 const rows = ref<any[]>([])
@@ -167,20 +179,41 @@ const plateForm = reactive<any>({ plateNo: '', position: '', filmId: undefined }
 const picked = ref<PrintSearchRow | null>(null)
 const filmOptions = ref<any[]>([])
 
+const remarkVisible = ref(false)
+const remarkForm = reactive({ frameId: 0, frameNo: '', revision: 0, remark: '' })
+let remarkRequestId = ''
+
+async function openRemark(row: any) {
+  try {
+    const res: any = await engineeringResourceApi.getPrintFrame(row.frameId)
+    const frame = res.data
+    Object.assign(remarkForm, { frameId: frame.frameId, frameNo: frame.frameNo,
+      revision: frame.revision, remark: frame.remark || '' })
+    remarkRequestId = newRequestId()
+    remarkVisible.value = true
+  } catch { /* 拦截器已提示 */ }
+}
+
+async function saveRemark() {
+  if (submitting.value) return
+  submitting.value = true
+  try {
+    await engineeringResourceApi.editPrintFrameRemark(remarkForm.frameId, {
+      requestId: remarkRequestId,
+      expectedRevision: remarkForm.revision,
+      remark: remarkForm.remark,
+    })
+    ElMessage.success('网框备注已保存')
+    remarkVisible.value = false
+    await load()
+  } catch { /* 失败保留输入和原 revision，不静默覆盖并发修改 */ }
+  finally { submitting.value = false }
+}
+
 let currentFrame: any = null
 
-function statusLabel(status?: string) {
-  if (status === 'READY') return '可用'
-  if (status === 'MAINTENANCE') return '维护中'
-  if (status === 'SCRAPPED') return '已报废'
-  return status || '-'
-}
-function statusTag(status?: string) {
-  if (status === 'READY') return 'success'
-  if (status === 'MAINTENANCE') return 'warning'
-  if (status === 'SCRAPPED') return 'danger'
-  return 'info'
-}
+function statusLabel(status?: string) { return ScreenFrameStatusEnum.getLabel(status || '') || status || '-' }
+function statusTag(status?: string) { return ScreenFrameStatusEnum.getTagProps(status || '').type }
 function newRequestId() {
   return 'm1-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
 }
@@ -299,7 +332,7 @@ async function onPickVersion(item: PrintSearchRow) {
   }
   picked.value = item
   const res: any = await printingArtworkApi.detail(Number(item.artworkId))
-  const films = (res?.data?.films || []).filter((f: any) => f.status === 'AVAILABLE')
+  const films = (res?.data?.films || []).filter((f: any) => f.status === FilmCopyStatusEnum.AVAILABLE.value)
   filmOptions.value = films
   plateForm.filmId = films.length === 1 ? films[0].filmId : undefined
 }

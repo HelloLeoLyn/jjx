@@ -24,27 +24,51 @@ public class PrintUseService {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
+    private final com.jjx.engineering.printing.artwork.ArtworkService artworkService;
+    private final com.jjx.engineering.printing.screen.ScreenService screenService;
 
-    /** 工单固定印刷要求（来自规范快照 printingItems）；无快照返回 null。 */
-    public record Plan(Long artworkVersionId, Long defaultPlateId) {}
+    /** 只读取规范明细中的冻结要求；资料缺失不能回退当前路线或旧网框参数。 */
+    public record Plan(Long artworkVersionId, Long defaultPlateId, String requirements) {}
 
     @Transactional(readOnly = true)
     public Plan requirePlan(Long specVersionId, Long routingItemId) {
-        if (specVersionId == null || routingItemId == null) return null;
+        if (specVersionId == null || routingItemId == null)
+            throw new BusinessException(422, "印刷工序缺少绑定规范或工序行，不能开工");
         var rows = jdbc.queryForList("""
-            SELECT j.artworkVersionId, j.defaultPlateId
-            FROM product_work_spec_item i,
-                 JSON_TABLE(i.snapshot_json, '$.printingItems[*]' COLUMNS (
-                     routingItemId BIGINT PATH '$.routingItemId',
-                     artworkVersionId BIGINT PATH '$.artworkVersionId',
-                     defaultPlateId BIGINT PATH '$.defaultPlateId')) j
-            WHERE i.spec_version_id=? AND j.routingItemId=? LIMIT 1
-            """, specVersionId, routingItemId);
-        if (rows.isEmpty()) return null;
-        var row = rows.get(0);
-        Long versionId = row.get("artworkVersionId") == null ? null : ((Number) row.get("artworkVersionId")).longValue();
-        Long plateId = row.get("defaultPlateId") == null ? null : ((Number) row.get("defaultPlateId")).longValue();
-        return new Plan(versionId, plateId);
+            SELECT snapshot_json FROM product_work_spec_item
+            WHERE spec_version_id=? AND resource_type='DOCSET_JSON'
+            """, specVersionId);
+        if (rows.size() != 1) throw new BusinessException(422, "规范印刷快照缺失或不唯一，不能开工");
+        try {
+            var snapshot = json.readTree(String.valueOf(rows.getFirst().get("snapshot_json")));
+            if (snapshot == null || !snapshot.path("printingItems").isArray())
+                throw new BusinessException(422, "规范缺少冻结印刷要求，不能开工");
+            Plan plan = null;
+            for (var row : snapshot.path("printingItems")) {
+                if (row.path("routingItemId").asLong() != routingItemId) continue;
+                if (plan != null || row.path("artworkVersionId").asLong() <= 0 || !row.path("requirements").isObject())
+                    throw new BusinessException(422, "规范印刷要求不完整或工序行重复，不能开工");
+                plan = new Plan(row.path("artworkVersionId").longValue(),
+                        row.hasNonNull("defaultPlateId") ? row.get("defaultPlateId").longValue() : null,
+                        row.get("requirements").toString());
+            }
+            if (plan == null) throw new BusinessException(422, "规范未包含该印刷工序，不能开工");
+            return plan;
+        } catch (com.fasterxml.jackson.core.JsonProcessingException error) {
+            throw new BusinessException(422, "规范印刷快照格式异常，不能开工");
+        }
+    }
+
+    private Map<String,Object> executionIdentity(long executionId, boolean lock) {
+        var rows = jdbc.queryForList("""
+            SELECT e.execution_id,e.routing_item_id,e.major_category,o.work_spec_version_id
+            FROM production_operation_execution e JOIN production_order o ON o.order_id=e.order_id
+            WHERE e.execution_id=?
+            """ + (lock ? " FOR UPDATE" : ""), executionId);
+        if (rows.size()!=1) throw new BusinessException(404, "印刷工序执行不存在");
+        var row=rows.getFirst();
+        if (!"PRINT".equals(row.get("major_category"))) throw new BusinessException(422, "该工序不是印刷工序");
+        return row;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -53,23 +77,20 @@ public class PrintUseService {
         String operator = SecurityUtils.getUsername();
         if (operator == null || operator.isBlank()) throw new BusinessException(403, "无法确认当前操作人");
 
-        var plates = jdbc.queryForList("""
-            SELECT plate_id, frame_id, version_id, status, washed_time
-            FROM engineering_screen_plate WHERE plate_id=? AND v2_registered=1 FOR UPDATE
-            """, c.plateId());
-        if (plates.isEmpty()) throw new BusinessException(404, "网版不存在");
-        var plate = plates.get(0);
-        if (!"RELEASED".equals(String.valueOf(plate.get("status"))))
-            throw new BusinessException(422, "网版未放行，不能开工使用");
-        if (plate.get("washed_time") != null) throw new BusinessException(409, "网版已洗版，不能使用");
-
-        long plateVersion = ((Number) plate.get("version_id")).longValue();
-        if (c.versionId() != null && plateVersion != c.versionId())
-            throw new BusinessException(422, "网版图案版本与工单要求不一致");
-
-        var frames = jdbc.queryForList("SELECT status FROM engineering_screen_frame WHERE frame_id=?", plate.get("frame_id"));
-        if (!frames.isEmpty() && "SCRAPPED".equals(String.valueOf(frames.get(0).get("status"))))
-            throw new BusinessException(409, "网框已报废，不能使用");
+        var identity = executionIdentity(c.executionId(), false);
+        Long specId = identity.get("work_spec_version_id") == null ? null : ((Number) identity.get("work_spec_version_id")).longValue();
+        Long routingId = identity.get("routing_item_id") == null ? null : ((Number) identity.get("routing_item_id")).longValue();
+        var plan = requirePlan(specId, routingId);
+        if ((c.specVersionId()!=null && !c.specVersionId().equals(specId))
+                || (c.routingItemId()!=null && !c.routingItemId().equals(routingId))
+                || (c.versionId()!=null && !c.versionId().equals(plan.artworkVersionId())))
+            throw new BusinessException(422, "用版指令与工单绑定的规范印刷要求不一致");
+        long plateVersion = plan.artworkVersionId();
+        // 版本→框→版→执行；参数复核在写用版段之前，备用版不修改已发布规范。
+        artworkService.requireUsableVersion(plateVersion);
+        screenService.requireUsablePlate(plateVersion, c.plateId(), plan.requirements());
+        if (!identity.equals(executionIdentity(c.executionId(), true)))
+            throw new BusinessException(409, "工单印刷要求已变化，请刷新");
 
         // 同一工序换版：关闭旧段，不覆盖历史
         jdbc.update("""
@@ -80,8 +101,8 @@ public class PrintUseService {
 
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("executionId", c.executionId());
-        snapshot.put("specVersionId", c.specVersionId());
-        snapshot.put("routingItemId", c.routingItemId());
+        snapshot.put("specVersionId", specId);
+        snapshot.put("routingItemId", routingId);
         snapshot.put("versionId", plateVersion);
         snapshot.put("plateId", c.plateId());
         snapshot.put("operator", operator);
@@ -91,7 +112,7 @@ public class PrintUseService {
                 INSERT INTO print_use_segment(execution_id,spec_version_id,routing_item_id,version_id,plate_id,
                        start_time,operator_id,operator_name,reason,request_id,snapshot,create_by,create_time)
                 VALUES(?,?,?,?,?,NOW(3),?,?,?,?,?,?,NOW(3))
-                """, c.executionId(), c.specVersionId(), c.routingItemId(), plateVersion, c.plateId(),
+                """, c.executionId(), specId, routingId, plateVersion, c.plateId(),
                     operator, operator, c.reason(), c.requestId(), json.writeValueAsString(snapshot), operator);
         } catch (DuplicateKeyException e) {
             throw new BusinessException(409, "该网版或工序已有进行中的用版记录");

@@ -52,13 +52,35 @@ public class ScreenService {
         }
     }
 
-    /** 调用方先持有图案版本锁，再按版本→框→版顺序锁定；不把默认版写成实际用版。 */
-    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
-    /** 同版本可用网版数（齐套与开工共用口径）。 */
+    /** 齐套检查复用实际用版的工艺参数口径，可由同版本合格备用版满足。 */
+    @Transactional(readOnly = true)
     public int countUsablePlate(long versionId) {
-        return repo.usablePlateCount(versionId);
+        return countUsablePlate(versionId, null);
     }
 
+    @Transactional(readOnly = true)
+    public int countUsablePlate(long versionId, String requirements) {
+        var required = validateRequirements(requirements);
+        return (int) repo.usablePlateCandidates(versionId).stream()
+                .filter(row -> matchesRequirements(required, row.get("position"), row.get("mesh"), row.get("tension_n_cm")))
+                .count();
+    }
+
+    private boolean matchesRequirements(com.fasterxml.jackson.databind.JsonNode required,
+                                        Object position, Object mesh, Object tension) {
+        if (required.has("position") && !required.path("position").asText().equals(position)) return false;
+        for (String prefix : List.of("mesh", "tension")) {
+            Object value = prefix.equals("mesh") ? mesh : tension;
+            if (value == null) return false;
+            var actual = new java.math.BigDecimal(value.toString());
+            if (required.has(prefix + "Min") && actual.compareTo(required.get(prefix + "Min").decimalValue()) < 0) return false;
+            if (required.has(prefix + "Max") && actual.compareTo(required.get(prefix + "Max").decimalValue()) > 0) return false;
+        }
+        return true;
+    }
+
+    /** 调用方先持有图案版本锁，再按版本→框→版顺序锁定。 */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void requireUsablePlate(long versionId, long plateId, String requirements) {
         var required = validateRequirements(requirements);
         var locked=lockPlateIdentity(versionId,plateId);
@@ -69,12 +91,8 @@ public class ScreenService {
                 plate.get("stretchId"), plate.get("frameId"));
         conflict(!Boolean.TRUE.equals(stretch.get("qualified")) && !Integer.valueOf(1).equals(stretch.get("qualified")), "默认网版的绷网未合格");
         conflict(stretch.get("end_time") != null, "默认网版的绷网已结束");
-        if (required.has("position")) conflict(!required.path("position").asText().equals(plate.get("position")), "默认网版位置不符");
-        for (String prefix : java.util.List.of("mesh", "tension")) {
-            var actual = new java.math.BigDecimal(stretch.get(prefix.equals("mesh") ? "mesh" : "tension_n_cm").toString());
-            if (required.has(prefix + "Min")) conflict(actual.compareTo(required.get(prefix + "Min").decimalValue()) < 0, "默认网版参数低于要求");
-            if (required.has(prefix + "Max")) conflict(actual.compareTo(required.get(prefix + "Max").decimalValue()) > 0, "默认网版参数高于要求");
-        }
+        conflict(!matchesRequirements(required, plate.get("position"), stretch.get("mesh"), stretch.get("tension_n_cm")),
+                "网版位置或工艺参数不符合要求");
     }
 
     /** 历史引用/幂等重放只锁身份，不把历史资源当前状态当成新领用条件。 */
@@ -182,6 +200,7 @@ public class ScreenService {
 
     private Change changeFrame(long id,String action,ScreenCommands c,String operator) {
         String before = null;
+        String description = c.reason();
         if (action.equals("create")) {
             checkRevision(c,0);
             required(c.frameNo(),50,"框号");
@@ -197,6 +216,13 @@ public class ScreenService {
             conflict(before.equals("SCRAPPED"),"网框已报废");
             String after = before;
             switch (action) {
+                case "remark" -> {
+                    var audit = json.createObjectNode();
+                    audit.set("beforeRemark", json.valueToTree(row.get("remark")));
+                    audit.set("afterRemark", json.valueToTree(c.remark()));
+                    description = audit.toString();
+                    repo.db.update("update engineering_screen_frame set remark=? where frame_id=?", c.remark(), id);
+                }
                 case "edit" -> {
                     required(c.frameNo(),50,"框号");
                     repo.db.update("update engineering_screen_frame set frame_no=?,frame_type=?,location=? where frame_id=?",
@@ -239,7 +265,7 @@ public class ScreenService {
         var active=repo.db.queryForList("select plate_id from engineering_screen_plate where occupied_frame_id=?",Long.class,id);
         result.put("stretchId",stretch.isEmpty()?null:stretch.getFirst());
         result.put("plateId",active.isEmpty()?null:active.getFirst());
-        return new Change(id,before,c.reason(),result);
+        return new Change(id,before,description,result);
     }
 
     private Change changePlate(long id,String action,ScreenCommands c,String operator) {

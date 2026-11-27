@@ -40,6 +40,8 @@ export const engineeringResourceApi = {
   getPrintFrame: (id: number) => request.get(`/engineering/printing/frames/${id}`),
   createPrintFrame: (data: any) => request.post('/engineering/printing/frames', data),
   editPrintFrame: (id: number, data: any) => request.put(`/engineering/printing/frames/${id}`, data),
+  editPrintFrameRemark: (id: number, data: { requestId: string; expectedRevision: number; remark: string }) =>
+    request.put(`/engineering/printing/frames/${id}/remark`, data),
   stretchPrintFrame: (id: number, data: any) => request.post(`/engineering/printing/frames/${id}/stretch`, data),
   maintainPrintFrame: (id: number, data: any) => request.post(`/engineering/printing/frames/${id}/maintain`, data),
   resumePrintFrame: (id: number, data: any) => request.post(`/engineering/printing/frames/${id}/resume`, data),

@@ -5,6 +5,7 @@ export interface ScreenFrame {
   frameNo: string
   frameType?: string
   mesh?: number
+  remark?: string
   location?: string
   status?: string
   revision?: number
@@ -58,6 +59,7 @@ export interface ScreenCommand {
   expectedRevision: number
   frameNo?: string
   frameType?: string
+  remark?: string
   location?: string
   mesh?: number
   tensionNcm?: number
