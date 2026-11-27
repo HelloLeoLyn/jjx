@@ -816,6 +816,27 @@
         >
       </template>
     </el-dialog>
+
+    <!-- P10：印刷工序开工选实体网版（dev-20261125-017） -->
+    <el-dialog v-model="plateDialogVisible" title="选择实体网版" width="720px" append-to-body>
+      <div class="plate-tip">印刷工序必须选择一张已放行、未洗版的实体网版，且图案版本须与工单要求一致。</div>
+      <PrintResourceSelector
+        v-model="pickedPlate"
+        size="small"
+        placeholder="按图案 / 版本 / 网版号搜索"
+        @select="onPickPlate"
+      />
+      <div v-if="pickedPlate" class="plate-tip">
+        已选：{{ pickedPlate.plateNo || '-' }} / 框 {{ pickedPlate.frameNo || '-' }} /
+        {{ pickedPlate.artworkNo || '' }} {{ pickedPlate.versionNo || '' }}
+      </div>
+      <template #footer>
+        <el-button @click="plateDialogVisible = false">取消</el-button>
+        <el-button type="primary" :disabled="!pickedPlate?.plateId" @click="confirmPlateAndStart">
+          开始工序
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -824,6 +845,8 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { operationExecutionApi } from '@/api/production/operationExecution'
+import PrintResourceSelector from '@/components/Selector/PrintResourceSelector.vue'
+import type { PrintSearchRow } from '@/api/engineering/printingSearch'
 import { getEquipmentList, type ProductionEquipment } from '@/api/production/equipment'
 import {
   cancelWorkReport,
@@ -1126,6 +1149,53 @@ const canStartTaskRow = (row: AllTaskRow) =>
   !!row.executionId &&
   (Number(row.executionStatus) === ExecutionStatusEnum.PENDING.value ||
     Number(row.executionStatus) === ExecutionStatusEnum.PAUSED.value)
+/** P10：印刷工序开工前必须先选实体网版 */
+const plateDialogVisible = ref(false)
+const pickedPlate = ref<PrintSearchRow | null>(null)
+let pendingStart: {
+  executionId: number
+  label: string
+  equipmentId?: number
+  confirmEquipmentChange: boolean
+} | null = null
+
+function onPickPlate(item: PrintSearchRow) {
+  if (!item?.plateId) {
+    ElMessage.warning('请选择带实体网版的候选（图案/图纸候选不能用于开工）')
+    return
+  }
+  pickedPlate.value = item
+}
+
+async function doStart(
+  executionId: number,
+  plateId: number | undefined,
+  equipmentId: number | undefined,
+  confirmChange: boolean,
+  label: string
+) {
+  try {
+    await operationExecutionApi.start(executionId, {
+      plateId,
+      equipmentId: equipmentId ?? undefined,
+      confirmEquipmentChange: confirmChange,
+    })
+    ElMessage.success(`已开始：${label}，现在可以报工了`)
+    await getList()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '开始工序失败')
+  }
+}
+
+async function confirmPlateAndStart() {
+  const plateId = Number(pickedPlate.value?.plateId || 0)
+  if (!plateId || !pendingStart) return
+  const task = pendingStart
+  pendingStart = null
+  plateDialogVisible.value = false
+  await doStart(task.executionId, plateId, task.equipmentId, task.confirmEquipmentChange, task.label)
+}
+
 const handleTaskStart = async (row: AllTaskRow) => {
   const executionId = Number(row.executionId)
   if (!executionId) return
@@ -1140,16 +1210,14 @@ const handleTaskStart = async (row: AllTaskRow) => {
   const choice = await chooseStartEquipment(currentEquipmentId)
   if (choice.kind === 'cancel') return
   const equipmentId = choice.equipmentId
-  try {
-    await operationExecutionApi.start(executionId, {
-      equipmentId: equipmentId ?? undefined,
-      confirmEquipmentChange: !!currentEquipmentId && equipmentId !== currentEquipmentId,
-    })
-    ElMessage.success(`已开始：${label}，现在可以报工了`)
-    await getList()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '开始工序失败')
+  const confirmChange = !!currentEquipmentId && equipmentId !== currentEquipmentId
+  if (String((row as any).majorCategory || '') === 'PRINT') {
+    pendingStart = { executionId, label, equipmentId: equipmentId ?? undefined, confirmEquipmentChange: confirmChange }
+    pickedPlate.value = null
+    plateDialogVisible.value = true
+    return
   }
+  await doStart(executionId, undefined, equipmentId ?? undefined, confirmChange, label)
 }
 const handleQuery = () => {
   if (selectedScope.value === 'all') allQueryParams.pageNum = 1

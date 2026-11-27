@@ -77,6 +77,8 @@ export const operationExecutionApi = {
     equipmentId?: number
     deviceCode?: string
     confirmEquipmentChange?: boolean
+    /** P10：印刷工序实际使用的实体网版 */
+    plateId?: number
   }) {
     return request.put<R<boolean>>(`/production/operation-execution/${executionId}/start`, null, {
       params: options,
