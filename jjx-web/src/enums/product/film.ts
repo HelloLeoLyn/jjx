@@ -67,9 +67,11 @@ export const ArtworkVersionStatusEnum = createNamedEnum(
   { type: 'info' },
 )
 
-/** 实体底片状态（print_film_copy.status，P03 后端既定状态） */
+/** 菲林片需求与实物状态（print_film_copy.status，P03 后端既定状态） */
 export const FilmCopyStatusEnum = createNamedEnum(
   {
+    REQUESTED: { value: 'REQUESTED', label: '待出片', tagProps: { type: 'warning' } },
+    SENT: { value: 'SENT', label: '已发出', tagProps: { type: 'primary' } },
     AVAILABLE: { value: 'AVAILABLE', label: '可用', tagProps: { type: 'success' } },
     ARCHIVED: { value: 'ARCHIVED', label: '已封存', tagProps: { type: 'info' } },
     DESTROYED: { value: 'DESTROYED', label: '已销毁', tagProps: { type: 'danger' } },

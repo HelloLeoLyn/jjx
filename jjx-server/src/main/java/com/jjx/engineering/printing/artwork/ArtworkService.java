@@ -26,6 +26,8 @@ public class ArtworkService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
     private final AttachmentRefService attachments;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.jjx.framework.common.RedisSequenceService filmNumbers;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void requireUsableVersion(long versionId) {
@@ -41,7 +43,7 @@ public class ArtworkService {
         if (user == null || user.isBlank()) throw new BusinessException(403,"无法确认当前操作人");
         String type = switch(action) {
             case "createArtwork","editArtwork" -> "ARTWORK";
-            case "output","archive","destroy" -> "FILM_COPY";
+            case "requestFilms","sendFilm","receiveFilm","archive","destroy" -> "FILM_COPY";
             default -> "ARTWORK_VERSION";
         };
         if (action.equals("activate") && Boolean.TRUE.equals(c.disablePrevious()))
@@ -59,7 +61,7 @@ public class ArtworkService {
             var result = switch (action) {
                 case "createArtwork","editArtwork" -> artwork(target,c,user);
                 case "createVersion","editVersion" -> draft(action,target,c,user);
-                case "output","archive","destroy" -> film(action,target,c,user);
+                case "requestFilms","sendFilm","receiveFilm","archive","destroy" -> film(action,target,c,user);
                 default -> transition(action,target,c,user);
             };
             String key = switch(type) {
@@ -271,21 +273,51 @@ public class ArtworkService {
     }
 
     private Map<String,Object> film(String action,long id,ArtworkCommands c,String user) {
-        if(action.equals("output")) {
+        if(action.equals("requestFilms")) {
             var v=lockVersion(id);
             revision(c,(int)v.get("lock_version"));
-            check("RELEASED".equals(v.get("status")),"仅已发布可用版本可输出底片");
-            required(c.filmNo(),64,"底片编号");
-            required(c.material(),200,"材质");
-            required(c.size(),100,"尺寸");
-            check(c.location()==null || c.location().length()<=200,"位置超长");
-            check(c.thicknessMm()!=null && c.thicknessMm().signum()>0 && c.thicknessMm().scale()<=3
-                && c.thicknessMm().compareTo(new java.math.BigDecimal("10000000"))<0,"厚度无效");
-            jdbc.update("""
-                insert into print_film_copy(film_no,version_id,location,status,material,thickness_mm,size,output_time,create_by,create_time)
-                values (?,?,?,'AVAILABLE',?,?,?,now(3),?,now(3))
-                """,c.filmNo(),id,c.location(),c.material(),c.thicknessMm(),c.size(),user);
-            return Map.of("filmId",inserted(),"versionId",id,"status","AVAILABLE","revision",0);
+            check("RELEASED".equals(v.get("status")),"仅已发布可用菲林版本可新建需求");
+            validateFilmSpecs(c);
+            check(c.quantity()!=null && c.quantity()>0 && c.quantity()<=500,"需求张数须为1至500的整数");
+            check(c.dueDate()!=null,"请填写回片日期");
+            List<Long> ids=new ArrayList<>();
+            for(int i=0;i<c.quantity();i++) {
+                String number=filmNumbers.generateBusinessNumberByType("PRINT_FILM_COPY","FL-","yyMM'-'",3);
+                jdbc.update("""
+                    insert into print_film_copy(film_no,version_id,status,material,thickness_mm,size,create_by,create_time)
+                    values (?,?,'REQUESTED',?,?,?,?,now(3))
+                    """,number,id,c.material(),c.thicknessMm(),c.size(),user);
+                long filmId=inserted(); ids.add(filmId);
+                jdbc.update("""
+                    insert into engineering_resource_maintenance(resource_type,resource_id,action_type,operator,result_snapshot)
+                    values ('FILM_COPY',?,'requestDetails',?,?)
+                    """,filmId,user,jsonSnapshot(Map.of("dueDate",c.dueDate().toString(),"requestedQuantity",c.quantity())));
+            }
+            return Map.of("filmId",ids.getFirst(),"filmIds",ids,"versionId",id,"status","REQUESTED","revision",0);
+        }
+        if(action.equals("sendFilm") || action.equals("receiveFilm")) {
+            // 与制版/停用保持版本→实物的锁顺序。
+            long version=((Number)one("select version_id from print_film_copy where film_id=?",id).get("version_id")).longValue();
+            var v=lockVersion(version);
+            check("RELEASED".equals(v.get("status")),"菲林版本未发布或已停用，不能发送或回片登记");
+            var f=one("select * from print_film_copy where film_id=? for update",id);
+            int rev=((Number)f.get("lock_version")).intValue(); revision(c,rev);
+            String next;
+            if(action.equals("sendFilm")) next=move(f.get("status").toString(),"REQUESTED","SENT");
+            else {
+                next=move(f.get("status").toString(),"SENT","AVAILABLE");
+                validateFilmSpecs(c); required(c.filmNo(),64,"菲林片编号"); required(c.location(),200,"存放位置");
+                jdbc.update("update print_film_copy set film_no=?,location=?,material=?,thickness_mm=?,size=?,output_time=now(3) where film_id=?",
+                        c.filmNo(),c.location(),c.material(),c.thicknessMm(),c.size(),id);
+            }
+            jdbc.update("update print_film_copy set status=?,lock_version=lock_version+1,update_by=?,update_time=now(3) where film_id=?",next,user,id);
+            Map<String,Object> result=new LinkedHashMap<>(Map.of("filmId",id,"versionId",version,"status",next,"revision",rev+1));
+            if(action.equals("receiveFilm")) {
+                // 前后值写入不可替代的动作结果，覆盖实际回片规格与原需求，供追溯。
+                result.put("before",f);
+                result.put("received",Map.of("filmNo",c.filmNo(),"location",c.location(),"material",c.material(),"thicknessMm",c.thicknessMm(),"size",c.size()));
+            }
+            return result;
         }
         required(c.reason(),500,"处置原因");
         var f=one("select version_id,status,lock_version from print_film_copy where film_id=? for update",id);
@@ -295,7 +327,7 @@ public class ArtworkService {
         String next;
         if(action.equals("archive")) next=move(before,"AVAILABLE","ARCHIVED");
         else {
-            if(!Set.of("AVAILABLE","ARCHIVED").contains(before)) throw new BusinessException(409,"底片已经销毁");
+            if(!Set.of("AVAILABLE","ARCHIVED").contains(before)) throw new BusinessException(409,"仅可用或已封存的菲林片可以销毁");
             next="DESTROYED";
         }
         jdbc.update("""
@@ -303,6 +335,17 @@ public class ArtworkService {
             update_by=?,update_time=now(3),lock_version=lock_version+1 where film_id=?
             """,next,next,user,id);
         return Map.of("filmId",id,"versionId",f.get("version_id"),"status",next,"revision",rev+1);
+    }
+
+    private void validateFilmSpecs(ArtworkCommands c) {
+        required(c.material(),200,"材质"); required(c.size(),100,"尺寸");
+        check(c.thicknessMm()!=null && c.thicknessMm().signum()>0 && c.thicknessMm().scale()<=3
+                && c.thicknessMm().compareTo(new java.math.BigDecimal("10000000"))<0,"厚度无效");
+    }
+
+    private String jsonSnapshot(Object value) {
+        try { return json.writeValueAsString(value); }
+        catch(JsonProcessingException error) { throw new IllegalStateException("菲林片履历格式异常",error); }
     }
 
     /** P11 owns the published manifest representation, including superseded specs still bound to orders. */

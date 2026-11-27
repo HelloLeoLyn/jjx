@@ -85,6 +85,31 @@ public class ArtworkRepository {
         return result;
     }
 
+    @Transactional(readOnly=true)
+    public Map<String,Object> listFilms(String keyword,String family,String status,int pageNum,int pageSize) {
+        String from=" FROM print_film_copy f JOIN print_artwork_version v ON v.version_id=f.version_id JOIN print_artwork a ON a.artwork_id=v.artwork_id";
+        StringBuilder where=new StringBuilder(" WHERE 1=1");
+        List<Object> args=new ArrayList<>();
+        if(keyword!=null && !keyword.isBlank()) {
+            where.append(" AND (f.film_no LIKE ? OR a.artwork_no LIKE ? OR a.name LIKE ? OR v.version_no LIKE ? OR f.location LIKE ?)");
+            for(int i=0;i<5;i++) args.add("%"+keyword.trim()+"%");
+        }
+        if(family!=null && !family.isBlank()) { where.append(" AND a.family=?"); args.add(family); }
+        if(status!=null && !status.isBlank()) { where.append(" AND f.status=?"); args.add(status); }
+        Long total=jdbc.queryForObject("SELECT COUNT(*)"+from+where,Long.class,args.toArray());
+        List<Object> pageArgs=new ArrayList<>(args);pageArgs.add(pageSize);pageArgs.add((pageNum-1)*pageSize);
+        var rows=jdbc.queryForList("""
+            SELECT f.film_id AS filmId,f.film_no AS filmNo,f.version_id AS versionId,
+                   a.artwork_id AS artworkId,a.artwork_no AS artworkNo,a.name,a.family,v.version_no AS versionNo,
+                   f.status,f.location,f.material,f.thickness_mm AS thicknessMm,f.size,f.output_time AS outputTime,
+                   f.lock_version AS revision,
+                   (SELECT JSON_UNQUOTE(JSON_EXTRACT(m.result_snapshot,'$.dueDate'))
+                      FROM engineering_resource_maintenance m WHERE m.resource_type='FILM_COPY'
+                      AND m.resource_id=f.film_id AND m.action_type='requestDetails' ORDER BY m.maintenance_id DESC LIMIT 1) AS dueDate
+            """+from+where+" ORDER BY f.film_id DESC LIMIT ? OFFSET ?",pageArgs.toArray());
+        return Map.of("records",rows,"total",total==null ? 0 : total);
+    }
+
     public List<EngineeringFilmVO> productVersions(long productId, boolean currentOnly) {
         return jdbc.query("""
             SELECT a.artwork_id,a.artwork_no AS film_code,a.name AS film_name,a.family AS film_type,

@@ -8,7 +8,7 @@ import java.util.List;
 public record ArtworkCommands(String requestId, Integer expectedRevision, String artworkNo, String name,
         String purpose, String family, String setCode, List<Long> productIds, Long sampleOrderId,
         String versionNo, Long drawingFileId, String technicalSpec, String reason, Boolean disablePrevious,
-        String impactToken, String filmNo, String location, String material, BigDecimal thicknessMm, String size) {
+        String impactToken, String filmNo, String location, String material, BigDecimal thicknessMm, String size, Integer quantity, java.time.LocalDate dueDate) {
     @JsonAnySetter
     public void unknown(String field,Object value) {
         throw new IllegalArgumentException("未知字段 " + field);

@@ -65,4 +65,6 @@ export interface ArtworkCommand {
   material?: string
   thicknessMm?: number
   size?: string
+  quantity?: number
+  dueDate?: string
 }

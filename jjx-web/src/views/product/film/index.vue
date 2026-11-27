@@ -11,7 +11,7 @@
         <el-form-item label="状态">
           <el-select v-model="queryStatus" placeholder="全部" clearable style="width: 140px" @change="loadArtworks(1)">
             <el-option
-              v-for="s in ArtworkVersionStatusEnum.items"
+              v-for="s in FilmCopyStatusEnum.items"
               :key="s.value"
               :label="s.label"
               :value="s.value"
@@ -21,7 +21,7 @@
         <el-form-item label="关键字">
           <el-input
             v-model="keyword"
-            placeholder="菲林编号/名称/菲林号/网版/网框"
+            placeholder="菲林片编号/菲林编号/名称/位置"
             clearable
             style="width: 240px"
             @keyup.enter="doSearch"
@@ -33,7 +33,7 @@
         </el-form-item>
       </el-form>
       <div class="search-tip">
-        按类别与状态筛选菲林；关键字走统一搜索，可同时命中菲林、菲林、网版、网框。
+        按类别与菲林片状态筛选；每行是一张菲林片，需求按张生成，回片后逐张登记。
       </div>
     </el-card>
 
@@ -81,7 +81,42 @@
       </el-table>
     </el-card>
 
-    <!-- 菲林列表：按类别分组 -->
+    <el-card shadow="never" class="table-card">
+      <div class="toolbar">
+        <el-button type="primary" :icon="Plus" v-hasPermi="['engineering:film:edit']" @click="openFilmDialog()">新建需求</el-button>
+        <el-button @click="openDesigns">菲林设计</el-button>
+      </div>
+      <el-table :data="filmRows" v-loading="listLoading" border stripe row-key="filmId">
+        <el-table-column label="菲林片编号" prop="filmNo" width="170" />
+        <el-table-column label="菲林" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.artworkNo }} {{ row.name }}</template>
+        </el-table-column>
+        <el-table-column label="版本" width="100">
+          <template #default="{ row }"><el-button link type="primary" @click="openDetail(row.artworkId)">{{ row.versionNo }}</el-button></template>
+        </el-table-column>
+        <el-table-column label="状态" width="110">
+          <template #default="{ row }"><el-tag :type="FilmCopyStatusEnum.getTagProps(row.status).type">{{ FilmCopyStatusEnum.getLabel(row.status) }}</el-tag></template>
+        </el-table-column>
+        <el-table-column label="回片日期" prop="dueDate" width="120" />
+        <el-table-column label="位置" prop="location" min-width="120" show-overflow-tooltip />
+        <el-table-column label="材质" prop="material" width="100" />
+        <el-table-column label="厚度(mm)" prop="thicknessMm" width="100" />
+        <el-table-column label="尺寸" prop="size" min-width="120" />
+        <el-table-column label="操作" width="220" fixed="right">
+          <template #default="{ row }">
+            <el-button v-if="row.status === FilmCopyStatusEnum.REQUESTED.value" v-hasPermi="['engineering:film:edit']" link type="primary" :disabled="saving" @click="sendFilm(row)">发送</el-button>
+            <el-button v-if="row.status === FilmCopyStatusEnum.SENT.value" v-hasPermi="['engineering:film:edit']" link type="success" @click="openFilmDialog(row)">回片登记</el-button>
+            <el-button v-if="row.status === FilmCopyStatusEnum.AVAILABLE.value" v-hasPermi="['engineering:film:archive']" link type="warning" @click="runFilmAction(row, 'archive', '封存')">封存</el-button>
+            <el-button v-if="[FilmCopyStatusEnum.AVAILABLE.value, FilmCopyStatusEnum.ARCHIVED.value].includes(row.status)" v-hasPermi="['engineering:film:destroy']" link type="danger" @click="runFilmAction(row, 'destroy', '销毁')">销毁</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-pagination v-model:current-page="page.pageNum" v-model:page-size="page.pageSize" :total="page.total"
+        :page-sizes="[20, 50, 100]" layout="total, sizes, prev, pager, next" style="margin-top: 12px; justify-content: flex-end"
+        @current-change="(p: number) => loadArtworks(p)" @size-change="() => loadArtworks(1)" />
+    </el-card>
+    <el-dialog v-model="designVisible" title="菲林设计" width="1100px" append-to-body>
+
     <el-card shadow="never" class="table-card">
       <div class="toolbar">
         <el-button
@@ -149,11 +184,11 @@
               编辑
             </el-button>
             <el-button
-              v-if="scope.row.currentVersionId"
+              v-if="scope.row.defaultVersionId"
               link
               type="success"
               size="small"
-              @click="goPlate(scope.row.currentVersionId)"
+              @click="goPlate(scope.row.defaultVersionId)"
             >
               制版
             </el-button>
@@ -161,16 +196,18 @@
         </el-table-column>
       </el-table>
       <el-pagination
-        v-model:current-page="page.pageNum"
-        v-model:page-size="page.pageSize"
-        :total="page.total"
+        v-model:current-page="designPage.pageNum"
+        v-model:page-size="designPage.pageSize"
+        :total="designPage.total"
         :page-sizes="[20, 50, 100]"
         layout="total, sizes, prev, pager, next"
         style="margin-top: 12px; justify-content: flex-end"
-        @current-change="(p: number) => loadArtworks(p)"
-        @size-change="() => loadArtworks(1)"
+        @current-change="(p: number) => loadDesigns(p)"
+        @size-change="() => loadDesigns(1)"
       />
     </el-card>
+
+    </el-dialog>
 
     <!-- 菲林详情 -->
     <el-drawer v-model="detailVisible" size="1100px" title="菲林详情" destroy-on-close>
@@ -248,7 +285,7 @@
             <el-table-column label="操作" width="330" align="center">
               <template #default="scope">
                 <el-button
-                  v-if="scope.row.status === 'DRAFT'"
+                  v-if="scope.row.status === ArtworkVersionStatusEnum.DRAFT.value"
                   link
                   type="primary"
                   size="small"
@@ -258,7 +295,7 @@
                   编辑
                 </el-button>
                 <el-button
-                  v-if="scope.row.status === 'DRAFT'"
+                  v-if="scope.row.status === ArtworkVersionStatusEnum.DRAFT.value"
                   link
                   type="warning"
                   size="small"
@@ -267,7 +304,7 @@
                 >
                   提交审核
                 </el-button>
-                <template v-if="scope.row.status === 'REVIEW'">
+                <template v-if="scope.row.status === ArtworkVersionStatusEnum.REVIEW.value">
                   <el-button
                     link
                     type="success"
@@ -288,7 +325,7 @@
                   </el-button>
                 </template>
                 <el-button
-                  v-if="scope.row.status === 'APPROVED'"
+                  v-if="scope.row.status === ArtworkVersionStatusEnum.APPROVED.value"
                   link
                   type="success"
                   size="small"
@@ -297,7 +334,7 @@
                 >
                   发布
                 </el-button>
-                <template v-if="scope.row.status === 'RELEASED'">
+                <template v-if="scope.row.status === ArtworkVersionStatusEnum.RELEASED.value">
                   <el-button
                     v-if="detail.defaultVersionId !== scope.row.versionId"
                     link
@@ -317,15 +354,6 @@
                   >
                     停用
                   </el-button>
-                  <el-button
-                    link
-                    type="success"
-                    size="small"
-                    v-hasPermi="['engineering:film:edit']"
-                    @click="openFilmDialog(scope.row)"
-                  >
-                    输出菲林片
-                  </el-button>
                   <el-button link type="success" size="small" @click="goPlate(scope.row.versionId)">
                     制版
                   </el-button>
@@ -343,57 +371,6 @@
             </el-table-column>
           </el-table>
 
-          <div class="section-head"><span>菲林片</span></div>
-          <el-table :data="detail.films || []" border size="small">
-            <el-table-column label="菲林片号" prop="filmNo" width="150" />
-            <el-table-column label="版本" width="110">
-              <template #default="scope">{{ versionNoOf(scope.row.versionId) }}</template>
-            </el-table-column>
-            <el-table-column label="状态" width="100" align="center">
-              <template #default="scope">
-                <el-tag :type="FilmCopyStatusEnum.getTagProps(scope.row.status).type" size="small">
-                  {{ FilmCopyStatusEnum.getLabel(scope.row.status) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="位置" prop="location" min-width="120" show-overflow-tooltip />
-            <el-table-column label="材质/尺寸" min-width="140">
-              <template #default="scope">
-                {{ scope.row.material || '-' }} / {{ scope.row.size || '-' }}
-              </template>
-            </el-table-column>
-            <el-table-column label="厚度" width="90" align="center">
-              <template #default="scope">{{ scope.row.thicknessMm ?? '-' }}</template>
-            </el-table-column>
-            <el-table-column label="输出时间" prop="outputTime" width="160" />
-            <el-table-column label="销毁时间" width="160">
-              <template #default="scope">{{ scope.row.destroyTime || '-' }}</template>
-            </el-table-column>
-            <el-table-column label="操作" width="160" align="center">
-              <template #default="scope">
-                <el-button
-                  v-if="scope.row.status === 'AVAILABLE'"
-                  link
-                  type="warning"
-                  size="small"
-                  v-hasPermi="['engineering:film:archive']"
-                  @click="runFilmAction(scope.row, 'archive', '封存')"
-                >
-                  封存
-                </el-button>
-                <el-button
-                  v-if="scope.row.status !== 'DESTROYED'"
-                  link
-                  type="danger"
-                  size="small"
-                  v-hasPermi="['engineering:film:destroy']"
-                  @click="runFilmAction(scope.row, 'destroy', '销毁')"
-                >
-                  销毁
-                </el-button>
-              </template>
-            </el-table-column>
-          </el-table>
         </template>
       </div>
     </el-drawer>
@@ -520,17 +497,22 @@
       </template>
     </el-dialog>
 
-    <!-- 输出菲林片 -->
-    <el-dialog v-model="filmDialogVisible" title="输出菲林片" width="800px" append-to-body>
+    <!-- 菲林片需求 / 回片登记 -->
+    <el-dialog v-model="filmDialogVisible" :title="filmForm.filmId ? '回片登记' : '新建菲林片需求'" width="800px" append-to-body>
       <el-form ref="filmFormRef" :model="filmForm" :rules="filmRules" label-width="100px">
-        <el-row :gutter="20">
+        <template v-if="!filmForm.filmId">
+          <el-form-item label="菲林版本" prop="versionId"><PrintResourceSelector :model-value="demandVersion" @select="pickDemandVersion" /></el-form-item>
+          <el-form-item label="张数" prop="quantity"><el-input-number v-model="filmForm.quantity" :min="1" :max="500" :precision="0" /></el-form-item>
+          <el-form-item label="回片日期" prop="dueDate"><el-date-picker v-model="filmForm.dueDate" value-format="YYYY-MM-DD" /></el-form-item>
+        </template>
+        <el-row v-if="filmForm.filmId" :gutter="20">
           <el-col :span="12">
             <el-form-item label="菲林片编号" prop="filmNo">
               <el-input v-model="filmForm.filmNo" maxlength="64" placeholder="如 FL-0001" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="位置">
+            <el-form-item label="位置" prop="location">
               <el-input v-model="filmForm.location" maxlength="200" placeholder="存放位置" />
             </el-form-item>
           </el-col>
@@ -585,6 +567,7 @@ import { attachmentApi } from '@/api/system/attachment'
 import type { ProductItem } from '@/types/product'
 import type { ArtworkCommand, ArtworkView } from '@/types/engineering/printingArtwork'
 import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
+import PrintResourceSelector from '@/components/Selector/PrintResourceSelector.vue'
 import { ArtworkVersionStatusEnum, FilmCopyStatusEnum } from '@/enums/product/film'
 
 defineOptions({ name: 'EngineeringFilm' })
@@ -609,6 +592,19 @@ const queryStatus = ref('')
 const productOptions = ref<ProductItem[]>([])
 const productSearching = ref(false)
 const artworks = ref<any[]>([])
+const filmRows = ref<any[]>([])
+const designVisible = ref(false)
+const designPage = reactive({ pageNum: 1, pageSize: 20, total: 0 })
+async function openDesigns() { designVisible.value = true; await loadDesigns(1) }
+async function loadDesigns(pageNo = designPage.pageNum) {
+  designPage.pageNum = pageNo
+  try {
+    const res: any = await printingArtworkApi.list({ family: queryFamily.value || undefined,
+      pageNum: designPage.pageNum, pageSize: designPage.pageSize })
+    artworks.value = res.data?.records || []
+    designPage.total = res.data?.total || 0
+  } catch { /* 拦截器已提示 */ }
+}
 const page = reactive({ pageNum: 1, pageSize: 20, total: 0 })
 
 function productLabel(pid: number) {
@@ -662,17 +658,17 @@ async function loadArtworks(pageNo = page.pageNum) {
   page.pageNum = pageNo
   listLoading.value = true
   try {
-    const res: any = await printingArtworkApi.list({
+    const res: any = await printingArtworkApi.listFilms({
       keyword: keyword.value.trim() || undefined,
       family: queryFamily.value || undefined,
       status: queryStatus.value || undefined,
       pageNum: page.pageNum,
       pageSize: page.pageSize,
     })
-    artworks.value = res?.data?.records || []
+    filmRows.value = res?.data?.records || []
     page.total = res?.data?.total || 0
   } catch {
-    artworks.value = []
+    filmRows.value = []
     page.total = 0
   } finally {
     listLoading.value = false
@@ -830,6 +826,7 @@ async function saveArtwork() {
     ElMessage.success('保存成功')
     artworkDialogVisible.value = false
     await loadArtworks()
+    if (designVisible.value) await loadDesigns()
     if (detail.value) await reloadDetail()
   } catch {
     /* 拦截器已提示 */
@@ -911,6 +908,7 @@ async function saveVersion() {
     versionDialogVisible.value = false
     await reloadDetail()
     await loadArtworks()
+    if (designVisible.value) await loadDesigns()
   } catch {
     /* 拦截器已提示 */
   } finally {
@@ -1020,6 +1018,7 @@ async function runVersionAction(row: any, action: string, label: string, needRea
     ElMessage.success(label + '成功')
     await reloadDetail()
     await loadArtworks()
+    if (designVisible.value) await loadDesigns()
   } catch {
     /* 拦截器已提示 */
   }
@@ -1040,61 +1039,80 @@ const impactText = ref('')
 /* ==================== 菲林片 ==================== */
 const filmDialogVisible = ref(false)
 const filmFormRef = ref<FormInstance>()
-const filmForm = reactive<any>({
-  versionId: undefined,
-  filmNo: '',
-  location: '',
-  material: '',
-  thicknessMm: undefined,
-  size: '',
-})
+const demandVersion = ref<PrintSearchRow | null>(null)
+const filmForm = reactive<any>({ filmId: undefined, versionId: undefined, revision: 0, filmNo: '',
+  location: '', material: '', thicknessMm: undefined, size: '', quantity: 1, dueDate: '' })
+let filmRequestId = ''
+let demandPickSequence = 0
 const filmRules: FormRules = {
+  versionId: [{ required: true, message: '请选择已发布菲林版本', trigger: 'change' }],
+  quantity: [{ required: true, message: '请输入需求张数', trigger: 'change' }],
+  dueDate: [{ required: true, message: '请选择回片日期', trigger: 'change' }],
   filmNo: [{ required: true, message: '请输入菲林片编号', trigger: 'blur' }],
+  location: [{ required: true, message: '请填写存放位置', trigger: 'blur' }],
   material: [{ required: true, message: '请输入材质', trigger: 'blur' }],
   thicknessMm: [{ required: true, message: '请输入厚度', trigger: 'blur' }],
   size: [{ required: true, message: '请输入尺寸', trigger: 'blur' }],
 }
 
-function openFilmDialog(version: any) {
-  Object.assign(filmForm, {
-    versionId: version.versionId,
-    filmNo: '',
-    location: '',
-    material: '',
-    thicknessMm: undefined,
-    size: '',
-  })
+function openFilmDialog(row?: any) {
+  demandPickSequence++
+  demandVersion.value = null
+  Object.assign(filmForm, { filmId: row?.filmId, versionId: row?.versionId, revision: row?.revision ?? 0,
+    filmNo: row?.filmNo || '', location: row?.location || '', material: row?.material || '',
+    thicknessMm: row?.thicknessMm, size: row?.size || '', quantity: 1, dueDate: row?.dueDate || '' })
+  filmRequestId = genRequestId()
   filmDialogVisible.value = true
+  filmFormRef.value?.clearValidate()
+}
+
+async function pickDemandVersion(item: PrintSearchRow) {
+  const sequence = ++demandPickSequence
+  filmForm.versionId = undefined
+  demandVersion.value = item
+  if (!item?.versionId || !item?.artworkId) return
+  const res: any = await printingArtworkApi.detail(Number(item.artworkId))
+  if (sequence !== demandPickSequence || !filmDialogVisible.value) return
+  const version = res.data?.versions?.find((v: any) => v.versionId === item.versionId)
+  if (version?.status !== ArtworkVersionStatusEnum.RELEASED.value) {
+    ElMessage.warning('请选择已发布可用菲林版本'); return
+  }
+  filmForm.versionId = version.versionId
+  filmForm.revision = version.revision
 }
 
 async function saveFilm() {
+  if (saving.value) return
   const valid = await filmFormRef.value?.validate().catch(() => false)
   if (!valid || !filmForm.versionId) return
   saving.value = true
-  const command: ArtworkCommand = {
-    requestId: genRequestId(),
-    expectedRevision: versionRevision(filmForm.versionId),
-    filmNo: filmForm.filmNo.trim(),
-    location: filmForm.location || undefined,
-    material: filmForm.material.trim(),
-    thicknessMm: Number(filmForm.thicknessMm),
-    size: filmForm.size.trim(),
-  }
+  const command: ArtworkCommand = { requestId: filmRequestId, expectedRevision: filmForm.revision,
+    material: filmForm.material.trim(), thicknessMm: Number(filmForm.thicknessMm), size: filmForm.size.trim() }
   try {
-    await printingArtworkApi.outputFilm(filmForm.versionId, command)
-    ElMessage.success('菲林片已登记')
+    if (filmForm.filmId) {
+      await printingArtworkApi.receiveFilm(filmForm.filmId, { ...command,
+        filmNo: filmForm.filmNo.trim(), location: filmForm.location.trim() })
+      ElMessage.success('菲林片已登记为可用')
+    } else {
+      await printingArtworkApi.requestFilms(filmForm.versionId, { ...command,
+        quantity: filmForm.quantity, dueDate: filmForm.dueDate })
+      ElMessage.success('需求已建立，菲林片待出片')
+    }
     filmDialogVisible.value = false
-    await reloadDetail()
-  } catch {
-    /* 拦截器已提示 */
-  } finally {
-    saving.value = false
-  }
+    await loadArtworks()
+  } catch { /* 失败保留表单，拦截器已提示 */ }
+  finally { saving.value = false }
 }
 
-function versionRevision(versionId: number) {
-  const v = detail.value?.versions?.find((item) => item.versionId === versionId)
-  return v?.revision ?? 0
+async function sendFilm(row: any) {
+  try { await ElMessageBox.confirm(`确认将菲林片 ${row.filmNo} 的需求发出制作？`, '发送') }
+  catch { return }
+  saving.value = true
+  try {
+    await printingArtworkApi.sendFilm(row.filmId, { requestId: genRequestId(), expectedRevision: row.revision })
+    ElMessage.success('已发出制作'); await loadArtworks()
+  } catch { /* 拦截器已提示 */ }
+  finally { saving.value = false }
 }
 
 async function runFilmAction(film: any, action: string, label: string) {
@@ -1111,7 +1129,7 @@ async function runFilmAction(film: any, action: string, label: string) {
     if (action === 'archive') await printingArtworkApi.archiveFilm(film.filmId, command)
     else await printingArtworkApi.destroyFilm(film.filmId, command)
     ElMessage.success(label + '成功')
-    await reloadDetail()
+    await loadArtworks()
   } catch {
     /* 取消或拦截器已提示 */
   }
