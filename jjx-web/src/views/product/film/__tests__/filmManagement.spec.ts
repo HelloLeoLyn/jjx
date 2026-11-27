@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import { ArtworkVersionStatusEnum, FilmRequestProgressEnum } from '@/enums/product/film'
 import FilmManagement from '../components/FilmManagement.vue'
-import { useFilmManagement } from '../composables/useFilmManagement'
+import { newFilmRequestId, useFilmManagement } from '../composables/useFilmManagement'
 const api=vi.hoisted(()=>({list:vi.fn(),detail:vi.fn(),listRequests:vi.fn(),applyFilmRequest:vi.fn(),receiveFilmRequest:vi.fn(),create:vi.fn(),edit:vi.fn(),createVersion:vi.fn(),editVersion:vi.fn(),submit:vi.fn(),approve:vi.fn(),reject:vi.fn(),release:vi.fn(),activate:vi.fn(),disable:vi.fn(),impact:vi.fn(),archiveFilm:vi.fn(),destroyFilm:vi.fn()}))
 vi.mock('@/api/product/film',()=>({printingArtworkApi:api}))
 vi.mock('@/api/product',()=>({listProductPage:vi.fn().mockResolvedValue({data:{records:[]}}),searchProduct:vi.fn().mockResolvedValue({data:[]}),getProductInfo:vi.fn()}))
@@ -21,6 +21,7 @@ beforeEach(()=>{
  vi.clearAllMocks();api.list.mockResolvedValue({data:{records:[master,{...master,artworkId:5,artworkNo:'PW-005',versionCount:0,defaultVersionId:null,defaultVersionNo:null,copyCount:0}],total:2}})
  api.detail.mockImplementation(async(id:number)=>({data:detail(id)}));api.listRequests.mockResolvedValue({data:[{...request}]});api.applyFilmRequest.mockResolvedValue({data:{requestId:7}});api.receiveFilmRequest.mockResolvedValue({data:{requestId:7}});api.create.mockResolvedValue({data:{artworkId:8}})
 })
+afterEach(()=>vi.unstubAllGlobals())
 describe('正式菲林主数据加载与归属',()=>{
  it('主列表使用菲林档案接口，无版本主档也保留',async()=>{const model=useFilmManagement();await model.loadRows();expect(api.list).toHaveBeenCalledOnce();expect(model.rows.value.map(row=>row.artworkNo)).toEqual(['PW-001','PW-005']);expect(model.page.total).toBe(2);expect(api.listRequests).not.toHaveBeenCalled()})
  it('详情和申请的迟到响应不能串入另一条菲林',async()=>{
@@ -32,6 +33,20 @@ describe('正式菲林主数据加载与归属',()=>{
  it('接口错误明确显示，不伪装成正常空列表',async()=>{const model=useFilmManagement();api.list.mockRejectedValueOnce(new Error('列表连接失败'));await model.loadRows();expect(model.listError.value).toBe('列表连接失败');await model.loadDetail(1);api.listRequests.mockRejectedValueOnce(new Error('请先完成迁移399'));await model.loadRequests();expect(model.requestsError.value).toContain('迁移399')})
 })
 describe('正式页面写入真实API载荷',()=>{
+ it('普通HTTP没有randomUUID时，新增按钮仍打开弹窗并可保存唯一请求号',async()=>{
+  const getRandomValues=globalThis.crypto.getRandomValues.bind(globalThis.crypto)
+  vi.stubGlobal('crypto',{getRandomValues})
+  const ids=Array.from({length:100},()=>newFilmRequestId())
+  expect(new Set(ids).size).toBe(ids.length)
+  expect(ids.every(id=>/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id))).toBe(true)
+  const w=render();await flushPromises()
+  await w.findAll('button').find(button=>button.text().includes('新增菲林'))!.trigger('click');await flushPromises()
+  const s=(w.vm as any).$.setupState
+  expect(s.masterVisible).toBe(true);expect(api.create).not.toHaveBeenCalled()
+  Object.assign(s.masterDraft,{no:'PW-HTTP',name:'HTTP主档',productIds:[10]});await s.saveMaster()
+  expect(api.create).toHaveBeenCalledWith(expect.objectContaining({artworkNo:'PW-HTTP',requestId:expect.stringMatching(/^[0-9a-f-]{36}$/)}))
+  w.unmount()
+ })
  it('申请只提交申请接口，版本与revision来自该菲林详情',async()=>{
   const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openRequest(master);Object.assign(s.requestDraft,{quantity:2,size:'300x200mm',dueDate:'2026-12-01'});await s.saveRequest()
   expect(api.applyFilmRequest).toHaveBeenCalledWith(12,expect.objectContaining({expectedRevision:4,quantity:2,size:'300x200mm'}));expect(api.receiveFilmRequest).not.toHaveBeenCalled();expect(s.requestVisible).toBe(false);w.unmount()
