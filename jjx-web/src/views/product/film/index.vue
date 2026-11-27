@@ -509,7 +509,7 @@
     <el-dialog v-model="filmDialogVisible" :title="filmForm.filmId ? '回片登记' : '新建菲林片需求'" width="800px" append-to-body>
       <el-form ref="filmFormRef" :model="filmForm" :rules="filmRules" label-width="100px">
         <template v-if="!filmForm.filmId">
-          <el-form-item label="菲林版本" prop="versionId"><PrintResourceSelector :model-value="demandVersion" @select="pickDemandVersion" /></el-form-item>
+          <el-form-item label="菲林版本" prop="versionId"><PrintResourceSelector :model-value="demandVersion" @select="pickDemandVersion" @clear="pickDemandVersion(null)" /></el-form-item>
           <el-form-item label="张数" prop="quantity"><el-input-number v-model="filmForm.quantity" :min="1" :max="500" :precision="0" /></el-form-item>
           <el-form-item label="回片日期" prop="dueDate"><el-date-picker v-model="filmForm.dueDate" value-format="YYYY-MM-DD" /></el-form-item>
         </template>
@@ -1074,7 +1074,7 @@ function openFilmDialog(row?: any) {
   filmFormRef.value?.clearValidate()
 }
 
-async function pickDemandVersion(item: PrintSearchRow) {
+async function pickDemandVersion(item: PrintSearchRow | null) {
   const sequence = ++demandPickSequence
   filmForm.versionId = undefined
   demandVersion.value = item

@@ -57,4 +57,16 @@ describe('菲林片单列表', () => {
     resolveOld({data:{versions:[{versionId:5,revision:99,status:'RELEASED'}]}});await old
     expect(s.filmForm.versionId).toBe(7);expect(s.filmForm.revision).toBe(2);w.unmount()
   })
+  it('清空版本时取消绑定并作废迟到查询，不发送需求', async () => {
+    const w=render();await flushPromises();const s=(w.vm as any).$.setupState;s.openFilmDialog()
+    let resolveOld!: (value:any)=>void
+    api.detail.mockReturnValueOnce(new Promise(resolve=>{resolveOld=resolve}))
+    const old=s.pickDemandVersion({artworkId:1,versionId:7})
+    await s.pickDemandVersion(null)
+    resolveOld({data:{versions:[{versionId:7,revision:2,status:'RELEASED'}]}});await old
+    expect(s.filmForm.versionId).toBeUndefined()
+    s.filmFormRef={validate:()=>Promise.resolve(true)};await s.saveFilm()
+    expect(api.requestFilms).not.toHaveBeenCalled();w.unmount()
+  })
+
 })
