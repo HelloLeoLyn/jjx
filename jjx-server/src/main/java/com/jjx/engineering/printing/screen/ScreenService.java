@@ -56,11 +56,8 @@ public class ScreenService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void requireUsablePlate(long versionId, long plateId, String requirements) {
         var required = validateRequirements(requirements);
-        var identity = repo.plate(plateId, false);
-        conflict(((Number) identity.get("versionId")).longValue() != versionId, "默认网版不属于指定图案版本");
-        var frame = repo.frame(((Number) identity.get("frameId")).longValue(), true);
-        var plate = repo.plate(plateId, true);
-        conflict(((Number) plate.get("versionId")).longValue() != versionId, "默认网版不属于指定图案版本");
+        var locked=lockPlateIdentity(versionId,plateId);
+        var frame=locked.frame();var plate=locked.plate();
         conflict(!PlateStatus.RELEASED.name().equals(plate.get("status")), "默认网版尚未放行或已经结束");
         conflict(!FrameStatus.READY.name().equals(frame.get("status")), "默认网版的网框不可用");
         var stretch = repo.one("select mesh,tension_n_cm,qualified,end_time from print_frame_stretch where stretch_id=? and frame_id=? for update",
@@ -73,6 +70,20 @@ public class ScreenService {
             if (required.has(prefix + "Min")) conflict(actual.compareTo(required.get(prefix + "Min").decimalValue()) < 0, "默认网版参数低于要求");
             if (required.has(prefix + "Max")) conflict(actual.compareTo(required.get(prefix + "Max").decimalValue()) > 0, "默认网版参数高于要求");
         }
+    }
+
+    /** 历史引用/幂等重放只锁身份，不把历史资源当前状态当成新领用条件。 */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void lockPlateReference(long versionId,long plateId) { lockPlateIdentity(versionId,plateId); }
+
+    private record PlateIdentity(Map<String,Object> frame,Map<String,Object> plate) {}
+    private PlateIdentity lockPlateIdentity(long versionId,long plateId) {
+        var identity = repo.plate(plateId, false);
+        conflict(((Number) identity.get("versionId")).longValue() != versionId, "默认网版不属于指定图案版本");
+        var frame = repo.frame(((Number) identity.get("frameId")).longValue(), true);
+        var plate = repo.plate(plateId, true);
+        conflict(((Number) plate.get("versionId")).longValue() != versionId, "默认网版不属于指定图案版本");
+        return new PlateIdentity(frame,plate);
     }
 
     enum PlateStatus {
@@ -251,6 +262,8 @@ public class ScreenService {
             required(c.reason(),500,"结束原因");
             description=c.reason();
             boolean used=repo.exists("select segment_id from print_use_segment where open_plate_id=? for update",id);
+            used = used || repo.exists("select process_id from sales_sample_process where actual_plate_id=? and status=? for update",
+                    id,com.jjx.sales.enums.SampleProcessStatusEnum.IN_PROGRESS.getValue());
             after=retire(before,action.equals("wash")?PlateStatus.WASHED:PlateStatus.SCRAPPED,used);
             repo.db.update("update engineering_screen_plate set end_reason=?,washed_time=if(?='wash',now(),null) where plate_id=?",description,action,id);
             repo.db.update("update engineering_screen_frame set revision=revision+1 where frame_id=?",frame);

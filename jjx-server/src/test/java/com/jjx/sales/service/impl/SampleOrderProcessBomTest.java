@@ -39,6 +39,8 @@ class SampleOrderProcessBomTest {
         order.setOrderId(1L); order.setDeleted(0); order.setSampleRound(1);
         order.setSampleStatus(SampleOrderStatusEnum.ENGINEERING.getValue());
         lenient().when(orderMapper.selectById(1L)).thenReturn(order);
+        org.mockito.Mockito.lenient().when(sampleProcessMapper.lockSampleProfile(1L)).thenReturn(order);
+        lenient().when(orderMapper.selectByIdForUpdate(1L)).thenReturn(order);
         when(sampleBomMapper.selectByOrderId(1L)).thenAnswer(i -> new ArrayList<>(bom));
         lenient().when(sampleBomMapper.insert(any(SalesSampleBom.class))).thenAnswer(i -> {
             SalesSampleBom row = i.getArgument(0); row.setBomId(++sequence); bom.add(row); return 1;
@@ -50,7 +52,12 @@ class SampleOrderProcessBomTest {
 
     private void mockPlan() {
         when(sampleProcessMapper.selectList(any())).thenAnswer(i -> new ArrayList<>(plan));
-        when(sampleProcessMapper.delete(any())).thenAnswer(i -> { plan.clear(); return 1; });
+        lenient().when(sampleProcessMapper.deleteById(anyLong())).thenAnswer(i -> {
+            Long id=i.getArgument(0); return plan.removeIf(row->id.equals(row.getProcessId())) ? 1 : 0;
+        });
+        lenient().when(sampleProcessMapper.updateById(any(SalesSampleProcess.class))).thenAnswer(i -> {
+            SalesSampleProcess row=i.getArgument(0);plan.removeIf(old->row.getProcessId().equals(old.getProcessId()));plan.add(row);return 1;
+        });
         when(sampleProcessMapper.insert(any(SalesSampleProcess.class))).thenAnswer(i -> {
             SalesSampleProcess row = i.getArgument(0); row.setProcessId(++sequence); plan.add(row); return 1;
         });
@@ -125,7 +132,7 @@ class SampleOrderProcessBomTest {
 
     private SalesSampleProcess processWithMirror() {
         var process = new SalesSampleProcess();
-        process.setProcessId(32L); process.setRoundNo(1); process.setProcessName("工序"); process.setStatus(2);
+        process.setOrderId(1L);process.setProcessId(32L); process.setRoundNo(1); process.setProcessName("工序"); process.setStatus(2);
         process.setMaterials("[{\"name\":\"PE\",\"qty\":1}]");
         var mirror = new SalesSampleBom(); mirror.setBomId(8L); mirror.setRoundNo(1);
         mirror.setMaterialName("PE"); mirror.setRemark("sample-process-material:32"); bom.add(mirror);
@@ -140,8 +147,18 @@ class SampleOrderProcessBomTest {
 
     @Test void transferIncludesProcessJsonAndIndependentOnceWithoutMirror() {
         var process = processWithMirror(); independent();
-        when(sampleProcessMapper.selectByOrderId(1L)).thenReturn(new ArrayList<>(List.of(process)));
-        var materials = service.previewTransfer(1L).getSampleMaterials();
+        var round=new SalesSampleRound();round.setRoundId(90L);round.setOrderId(1L);round.setRoundNo(1);
+        round.setResult(com.jjx.sales.enums.SampleRoundResultEnum.CONFIRMED.getValue());
+        try {
+            round.setProcessSnapshot(objectMapper.writeValueAsString(List.of(process)));
+            var derived=(List<SalesSampleBom>)org.springframework.test.util.ReflectionTestUtils.invokeMethod(service,"deriveProcessMaterialBom",1L,1,List.of(process));
+            var rows=new ArrayList<Map<String,Object>>();
+            var all=new ArrayList<>(derived);all.addAll(service.listSampleBom(1L));
+            for(var b:all) {var row=new HashMap<String,Object>();row.put("name",b.getMaterialName());row.put("qty",b.getQuantity());row.put("projectIds",List.of());rows.add(row);}
+            round.setBomSnapshot(objectMapper.writeValueAsString(rows));
+        } catch(Exception e){throw new AssertionError(e);}
+        when(sampleRoundMapper.selectByOrderId(1L)).thenReturn(List.of(round));
+        var materials = service.previewTransfer(1L,90L).getSampleMaterials();
         assertEquals(List.of("PE", "独立材料"), materials.stream().map(row -> row.getName()).toList());
         assertFalse(materials.stream().anyMatch(row -> "bom_8".equals(row.getRowKey())));
     }

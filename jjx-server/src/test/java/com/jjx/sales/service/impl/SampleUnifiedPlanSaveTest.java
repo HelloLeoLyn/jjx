@@ -39,15 +39,17 @@ class SampleUnifiedPlanSaveTest {
     SampleOrderServiceImpl service;
 
     @BeforeEach void setup() {
+        lenient().when(orders.selectByIdForUpdate(10L)).thenAnswer(call -> orders.selectById(10L));
+        lenient().when(processes.lockSampleProfile(10L)).thenAnswer(call -> orders.selectById(10L));
         var ds = new JdbcDataSource();
         ds.setURL("jdbc:h2:mem:unified_" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1");
         jdbc = new JdbcTemplate(ds);
         jdbc.execute("CREATE TABLE test_order(id BIGINT PRIMARY KEY,note VARCHAR(2000),status INT,current_process VARCHAR(100))");
-        jdbc.execute("CREATE TABLE test_process(id BIGINT AUTO_INCREMENT PRIMARY KEY,name VARCHAR(100),status INT,start_time TIMESTAMP,materials VARCHAR(2000),params VARCHAR(2000))");
-        jdbc.execute("CREATE TABLE test_bom(name VARCHAR(100),split VARCHAR(50))");
+        jdbc.execute("CREATE TABLE test_process(id BIGINT AUTO_INCREMENT PRIMARY KEY,name VARCHAR(100),status INT,start_time TIMESTAMP,materials VARCHAR(2000),params VARCHAR(2000),major_category VARCHAR(20))");
+        jdbc.execute("CREATE TABLE test_bom(id BIGINT AUTO_INCREMENT PRIMARY KEY,name VARCHAR(100),split VARCHAR(50),remark VARCHAR(100))");
         jdbc.update("INSERT INTO test_order VALUES(10,'旧备注',?,'旧工序')", SampleOrderStatusEnum.ENGINEERING.getValue());
-        jdbc.update("INSERT INTO test_process VALUES(41,'旧工序',1,TIMESTAMP '2026-10-18 10:00:00',NULL,NULL)");
-        jdbc.update("INSERT INTO test_bom VALUES('旧材料',NULL)");
+        jdbc.update("INSERT INTO test_process VALUES(41,'旧工序',1,TIMESTAMP '2026-10-18 10:00:00',NULL,NULL,'ASSEMBLY')");
+        jdbc.update("INSERT INTO test_bom(name,split) VALUES('旧材料',NULL)");
         when(orders.selectById(10L)).thenAnswer(call -> {
             Map<String,Object> row = jdbc.queryForMap("SELECT * FROM test_order WHERE id=10");
             var order = new SalesOrder(); order.setOrderId(10L);order.setDeleted(0);order.setSampleRound(1);
@@ -61,16 +63,24 @@ class SampleUnifiedPlanSaveTest {
         });
         when(processes.selectList(any())).thenAnswer(call -> readProcesses());
         when(processes.selectByOrderAndRound(10L,1)).thenAnswer(call -> readProcesses());
-        when(processes.delete(any())).thenAnswer(call -> jdbc.update("DELETE FROM test_process"));
+        lenient().when(processes.deleteById(anyLong())).thenAnswer(call -> jdbc.update("DELETE FROM test_process WHERE id=?",(Long)call.getArgument(0)));
+        lenient().when(processes.updateById(any(SalesSampleProcess.class))).thenAnswer(call -> {
+            SalesSampleProcess row=call.getArgument(0);
+            return jdbc.update("UPDATE test_process SET name=?,status=?,start_time=?,materials=?,params=?,major_category=? WHERE id=?",row.getProcessName(),row.getStatus(),row.getStartTime(),row.getMaterials(),row.getCustomProcessParams(),row.getMajorCategory(),row.getProcessId());
+        });
         when(processes.insert(any(SalesSampleProcess.class))).thenAnswer(call -> {
             SalesSampleProcess row=call.getArgument(0);
-            return jdbc.update("INSERT INTO test_process(name,status,start_time,materials,params) VALUES(?,?,?,?,?)",row.getProcessName(),row.getStatus(),row.getStartTime(),row.getMaterials(),row.getCustomProcessParams());
+            return jdbc.update("INSERT INTO test_process(name,status,start_time,materials,params,major_category) VALUES(?,?,?,?,?,?)",row.getProcessName(),row.getStatus(),row.getStartTime(),row.getMaterials(),row.getCustomProcessParams(),row.getMajorCategory());
         });
-        when(materials.delete(any())).thenAnswer(call -> jdbc.update("DELETE FROM test_bom"));
+        when(materials.deleteById(anyLong())).thenAnswer(call -> jdbc.update("DELETE FROM test_bom WHERE id=?",(Long)call.getArgument(0)));
         when(materials.insert(any(SalesSampleBom.class))).thenAnswer(call -> {
-            SalesSampleBom row=call.getArgument(0);return jdbc.update("INSERT INTO test_bom VALUES(?,?)",row.getMaterialName(),row.getSplit());
+            SalesSampleBom row=call.getArgument(0);return jdbc.update("INSERT INTO test_bom(name,split,remark) VALUES(?,?,?)",row.getMaterialName(),row.getSplit(),row.getRemark());
         });
-        when(materials.selectByOrderId(10L)).thenReturn(List.of());
+        when(materials.selectByOrderId(10L)).thenAnswer(call -> jdbc.query("SELECT * FROM test_bom ORDER BY id",(rs,n)->{
+            var row=new SalesSampleBom();row.setBomId(rs.getLong("id"));row.setOrderId(10L);row.setRoundNo(1);
+            row.setMaterialName(rs.getString("name"));row.setSplit(rs.getString("split"));row.setRemark(rs.getString("remark"));
+            row.setQuantity(BigDecimal.ONE);row.setUnit("PCS");return row;
+        }));
         var proxy = new ProxyFactory(target);proxy.setProxyTargetClass(true);
         proxy.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(ds),new AnnotationTransactionAttributeSource()));
         service=(SampleOrderServiceImpl) proxy.getProxy();
@@ -80,7 +90,7 @@ class SampleUnifiedPlanSaveTest {
             // 新连接能看到材料，证明不是在 BOM 未提交时计算；真实预警服务使用 REQUIRES_NEW。
             try (var connection = jdbc.getDataSource().getConnection();
                  var statement = connection.createStatement();
-                 var result = statement.executeQuery("SELECT name FROM test_bom")) {
+                 var result = statement.executeQuery("SELECT name FROM test_bom WHERE remark IS NULL")) {
                 assertTrue(result.next());
                 assertEquals("新独立材料", result.getString(1));
             }
@@ -103,7 +113,7 @@ class SampleUnifiedPlanSaveTest {
             });
         }
         verifyNoInteractions(inventoryAlertService);
-        assertEquals("旧材料", jdbc.queryForObject("SELECT name FROM test_bom", String.class));
+        assertEquals("旧材料", jdbc.queryForObject("SELECT name FROM test_bom WHERE remark IS NULL", String.class));
     }
 
     @Test void shortageRefreshFailureDoesNotUndoBomCommit() {
@@ -111,13 +121,14 @@ class SampleUnifiedPlanSaveTest {
         try (var security = mockStatic(SecurityUtils.class)) {
             service.saveProcessPlan(10L, request());
         }
-        assertEquals("新独立材料", jdbc.queryForObject("SELECT name FROM test_bom", String.class));
+        assertEquals("新独立材料", jdbc.queryForObject("SELECT name FROM test_bom WHERE remark IS NULL", String.class));
     }
 
     List<SalesSampleProcess> readProcesses() {
         return jdbc.query("SELECT * FROM test_process ORDER BY id",(rs,n)->{
             var row=new SalesSampleProcess();row.setProcessId(rs.getLong("id"));row.setProcessName(rs.getString("name"));
             row.setStatus(rs.getInt("status"));Timestamp t=rs.getTimestamp("start_time");if(t!=null)row.setStartTime(t.toLocalDateTime());
+            row.setOrderId(10L);row.setRoundNo(1);row.setMaterials(rs.getString("materials"));row.setCustomProcessParams(rs.getString("params"));row.setMajorCategory(rs.getString("major_category"));
             return row;
         });
     }
@@ -135,8 +146,8 @@ class SampleUnifiedPlanSaveTest {
         try(var security=mockStatic(SecurityUtils.class)) {service.saveProcessPlan(10L,request());}
         assertEquals("新备注",note());
         assertEquals(List.of("新组装","新印刷"),jdbc.queryForList("SELECT name FROM test_process ORDER BY id",String.class));
-        assertEquals("新独立材料",jdbc.queryForObject("SELECT name FROM test_bom",String.class));
-        assertEquals("60mm",jdbc.queryForObject("SELECT split FROM test_bom",String.class));
+        assertEquals("新独立材料",jdbc.queryForObject("SELECT name FROM test_bom WHERE remark IS NULL",String.class));
+        assertEquals("60mm",jdbc.queryForObject("SELECT split FROM test_bom WHERE remark IS NULL",String.class));
         assertTrue(jdbc.queryForObject("SELECT materials FROM test_process WHERE name='新组装'",String.class).contains("50mm"));
         assertEquals(Timestamp.valueOf("2026-10-18 10:00:00"),jdbc.queryForObject("SELECT start_time FROM test_process WHERE name='新组装'",Timestamp.class));
         assertTrue(jdbc.queryForObject("SELECT params FROM test_process WHERE name='新印刷'",String.class).contains("新印刷"));
@@ -145,13 +156,13 @@ class SampleUnifiedPlanSaveTest {
         var dto=request();dto.getStandaloneMaterials().getFirst().setSplit("1.5mm");
         try(var security=mockStatic(SecurityUtils.class)) {assertThrows(BusinessException.class,()->service.saveProcessPlan(10L,dto));}
         assertEquals("旧备注",note());assertEquals(41L,readProcesses().getFirst().getProcessId());
-        assertEquals("旧材料",jdbc.queryForObject("SELECT name FROM test_bom",String.class));
+        assertEquals("旧材料",jdbc.queryForObject("SELECT name FROM test_bom WHERE remark IS NULL",String.class));
     }
     @Test void noteOnlyKeepsProcessIdsExecutionAndMaterialRows() {
         var dto=new SampleProcessPlanDTO();dto.setEngineeringNote("只改备注");service.saveProcessPlan(10L,dto);
         assertEquals("只改备注",note());assertEquals(41L,readProcesses().getFirst().getProcessId());
         assertNotNull(readProcesses().getFirst().getStartTime());
-        assertEquals("旧材料",jdbc.queryForObject("SELECT name FROM test_bom",String.class));
+        assertEquals("旧材料",jdbc.queryForObject("SELECT name FROM test_bom WHERE remark IS NULL",String.class));
         verify(processes,never()).delete(any());verify(processes,never()).insert(any(SalesSampleProcess.class));
         verify(materials,never()).delete(any());
     }
@@ -160,9 +171,10 @@ class SampleUnifiedPlanSaveTest {
         try(var security=mockStatic(SecurityUtils.class)) {assertThrows(BusinessException.class,()->service.saveProcessPlan(10L,dto));}
         assertEquals("旧备注",note());assertEquals(41L,readProcesses().getFirst().getProcessId());
         assertEquals("旧工序",readProcesses().getFirst().getProcessName());
-        assertEquals("旧材料",jdbc.queryForObject("SELECT name FROM test_bom",String.class));
+        assertEquals("旧材料",jdbc.queryForObject("SELECT name FROM test_bom WHERE remark IS NULL",String.class));
     }
     @Test void omittedNotePreservesValueAndExplicitEmptyClearsIt() {
+        jdbc.update("UPDATE test_process SET status=0,start_time=NULL");
         var dto=new SampleProcessPlanDTO();dto.setItems(List.of());
         try(var security=mockStatic(SecurityUtils.class)) {service.saveProcessPlan(10L,dto);}
         assertEquals("旧备注",note());dto.setEngineeringNote("");dto.setItems(null);service.saveProcessPlan(10L,dto);assertEquals("",note());

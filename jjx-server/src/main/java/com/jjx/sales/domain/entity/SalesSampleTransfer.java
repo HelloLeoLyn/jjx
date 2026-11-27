@@ -20,6 +20,9 @@ public class SalesSampleTransfer {
 
     /** 样品单ID */
     private Long orderId;
+    private Long sourceRoundId;
+    private String requestId;
+    private String requestHash;
 
     /** 样品单号 */
     private String orderNo;

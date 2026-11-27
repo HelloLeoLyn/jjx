@@ -18,7 +18,9 @@
             <div class="column-setting">
               <div class="column-setting-actions">
                 <el-button link type="primary" size="small" @click="showAllColumns">全选</el-button>
-                <el-button link type="primary" size="small" @click="resetColumns">恢复默认</el-button>
+                <el-button link type="primary" size="small" @click="resetColumns"
+                  >恢复默认</el-button
+                >
               </div>
               <el-checkbox-group v-model="visibleKeys" class="column-setting-list">
                 <el-checkbox v-for="column in COLUMNS" :key="column.key" :value="column.key">
@@ -57,7 +59,8 @@
               link
               type="primary"
               @click="loadChild(row)"
-            >重试加载下层方案</el-button>
+              >重试加载下层方案</el-button
+            >
             <BomDetailTable
               v-if="childOf(row)?.detail"
               :items="childOf(row)!.detail!.items || []"
@@ -90,7 +93,12 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column v-if="show('materialCode')" label="物料编码" prop="materialCode" width="120" />
+      <el-table-column
+        v-if="show('materialCode')"
+        label="物料编码"
+        prop="materialCode"
+        width="120"
+      />
       <el-table-column
         v-if="show('materialName')"
         label="物料名称"
@@ -98,17 +106,38 @@
         width="180"
         show-overflow-tooltip
       />
-      <el-table-column v-if="show('process')" label="项目" prop="processName" width="160" show-overflow-tooltip>
+      <el-table-column
+        v-if="show('process')"
+        label="项目"
+        prop="processName"
+        width="160"
+        show-overflow-tooltip
+      >
         <template #default="{ row }">
           <ProcessName :process-id="row.processId" :name="row.processName" />
         </template>
       </el-table-column>
-      <el-table-column v-if="show('spec')" label="规格" prop="specification" width="140" show-overflow-tooltip />
+      <el-table-column
+        v-if="show('spec')"
+        label="规格"
+        prop="specification"
+        width="140"
+        show-overflow-tooltip
+      />
       <!-- 档案规格：物料档案侧生成值，与本行规格不一致时标红，避免"看着对、数据对不上" -->
-      <el-table-column v-if="show('archiveSpec')" label="档案规格" width="140" show-overflow-tooltip>
+      <el-table-column
+        v-if="show('archiveSpec')"
+        label="档案规格"
+        width="140"
+        show-overflow-tooltip
+      >
         <template #default="{ row }">
           <span v-if="!archiveSpecOf(row)" class="muted">—</span>
-          <el-tooltip v-else-if="specMismatch(row)" content="与本行规格不一致，请核对物料档案" placement="top">
+          <el-tooltip
+            v-else-if="specMismatch(row)"
+            content="与本行规格不一致，请核对物料档案"
+            placement="top"
+          >
             <span class="mismatch">{{ archiveSpecOf(row) }}</span>
           </el-tooltip>
           <span v-else>{{ archiveSpecOf(row) }}</span>
@@ -118,7 +147,11 @@
       <el-table-column v-if="show('archiveUnit')" label="档案单位" width="90">
         <template #default="{ row }">
           <span v-if="!row.archiveUnit" class="muted">—</span>
-          <el-tooltip v-else-if="unitMismatch(row)" content="与档案单位不一致，需人工确认" placement="top">
+          <el-tooltip
+            v-else-if="unitMismatch(row)"
+            content="与档案单位不一致，需人工确认"
+            placement="top"
+          >
             <span class="mismatch">{{ row.archiveUnit }}</span>
           </el-tooltip>
           <span v-else>{{ row.archiveUnit }}</span>
@@ -131,7 +164,11 @@
               {{ BomSourceTypeEnum.getLabel(row.sourceType) }}
             </el-tag>
             <!-- 自制行没指定下层方案时，领料/试算会算不出投入，这里直接提示 -->
-            <el-tooltip v-if="isMakeWithoutScheme(row)" content="自制行未指定下层生产BOM" placement="top">
+            <el-tooltip
+              v-if="isMakeWithoutScheme(row)"
+              content="自制行未指定下层生产BOM"
+              placement="top"
+            >
               <el-tag type="warning" size="small" class="scheme-missing">缺方案</el-tag>
             </el-tooltip>
           </template>
@@ -154,26 +191,62 @@
           <span v-else class="muted">—</span>
         </template>
       </el-table-column>
-      <el-table-column v-if="show('moduleQty')" label="模数" prop="moduleQty" width="80" align="right">
+      <el-table-column
+        v-if="show('moduleQty')"
+        label="模数"
+        prop="moduleQty"
+        width="80"
+        align="right"
+      >
         <template #default="{ row }">{{ num(row.moduleQty, 4) }}</template>
       </el-table-column>
       <el-table-column v-if="show('baseQty')" label="基数" prop="baseQty" width="80" align="right">
         <template #default="{ row }">{{ num(row.baseQty, 4) }}</template>
       </el-table-column>
-      <el-table-column v-if="show('pitch')" label="跳距(mm)" prop="pitchMm" width="100" align="right">
+      <el-table-column
+        v-if="show('pitch')"
+        label="跳距(mm)"
+        prop="pitchMm"
+        width="100"
+        align="right"
+      >
         <template #default="{ row }">{{ num(row.pitchMm, 2) }}</template>
       </el-table-column>
-      <el-table-column v-if="show('pcsPerPitch')" label="每跳片数" prop="pcsPerPitch" width="95" align="right">
+      <el-table-column
+        v-if="show('pcsPerPitch')"
+        label="每跳片数"
+        prop="pcsPerPitch"
+        width="95"
+        align="right"
+      >
         <template #default="{ row }">{{ num(row.pcsPerPitch, 0) }}</template>
       </el-table-column>
-      <el-table-column v-if="show('lossRate')" label="损耗率(%)" prop="lossRate" width="100" align="right">
+      <el-table-column
+        v-if="show('lossRate')"
+        label="损耗率(%)"
+        prop="lossRate"
+        width="100"
+        align="right"
+      >
         <template #default="{ row }">{{ num(row.lossRate, 2) }}</template>
       </el-table-column>
       <!-- "数量"改回编辑弹窗的口径：它是一件的净用量（基数÷模数），不是整单需求 -->
-      <el-table-column v-if="show('unitQty')" label="每件用量" prop="quantity" width="100" align="right">
+      <el-table-column
+        v-if="show('unitQty')"
+        label="每件用量"
+        prop="quantity"
+        width="100"
+        align="right"
+      >
         <template #default="{ row }">{{ num(row.quantity, 4) }}</template>
       </el-table-column>
-      <el-table-column v-if="show('appliedQty')" label="应用料(含损耗)" prop="appliedQty" width="120" align="right">
+      <el-table-column
+        v-if="show('appliedQty')"
+        label="应用料(含损耗)"
+        prop="appliedQty"
+        width="120"
+        align="right"
+      >
         <template #default="{ row }">{{ num(row.appliedQty, 4) }}</template>
       </el-table-column>
       <el-table-column
@@ -185,7 +258,13 @@
       >
         <template #default="{ row }">{{ num(row.actualIssueQty, 4) }}</template>
       </el-table-column>
-      <el-table-column v-if="show('minIssueQty')" label="最低投料" prop="minIssueQty" width="100" align="right">
+      <el-table-column
+        v-if="show('minIssueQty')"
+        label="最低投料"
+        prop="minIssueQty"
+        width="100"
+        align="right"
+      >
         <template #default="{ row }">{{ num(row.minIssueQty, 4) }}</template>
       </el-table-column>
       <el-table-column v-if="show('approvedBy')" label="行批准人" width="100">
@@ -203,7 +282,13 @@
       >
         <template #default="{ row }">{{ row.rejectReason || '—' }}</template>
       </el-table-column>
-      <el-table-column v-if="show('remark')" label="备注" prop="remark" min-width="160" show-overflow-tooltip>
+      <el-table-column
+        v-if="show('remark')"
+        label="备注"
+        prop="remark"
+        min-width="160"
+        show-overflow-tooltip
+      >
         <template #default="{ row }">{{ row.remark || '—' }}</template>
       </el-table-column>
     </el-table>
@@ -220,11 +305,7 @@ import { parseTime } from '@/utils/format'
 import { productBomApi } from '@/api/product/bom'
 import type { EngineeringBom } from '@/types/product/bom'
 import ManufacturingBomPath from './ManufacturingBomPath.vue'
-import {
-  BomItemReviewStatusEnum,
-  BomSourceTypeEnum,
-  BomStatusEnum,
-} from '@/enums/product'
+import { BomItemReviewStatusEnum, BomSourceTypeEnum, BomStatusEnum } from '@/enums/product'
 
 const props = withDefaults(
   defineProps<{
@@ -254,10 +335,12 @@ watch([() => props.items, () => props.ancestors.map((bom) => bom.bomId).join('/'
   expandedKeys.value = []
   children.value.clear()
 })
-const pathNodes = computed(() => props.ancestors.map((bom) => ({
-  bomId: bom.bomId,
-  label: [bom.bomCode, bom.bomVersion].filter(Boolean).join(' ') || bom.bomName || '当前层',
-})))
+const pathNodes = computed(() =>
+  props.ancestors.map((bom) => ({
+    bomId: bom.bomId,
+    label: [bom.bomCode, bom.bomVersion].filter(Boolean).join(' ') || bom.bomName || '当前层',
+  }))
+)
 const rowKey = (row: EngineeringBomItem) => `item:${row.itemId ?? props.items.indexOf(row)}`
 const canExpand = (row: EngineeringBomItem) =>
   props.ancestors.length > 0 && row.sourceType === BomSourceTypeEnum.MAKE && Boolean(row.subBomId)
@@ -284,7 +367,10 @@ async function loadChild(row: EngineeringBomItem) {
     children.value.set(bomId, { loading: false, error: '', detail: response.data })
   } catch {
     if (requestGeneration !== generation) return
-    children.value.set(bomId, { loading: false, error: '下层生产BOM加载失败，请确认访问权限与方案是否存在' })
+    children.value.set(bomId, {
+      loading: false,
+      error: '下层生产BOM加载失败，请确认访问权限与方案是否存在',
+    })
   }
 }
 
@@ -377,7 +463,9 @@ const groupSpan = ({ rowIndex, columnIndex }: { rowIndex: number; columnIndex: n
 }
 
 const rowClassName = ({ row }: { row: EngineeringBomItem }) =>
-  [unitMismatch(row) ? 'bom-row-error' : '', canExpand(row) ? '' : 'no-sub-bom'].filter(Boolean).join(' ')
+  [unitMismatch(row) ? 'bom-row-error' : '', canExpand(row) ? '' : 'no-sub-bom']
+    .filter(Boolean)
+    .join(' ')
 
 const archiveSpecOf = (row: EngineeringBomItem) => autoSpecOf(row).trim()
 const specMismatch = (row: EngineeringBomItem) => {

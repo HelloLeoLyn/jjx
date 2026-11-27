@@ -16,6 +16,11 @@ public class SampleTransferConfirmDTO {
 
     /** 样品单ID */
     private Long orderId;
+    /** 每轮只有一个归档方案，confirmedSchemeId必须等于选定roundId。 */
+    private Long confirmedSchemeId;
+    private Long roundId;
+    private Long targetProductId;
+    private String requestId;
 
     /** 工序映射列表（前端编辑后的标准工序选择，含顺序/组合信息） */
     private List<ProcessMapping> processMappings;
@@ -39,6 +44,10 @@ public class SampleTransferConfirmDTO {
     public static class ProcessMapping {
         /** 打样工序记录ID（新增工序为 null） */
         private Long sampleProcessId;
+        private String majorCategory;
+        private Long artworkVersionId;
+        private Long defaultPlateId;
+        private String printRequirements;
         /** 选择的标准工序ID（必填） */
         private Long stdProcessId;
         /** 工序名称（冗余展示） */

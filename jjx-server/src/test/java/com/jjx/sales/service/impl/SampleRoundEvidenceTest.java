@@ -28,13 +28,15 @@ class SampleRoundEvidenceTest {
     @Mock SalesSampleRoundMapper sampleRoundMapper;
     @Mock SalesSampleProcessMapper sampleProcessMapper;
     @Mock AttachmentEvidenceService attachmentEvidence;
+    @Mock SalesSampleBomMapper sampleBomMapper;
     @Spy ObjectMapper objectMapper = new ObjectMapper();
     @InjectMocks SampleOrderServiceImpl service;
 
     void readyOrder() {
         var order=new SalesOrder(); order.setOrderId(10L); order.setDeleted(0); order.setEngineeringAcceptor("engineer");order.setSampleRound(2);
         when(orderMapper.selectById(10L)).thenReturn(order);
-        var process=new SalesSampleProcess();process.setStatus(2);
+        org.mockito.Mockito.lenient().when(sampleProcessMapper.lockSampleProfile(10L)).thenReturn(order);
+        var process=new SalesSampleProcess();process.setProcessId(41L);process.setOrderId(10L);process.setRoundNo(2);process.setMaterials("[]");process.setStatus(2);
         when(sampleProcessMapper.selectByOrderAndRound(10L,2)).thenReturn(List.of(process));
     }
     @Test void completionPersistsOnlyCapturedRefIdsForThisRound() {

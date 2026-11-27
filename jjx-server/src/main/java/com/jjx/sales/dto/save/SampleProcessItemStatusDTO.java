@@ -12,6 +12,8 @@ public class SampleProcessItemStatusDTO {
      * 目标状态：1进行中 2完成（0待做一般不通过此接口）
      */
     private Integer status;
+    /** 首次执行印刷工序确认的实体网版；不能覆盖既有执行事实。 */
+    private Long actualPlateId;
 
     /**
      * 耗时（分钟），完成时可填

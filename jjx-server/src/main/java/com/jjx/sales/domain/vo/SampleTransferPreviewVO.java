@@ -18,6 +18,10 @@ public class SampleTransferPreviewVO {
 
     /** 样品单号 */
     private String orderNo;
+    private Long confirmedSchemeId;
+    private Long roundId;
+    private Integer roundNo;
+    private java.util.List<java.util.Map<String,Object>> confirmedSchemes;
 
     /** 打样工序列表（含系统匹配推荐） */
     private List<SampleProcessItem> sampleProcesses;
@@ -38,6 +42,7 @@ public class SampleTransferPreviewVO {
     public static class SampleProcessItem {
         /** 打样工序记录ID（sales_sample_process.process_id） */
         private Long processId;
+        private String majorCategory;
         /** 打样工序名称（原始，可能含"（临时）"等后缀） */
         private String processName;
         /** 工序顺序（组合分组键） */
@@ -50,6 +55,9 @@ public class SampleTransferPreviewVO {
         private String remark;
         /** 定制工艺参数 JSON（2026-08-12 印刷工序透传：{printName,colorNo,inkNo,screenNo}） */
         private String customProcessParams;
+        private Long artworkVersionId;
+        private Long defaultPlateId;
+        private String printRequirements;
         /** 耗时（分钟） */
         private Integer durationMinutes;
         /** 标准工序是否带下标（0/1，来自匹配的标准工序 has_index） */

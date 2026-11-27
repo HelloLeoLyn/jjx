@@ -438,6 +438,15 @@ export function useSampleWorkbench() {
       inkMaterialId: params.inkMaterialId ?? null,
       inkNo: params.inkNo || '',
       screenNo: params.screenNo || '',
+      artworkVersionId: src.artworkVersionId ?? null,
+      artworkNo: src.artworkNo,
+      artworkVersionNo: src.artworkVersionNo,
+      defaultPlateNo: src.defaultPlateNo,
+      defaultFrameNo: src.defaultFrameNo,
+      defaultPlateId: src.defaultPlateId ?? null,
+      printRequirements: src.printRequirements,
+      actualPlateId: src.actualPlateId ?? null,
+      executionSnapshot: src.executionSnapshot,
       saveState: 'synced',
     }
   }

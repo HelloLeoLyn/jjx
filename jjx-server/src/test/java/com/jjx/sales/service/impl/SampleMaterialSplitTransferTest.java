@@ -38,6 +38,9 @@ import static org.mockito.Mockito.*;
 class SampleMaterialSplitTransferTest {
     @Mock com.jjx.inventory.service.impl.InventoryAlertServiceImpl inventoryAlertService;
     @Mock OrderMapper orderMapper;
+    @Mock com.jjx.sales.mapper.SalesSampleRoundMapper sampleRoundMapper;
+    @Mock com.jjx.sales.mapper.SalesSampleTransferMapper sampleTransferMapper;
+    @Spy com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();
     @Mock SalesSampleProcessMapper sampleProcessMapper;
     @Mock SalesSampleBomMapper sampleBomMapper;
     @Mock InventoryMaterialMapper inventoryMaterialMapper;
@@ -54,8 +57,10 @@ class SampleMaterialSplitTransferTest {
         var order=new SalesOrder();order.setOrderId(10L);order.setDeleted(0);order.setSampleRound(2);
         order.setSampleStatus(SampleOrderStatusEnum.CONFIRMED.getValue());
         when(orderMapper.selectById(10L)).thenReturn(order);
-        var process=new SalesSampleProcess();process.setProcessId(41L);process.setRoundNo(2);process.setProcessOrder(1);
-        process.setStdProcessId(7L);process.setProcessName("冲型");
+        org.mockito.Mockito.lenient().when(sampleProcessMapper.lockSampleProfile(10L)).thenReturn(order);
+        when(orderMapper.selectByIdForUpdate(10L)).thenReturn(order);
+        var process=new SalesSampleProcess();process.setOrderId(10L);process.setProcessId(41L);process.setRoundNo(2);process.setProcessOrder(1);
+        process.setProcessId(41L);process.setStdProcessId(7L);process.setProcessName("冲型");
         process.setMaterials("[{\"name\":\"面板\",\"materialId\":1,\"qty\":0.5,\"split\":\"50mm\",\"projectIds\":[]}]");
         when(sampleProcessMapper.selectByOrderId(10L)).thenReturn(List.of(process));
         var independent=new SalesSampleBom();independent.setBomId(2L);independent.setRoundNo(2);
@@ -70,7 +75,7 @@ class SampleMaterialSplitTransferTest {
         when(standardProcessMapper.selectById(7L)).thenReturn(std);
     }
     @Test void previewKeepsProcessAndStandaloneSplitsAndExcludesHistory() {
-        var rows=service.previewTransfer(10L).getSampleMaterials();
+        snapshot();var rows=service.previewTransfer(10L,90L).getSampleMaterials();
         assertEquals(List.of("50mm","60mm"), rows.stream().map(row->row.getSplit()).toList());
     }
     @Test void transferKeepsExactProcessAndStandaloneBaseAndModule() {
@@ -79,7 +84,7 @@ class SampleMaterialSplitTransferTest {
         var independent = sampleBomMapper.selectByOrderId(10L).getFirst();
         independent.setBaseQty(new BigDecimal("6"));
         independent.setModuleQty(new BigDecimal("8"));
-        var preview = service.previewTransfer(10L).getSampleMaterials();
+        snapshot();var preview = service.previewTransfer(10L,90L).getSampleMaterials();
         assertEquals(new BigDecimal("3"), preview.get(0).getBaseQty());
         assertEquals(new BigDecimal("4"), preview.get(0).getModuleQty());
         assertEquals(new BigDecimal("6"), preview.get(1).getBaseQty());
@@ -87,7 +92,7 @@ class SampleMaterialSplitTransferTest {
 
         prepareBomWrite();
         var dto = new SampleTransferConfirmDTO();
-        dto.setOrderId(10L);
+        dto.setOrderId(10L);dto.setRoundId(90L);dto.setConfirmedSchemeId(90L);dto.setRequestId("split-test");
         try (var security = mockStatic(SecurityUtils.class)) {
             assertEquals("BOM_CAPTURED", assertThrows(IllegalStateException.class,
                     () -> service.confirmTransfer(dto)).getMessage());
@@ -111,6 +116,7 @@ class SampleMaterialSplitTransferTest {
         assertEquals(0, new BigDecimal("0.75").compareTo(row.get("qty").decimalValue()));
     }
     void prepareBomWrite() {
+        snapshot();
         var prod=new SalesOrderProductVO();prod.setProductId(20L);prod.setProductCode("P20");prod.setProductName("产品");
         when(orderProductService.getListByOrderId(10L)).thenReturn(List.of(prod));
         var product=new Product();product.setProductId(20L);
@@ -122,7 +128,7 @@ class SampleMaterialSplitTransferTest {
     }
     @Test void automaticTransferWritesBothSplitsIntoStandardBom() {
         prepareBomWrite();
-        var dto=new SampleTransferConfirmDTO();dto.setOrderId(10L);
+        var dto=new SampleTransferConfirmDTO();dto.setOrderId(10L);dto.setRoundId(90L);dto.setConfirmedSchemeId(90L);dto.setRequestId("split-test");
         try(var security=mockStatic(SecurityUtils.class)) {
             var error=assertThrows(IllegalStateException.class,()->service.confirmTransfer(dto));
             assertEquals("BOM_CAPTURED",error.getMessage());
@@ -133,23 +139,43 @@ class SampleMaterialSplitTransferTest {
         assertEquals(0,new BigDecimal("0.5").compareTo(capture.getAllValues().getFirst().getQuantity()));
     }
     SampleTransferConfirmDTO manual(String split) {
-        var dto=new SampleTransferConfirmDTO();dto.setOrderId(10L);
-        var process=new SampleTransferConfirmDTO.ProcessMapping();process.setStdProcessId(7L);process.setProcessName("冲型");
+        try {
+            var materials=objectMapper.readTree(sampleProcessMapper.selectByOrderId(10L).getFirst().getMaterials());
+            var row=(com.fasterxml.jackson.databind.node.ObjectNode)materials.get(0);
+            if(split==null) row.putNull("split");else row.put("split",split);
+            sampleProcessMapper.selectByOrderId(10L).getFirst().setMaterials(objectMapper.writeValueAsString(materials));
+            sampleBomMapper.selectByOrderId(10L).getFirst().setSplit(split);
+        }catch(Exception e){throw new AssertionError(e);}
+        snapshot();
+        var dto=new SampleTransferConfirmDTO();dto.setOrderId(10L);dto.setRoundId(90L);dto.setConfirmedSchemeId(90L);dto.setRequestId("split-test");
+        var process=new SampleTransferConfirmDTO.ProcessMapping();process.setSampleProcessId(41L);process.setStdProcessId(7L);process.setProcessName("冲型");
         dto.setProcessMappings(List.of(process));
-        var material=new SampleTransferConfirmDTO.MaterialMapping();material.setMaterialId(1L);material.setSplit(split);material.setQty(BigDecimal.ONE);
-        dto.setMaterialMappings(List.of(material));return dto;
+        var material=new SampleTransferConfirmDTO.MaterialMapping();material.setMaterialId(1L);material.setSplit(split);material.setQty(new BigDecimal("0.5"));
+        material.setRowKey("snapshot_90_0");
+        var second=new SampleTransferConfirmDTO.MaterialMapping();second.setRowKey("snapshot_90_1");second.setMaterialId(1L);second.setSplit(split);second.setQty(BigDecimal.ONE);
+        dto.setMaterialMappings(List.of(material,second));return dto;
     }
     @Test void manualMappingKeepsSplitAndLegacyEmptyIsAllowed() {
         prepareBomWrite();
-        for(String split : Arrays.asList("50mm",null)) {
+        for(String split : Arrays.asList("120mm",null)) {
             try(var security=mockStatic(SecurityUtils.class)) {
                 assertEquals("BOM_CAPTURED",assertThrows(IllegalStateException.class,()->service.confirmTransfer(manual(split))).getMessage());
             }
         }
         var capture=ArgumentCaptor.forClass(EngineeringBomItem.class);
-        verify(bomItemMapper,times(2)).insert(capture.capture());
-        assertEquals("50mm",capture.getAllValues().getFirst().getSplit());
+        verify(bomItemMapper,times(4)).insert(capture.capture());
+        assertEquals(List.of("120mm","120mm"),capture.getAllValues().subList(0,2).stream().map(EngineeringBomItem::getSplit).toList());
+        assertNull(capture.getAllValues().get(2).getSplit());
         assertNull(capture.getAllValues().getLast().getSplit());
+    }
+    @Test void changingConfirmedSplitIsRejectedBeforeWrites() {
+        var dto=manual("50mm");
+        dto.getMaterialMappings().getFirst().setSplit("120mm");
+        var error=assertThrows(BusinessException.class,()->service.confirmTransfer(dto));
+        assertTrue(error.getMessage().contains("???"));
+        verifyNoInteractions(redisSequenceService,bomService,bomItemMapper,routingService,productMapper,orderProductService);
+        verify(sampleTransferMapper,never()).insert(any(SalesSampleTransfer.class));
+        verify(orderMapper,never()).updateById(any(SalesOrder.class));
     }
     @Test void invalidSplitIsRejectedBeforeTransferWrites() {
         for(String split : List.of("-1mm","1.5mm","text","10cm","9007199254740992mm"))
@@ -177,6 +203,7 @@ class SampleMaterialSplitTransferTest {
         org.springframework.test.util.ReflectionTestUtils.setField(service,"sampleBomMapper",mapper);
         var order = new SalesOrder();order.setOrderId(id);order.setDeleted(0);order.setSampleRound(1);
         when(orderMapper.selectById(id)).thenReturn(order);
+        org.mockito.Mockito.lenient().when(sampleProcessMapper.lockSampleProfile(id)).thenReturn(order);
         var tx = new org.springframework.transaction.support.TransactionTemplate(new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds));
         tx.execute(status -> {
             status.setRollbackOnly();
@@ -194,4 +221,22 @@ class SampleMaterialSplitTransferTest {
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM sales_sample_bom WHERE order_id=?",Integer.class,id));
     }
 
+
+    void confirmedSnapshot(java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> processes, java.util.List<java.util.Map<String,Object>> materials) {
+        var round=new com.jjx.sales.domain.entity.SalesSampleRound();round.setRoundId(90L);round.setOrderId(10L);round.setRoundNo(2);
+        round.setResult(com.jjx.sales.enums.SampleRoundResultEnum.CONFIRMED.getValue());
+        try {round.setProcessSnapshot(objectMapper.writeValueAsString(processes));round.setBomSnapshot(objectMapper.writeValueAsString(materials));}
+        catch(Exception e){throw new AssertionError(e);}
+        when(sampleRoundMapper.selectByOrderId(10L)).thenReturn(java.util.List.of(round));
+    }
+
+    void snapshot() {
+        var processes=sampleProcessMapper.selectByOrderId(10L);var rows=new ArrayList<Map<String,Object>>();
+        try {for(var process:processes) for(var node:objectMapper.readTree(process.getMaterials())) {
+            Map<String,Object> row=objectMapper.convertValue(node,new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>(){});row.put("sourceProcessId",process.getProcessId());rows.add(row);
+        }}catch(Exception e){throw new AssertionError(e);}
+        var b=sampleBomMapper.selectByOrderId(10L).getFirst();var row=new HashMap<String,Object>();
+        row.put("name",b.getMaterialName());row.put("materialId",b.getMaterialId());row.put("split",b.getSplit());row.put("qty",b.getQuantity());row.put("baseQty",b.getBaseQty());row.put("moduleQty",b.getModuleQty());rows.add(row);
+        confirmedSnapshot(processes,rows);
+    }
 }

@@ -14,6 +14,8 @@ import com.jjx.sales.enums.SalesOrderTypeEnum;
 import com.jjx.sales.enums.SalesOrderStatusEnum;
 import com.jjx.sales.enums.SalesSampleCraftType;
 import com.jjx.sales.enums.SampleOrderStatusEnum;
+import com.jjx.sales.enums.SampleProcessStatusEnum;
+import com.jjx.sales.enums.SampleRoundResultEnum;
 import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.mapper.QuotationMapper;
 import com.jjx.sales.mapper.SalesSampleRoundMapper;
@@ -115,6 +117,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final LogSaveService logSaveService;
     private final OperLogChangeRecorder changeRecorder;
     private final com.jjx.sales.mapper.CustomerMapper customerMapper;
+    @Autowired private com.jjx.engineering.printing.artwork.ArtworkService artworkService;
+    @Autowired private com.jjx.engineering.printing.screen.ScreenService screenService;
     /** 审核流水（dev-20261018-021）：审核/退回意见写 review_flow，不再覆盖 sales_order.remark。 */
     private final com.jjx.system.service.ReviewFlowService reviewFlowService;
 
@@ -1311,58 +1315,27 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             round.setOrderId(orderId);
             round.setRoundNo(full.getSampleRound() != null ? full.getSampleRound() : 1);
             round.setEngineeringNote(full.getEngineeringNote());
-            round.setResult("pending");
+            round.setResult(SampleRoundResultEnum.PENDING.getValue());
             round.setCreateTime(java.time.LocalDateTime.now());
 
             // 固定本单已绑定的图纸引用，不从整条 trace 链抓取附件。
             round.setAttachmentRefIds(attachmentEvidence.snapshotSampleDrawings(orderId));
 
-            // ② BOM 物料快照（从工序单元材料聚合，仅当前轮次——避免旧轮次材料混入）
-            try {
-                java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> procs =
-                        sampleProcessMapper.selectByOrderAndRound(orderId, round.getRoundNo());
-                java.util.List<java.util.Map<String, Object>> aggMats = new java.util.ArrayList<>();
-                if (procs != null) {
-                    for (com.jjx.sales.domain.entity.SalesSampleProcess sp : procs) {
-                        if (sp.getMaterials() == null || sp.getMaterials().isEmpty()) continue;
-                        try {
-                            java.util.List<java.util.Map<String, Object>> mats =
-                                    new com.fasterxml.jackson.databind.ObjectMapper().readValue(sp.getMaterials(),
-                                            new com.fasterxml.jackson.core.type.TypeReference<java.util.List<java.util.Map<String, Object>>>() {});
-                            for (java.util.Map<String, Object> m : mats) {
-                                java.util.Map<String, Object> agg = new java.util.LinkedHashMap<>();
-                                agg.put("process", sp.getProcessName());
-                                agg.putAll(m);
-                                aggMats.add(agg);
-                            }
-                        } catch (Exception pe) {
-                            log.warn("解析工序材料失败: {}", pe.getMessage());
-                        }
-                    }
-                }
-                // 独立BOM材料（sales_sample_bom 当前轮）也纳入快照（dev-20261015-023）
-                for (com.jjx.sales.domain.entity.SalesSampleBom bom : listSampleBom(orderId)) {
-                    if (!java.util.Objects.equals(bom.getRoundNo(), round.getRoundNo())) continue;
-                    java.util.Map<String, Object> agg = new java.util.LinkedHashMap<>();
-                    agg.put("process", bom.getLayerName());
-                    agg.put("name", bom.getMaterialName());
-                    agg.put("spec", bom.getSpecification());
-                    agg.put("qty", bom.getQuantity());
-                    agg.put("unit", bom.getUnit());
-                    agg.put("materialId", bom.getMaterialId());
-                    agg.put("materialCode", bom.getMaterialCode());
-                    agg.put("projectIds", parseSampleProjects(bom.getProjectIds()));
-                    agg.put("moduleQty", bom.getModuleQty());
-                    agg.put("split", bom.getSplit());
-                    agg.put("baseQty", bom.getBaseQty());
-                    aggMats.add(agg);
-                }
-                if (!aggMats.isEmpty()) {
-                    round.setBomSnapshot(objectMapper.writeValueAsString(aggMats));
-                }
-            } catch (Exception be) {
-                log.warn("归档BOM快照失败: {}", be.getMessage());
+            // 归档复用结构化BOM的唯一推导规则，组合材料不会因共享JSON翻倍。
+            var processRows=sampleProcessMapper.selectByOrderAndRound(orderId,round.getRoundNo());
+            var archiveBom=new ArrayList<>(deriveProcessMaterialBom(orderId,round.getRoundNo(),processRows));
+            archiveBom.addAll(listSampleBom(orderId).stream().filter(row->java.util.Objects.equals(row.getRoundNo(),round.getRoundNo())).toList());
+            var materialSnapshot=new ArrayList<Map<String,Object>>();
+            for (var bom:archiveBom) {
+                var material=new LinkedHashMap<String,Object>();
+                material.put("bomId",bom.getBomId()); material.put("process",bom.getLayerName());
+                if (isProcessMaterialBom(bom)) material.put("sourceProcessId",Long.valueOf(bom.getRemark().substring(PROCESS_MATERIAL_BOM.length())));
+                material.put("name",bom.getMaterialName());material.put("spec",bom.getSpecification());material.put("qty",bom.getQuantity());
+                material.put("unit",bom.getUnit());material.put("materialId",bom.getMaterialId());material.put("materialCode",bom.getMaterialCode());
+                material.put("projectIds",parseSampleProjects(bom.getProjectIds()));material.put("moduleQty",bom.getModuleQty());
+                material.put("baseQty",bom.getBaseQty());material.put("split",bom.getSplit());materialSnapshot.add(material);
             }
+            round.setBomSnapshot(objectMapper.writeValueAsString(materialSnapshot));
 
             // ③ 工序记录快照（仅当前轮次——selectByOrderId 会把旧轮次工序一并烤入，见 2026-09-04 round2 快照=5 条实据）
             try {
@@ -1372,10 +1345,18 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     round.setProcessSnapshot(objectMapper.writeValueAsString(procs));
                 }
             } catch (Exception pe) {
-                log.warn("归档工序快照失败: {}", pe.getMessage());
+                throw new BusinessException("归档工序快照失败：" + pe.getMessage());
             }
 
-            if (sampleRoundMapper.insert(round) != 1) throw new BusinessException("保存样品图纸快照失败");
+            var currentRounds = sampleRoundMapper.selectByOrderId(orderId).stream()
+                    .filter(value -> java.util.Objects.equals(value.getRoundNo(),round.getRoundNo())).toList();
+            if (currentRounds.size() > 1) throw new BusinessException("本轮存在多条历史归档，请先核实，不能猜测方案身份");
+            if (!currentRounds.isEmpty()) {
+                if (SampleRoundResultEnum.CONFIRMED.getValue().equals(currentRounds.getFirst().getResult()))
+                    throw new BusinessException("已确认轮次快照不可覆盖");
+                round.setRoundId(currentRounds.getFirst().getRoundId());
+                if (sampleRoundMapper.updateById(round) != 1) throw new BusinessException("更新轮次快照失败");
+            } else if (sampleRoundMapper.insert(round) != 1) throw new BusinessException("保存样品图纸快照失败");
             log.info("样品单[{}] 归档轮次快照 round={} (附件{}个/BOM{}条/工序{}条)",
                     orderId, round.getRoundNo(),
                     round.getAttachmentRefIds() != null ? "有" : "无",
@@ -1448,19 +1429,15 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         update.setSampleConfirmDate(new Date());
         orderMapper.updateById(update);
 
-        // 更新本轮快照结果：confirmed
-        try {
-            List<com.jjx.sales.domain.entity.SalesSampleRound> rounds = sampleRoundMapper.selectByOrderId(orderId);
-            if (!rounds.isEmpty()) {
-                com.jjx.sales.domain.entity.SalesSampleRound latest = rounds.get(rounds.size() - 1);
-                if ("pending".equals(latest.getResult())) {
-                    latest.setResult("confirmed");
-                    sampleRoundMapper.updateById(latest);
-                }
-            }
-        } catch (Exception e) {
-            log.warn("更新轮次快照确认结果失败: {}", e.getMessage());
-        }
+        var rounds = sampleRoundMapper.selectByOrderId(orderId).stream()
+                .filter(value -> java.util.Objects.equals(value.getRoundNo(),current.getSampleRound() == null ? 1 : current.getSampleRound()))
+                .toList();
+        if (rounds.size() != 1) throw new BusinessException("当前轮次缺少唯一归档方案，不能确认");
+        var confirmed = rounds.getFirst();
+        readRoundProcesses(confirmed);
+        readRoundMaterials(confirmed);
+        confirmed.setResult(SampleRoundResultEnum.CONFIRMED.getValue());
+        if (sampleRoundMapper.updateById(confirmed) != 1) throw new BusinessException("确认轮次方案失败");
 
         persistConfirmMethod(orderId, clientName, confirmMethod);
 
@@ -1548,6 +1525,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
     /** 转标准行数据载体：group_id 非空且同组多行 = 组合工序；否则独立工序（父行直接带作业） */
     private static class RoutingRowData {
+        Long artworkVersionId;
+        Long defaultPlateId;
+        String printRequirements;
         Long processId;
         String majorCategory;
         String processName;
@@ -1639,6 +1619,39 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             }
         }
         return step - 1;
+    }
+
+    /** 消费P08公开写入口，成员只带计划，不复制打样实际用版。 */
+    private Long createTransferredRouting(EngineeringRouting header,List<RoutingRowData> rows) {
+        var dto=new com.jjx.product.domain.dto.EngineeringRoutingDTO();
+        cn.hutool.core.bean.BeanUtil.copyProperties(header,dto);
+        var groups=new LinkedHashMap<Long,List<RoutingRowData>>();
+        long solo=Long.MIN_VALUE;
+        for (var row:rows) groups.computeIfAbsent(row.groupId==null ? solo++ : row.groupId,key->new ArrayList<>()).add(row);
+        var items=new ArrayList<com.jjx.product.domain.dto.EngineeringRoutingItemDTO>();
+        for (var group:groups.values()) {
+            var first=group.getFirst();
+            var parent=toTransferredRoutingItem(first);
+            if (group.size()>1) {
+                parent.setProcessId(null);parent.setMajorCategory("ASSEMBLY");
+                parent.setProcessName(group.stream().map(row->row.processName).collect(Collectors.joining("+")));
+                parent.setArtworkVersionId(null);parent.setDefaultPlateId(null);parent.setPrintRequirements(null);parent.setCustomProcessParams(null);
+                parent.setChildren(group.stream().map(this::toTransferredRoutingItem).toList());
+            }
+            items.add(parent);
+        }
+        dto.setItems(items);
+        return routingService.createRouting(dto).getRoutingId();
+    }
+
+    private com.jjx.product.domain.dto.EngineeringRoutingItemDTO toTransferredRoutingItem(RoutingRowData row) {
+        var dto=new com.jjx.product.domain.dto.EngineeringRoutingItemDTO();
+        dto.setProcessId(row.processId);dto.setMajorCategory(row.majorCategory);dto.setProcessName(row.processName);
+        dto.setCustomLaborHours(row.laborHours);dto.setCustomMachineHours(row.machineHours);dto.setCustomProcessParams(row.processParams);
+        dto.setDescription(row.description);dto.setWorkInstruction(row.workInstruction);dto.setRemark(row.remark);
+        dto.setProcessCategory(row.processCategory);dto.setIndexNumber(row.indexNumber);
+        dto.setArtworkVersionId(row.artworkVersionId);dto.setDefaultPlateId(row.defaultPlateId);dto.setPrintRequirements(row.printRequirements);
+        return dto;
     }
 
     /**
@@ -1942,6 +1955,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 row.setRemark(it.getRemark());
                 // 印刷自定义参数原样透传（前端 makePrintRow 解析 printName/colorNo/inkNo/screenNo）
                 row.setCustomProcessParams(it.getCustomProcessParams());
+                row.setArtworkVersionId(it.getArtworkVersionId());
+                row.setDefaultPlateId(it.getDefaultPlateId());
+                row.setPrintRequirements(it.getPrintRequirements());
                 rows.add(row);
             }
         }
@@ -1973,7 +1989,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public List<SalesSampleProcess> saveProcessPlan(Long orderId, com.jjx.sales.dto.save.SampleProcessPlanDTO dto) {
-        SalesOrder current = orderMapper.selectById(orderId);
+        lockSamplePlanResources(orderId,dto);
+        SalesOrder current = lockCurrentSample(orderId);
         if (current == null || current.getDeleted() == 1) {
             throw new BusinessException("样品单不存在");
         }
@@ -2015,7 +2032,25 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             Map<Long, SalesSampleProcess> oldProcessMap = oldPlan.stream()
                     .filter(process -> process.getProcessId() != null)
                     .collect(Collectors.toMap(SalesSampleProcess::getProcessId, process -> process));
-            sampleProcessMapper.delete(planWrapper);
+            java.util.Set<Long> keptIds = new java.util.HashSet<>();
+            for (var item : dto.getItems()) {
+                if (item.getProcessId() != null && (!oldProcessMap.containsKey(item.getProcessId()) || !keptIds.add(item.getProcessId())))
+                    throw new BusinessException("工序行不属于当前轮次或重复，请刷新方案");
+                if (item.getPrintRequirements() != null) screenService.validateRequirements(item.getPrintRequirements());
+                if (item.getDefaultPlateId() != null && item.getArtworkVersionId() == null)
+                    throw new BusinessException("建议网版必须关联图案版本");
+            }
+            var versions = dto.getItems().stream().map(com.jjx.sales.dto.save.SampleProcessPlanDTO.Item::getArtworkVersionId)
+                    .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
+            for (Long versionId : versions) requireSamplePlanningVersion(versionId, current);
+            for (var item:dto.getItems()) if (item.getDefaultPlateId()!=null && !unchangedExecutedBinding(item,oldProcessMap.get(item.getProcessId())))
+                screenService.requireUsablePlate(item.getArtworkVersionId(),item.getDefaultPlateId(),item.getPrintRequirements());
+            for (SalesSampleProcess old : oldPlan) {
+                if (!keptIds.contains(old.getProcessId())) {
+                    if (hasSampleExecution(old)) throw new BusinessException("已执行工序不能删除，请保留本轮执行历史");
+                    sampleProcessMapper.deleteById(old.getProcessId());
+                }
+            }
 
             int order = 1;
             for (com.jjx.sales.dto.save.SampleProcessPlanDTO.Item item : dto.getItems()) {
@@ -2031,6 +2066,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 record.setMajorCategory(item.getMajorCategory() != null ? item.getMajorCategory() : "ASSEMBLY");
                 // 定制工艺参数 JSON（dev-20260811-009）：印刷 {printName,colorNo,inkNo,screenNo}
                 record.setCustomProcessParams(item.getCustomProcessParams());
+                record.setArtworkVersionId(item.getArtworkVersionId());
+                record.setDefaultPlateId(item.getDefaultPlateId());
+                record.setPrintRequirements(item.getPrintRequirements() == null || item.getPrintRequirements().isBlank()
+                        ? null : item.getPrintRequirements());
                 // 下标（DEV-777）：index_number 前端直传；has_index 按 std_process_id 关联标准工序取
                 record.setIndexNumber(item.getIndexNumber());
                 if (item.getStdProcessId() != null) {
@@ -2049,27 +2088,32 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         ? item.getProcessOrder() : order++);
                 // 卡片项目结构（卡片级主结构）
                 record.setProcessCategory(item.getProcessCategory());
-                record.setStatus(item.getStatus() != null ? item.getStatus() : 0);
+                record.setStatus(SampleProcessStatusEnum.PENDING.getValue());
                 SalesSampleProcess oldProcess = item.getProcessId() != null
                         ? oldProcessMap.get(item.getProcessId()) : null;
                 if (oldProcess != null) {
-                    // 执行字段迁移：进行中转为进行中/完成时保留开始时间；已完成记录保留完整耗时信息。
-                    if (oldProcess.getStatus() != null && oldProcess.getStatus() == 1
-                            && oldProcess.getStartTime() != null
-                            && item.getStatus() != null
-                            && (item.getStatus() == 1 || item.getStatus() == 2)) {
-                        record.setStartTime(oldProcess.getStartTime());
-                    } else if (oldProcess.getStatus() != null && oldProcess.getStatus() == 2) {
-                        record.setStartTime(oldProcess.getStartTime());
-                        record.setEndTime(oldProcess.getEndTime());
-                        record.setDurationMinutes(oldProcess.getDurationMinutes());
-                    }
+                    if (hasSampleExecution(oldProcess) && ("PRINT".equals(oldProcess.getMajorCategory()) || oldProcess.getActualPlateId()!=null || oldProcess.getExecutionSnapshot()!=null)
+                            && (!java.util.Objects.equals(oldProcess.getArtworkVersionId(),record.getArtworkVersionId())
+                            || !java.util.Objects.equals(oldProcess.getMajorCategory(),record.getMajorCategory())
+                            || !java.util.Objects.equals(oldProcess.getStdProcessId(),record.getStdProcessId())
+                            || !java.util.Objects.equals(oldProcess.getCustomProcessParams(),record.getCustomProcessParams())
+                            || !java.util.Objects.equals(oldProcess.getDefaultPlateId(),record.getDefaultPlateId())
+                            || !java.util.Objects.equals(oldProcess.getPrintRequirements(),record.getPrintRequirements())))
+                        throw new BusinessException("已执行工序的印刷计划不可改写，请新建轮次");
+                    record.setProcessId(oldProcess.getProcessId());
+                    record.setStatus(oldProcess.getStatus());
+                    record.setActualPlateId(oldProcess.getActualPlateId());
+                    record.setExecutionSnapshot(oldProcess.getExecutionSnapshot());
+                    record.setStartTime(oldProcess.getStartTime());
+                    record.setEndTime(oldProcess.getEndTime());
+                    record.setDurationMinutes(oldProcess.getDurationMinutes());
                 }
                 record.setMaterials(normalizeSampleMaterials(item.getMaterials()));
                 record.setProcessNote(item.getProcessNote());
-                record.setOperator(SecurityUtils.getUsername());
+                record.setOperator(oldProcess == null ? SecurityUtils.getUsername() : oldProcess.getOperator());
                 record.setRemark(item.getRemark());
-                sampleProcessMapper.insert(record);
+                if (record.getProcessId() == null) sampleProcessMapper.insert(record);
+                else sampleProcessMapper.updateById(record);
             }
         }
 
@@ -2088,6 +2132,81 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         return plan;
     }
 
+    private boolean hasSampleExecution(SalesSampleProcess row) {
+        return row.getActualPlateId() != null || row.getExecutionSnapshot() != null || row.getStartTime() != null
+                || row.getEndTime() != null || (row.getStatus() != null && !SampleProcessStatusEnum.PENDING.getValue().equals(row.getStatus()));
+    }
+
+    /** 资源锁先于单头锁，与执行及洗版保持版本→框→版→单据/工序顺序。 */
+    private void lockSamplePlanResources(Long orderId,com.jjx.sales.dto.save.SampleProcessPlanDTO dto) {
+        if (dto.getItems()==null) return;
+        var old=sampleProcessMapper.selectList(new LambdaQueryWrapper<SalesSampleProcess>()
+                .eq(SalesSampleProcess::getOrderId,orderId)).stream().filter(row->row.getProcessId()!=null)
+                .collect(Collectors.toMap(SalesSampleProcess::getProcessId,row->row));
+        var pending=dto.getItems().stream().filter(row->!unchangedExecutedBinding(row,old.get(row.getProcessId()))).toList();
+        var versions=pending.stream().filter(row->row.getDefaultPlateId()!=null)
+                .map(com.jjx.sales.dto.save.SampleProcessPlanDTO.Item::getArtworkVersionId)
+                .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
+        for (Long id:versions) artworkService.requireUsableVersion(id);
+        for (var row:pending) if (row.getDefaultPlateId()!=null) {
+            if (row.getArtworkVersionId()==null) throw new BusinessException("建议网版必须关联图案版本");
+            screenService.requireUsablePlate(row.getArtworkVersionId(),row.getDefaultPlateId(),row.getPrintRequirements());
+        }
+    }
+
+    private boolean unchangedExecutedBinding(com.jjx.sales.dto.save.SampleProcessPlanDTO.Item row,SalesSampleProcess old) {
+        return old!=null && hasSampleExecution(old) && java.util.Objects.equals(row.getArtworkVersionId(),old.getArtworkVersionId())
+                && java.util.Objects.equals(row.getDefaultPlateId(),old.getDefaultPlateId()) && sameSampleJson(row.getPrintRequirements(),old.getPrintRequirements());
+    }
+
+    private boolean sameSampleJson(String left,String right) {
+        if (java.util.Objects.equals(left,right)) return true;
+        try { return objectMapper.readTree(left==null || left.isBlank() ? "{}" : left)
+                .equals(objectMapper.readTree(right==null || right.isBlank() ? "{}" : right)); }
+        catch (com.fasterxml.jackson.core.JsonProcessingException e) { return java.util.Objects.equals(left,right); }
+    }
+
+    private SalesOrder lockCurrentSample(Long orderId) {
+        if (orderMapper.selectByIdForUpdate(orderId)==null) throw new BusinessException("样品单不存在");
+        var current=sampleProcessMapper.lockSampleProfile(orderId);
+        if (current==null) throw new BusinessException("样品扩展资料不存在");
+        return current;
+    }
+
+    private java.util.Map<String,Object> requireSamplePlanningVersion(Long versionId, SalesOrder order) {
+        if (versionId == null || versionId <= 0) throw new BusinessException("图案版本无效");
+        var identity = sampleProcessMapper.planningVersion(versionId, order.getOrderId());
+        if (identity == null || identity.isEmpty()) throw new BusinessException("图案版本不存在或不属于本打样项目/产品");
+        return identity;
+    }
+
+    /** 首次实际执行捕获身份与当时参数，后续洗版或默认版本变化不改写。 */
+    private void captureSamplePrintingExecution(SalesSampleProcess record, SalesOrder order,
+            com.jjx.sales.dto.save.SampleProcessItemStatusDTO dto) {
+        if (record.getActualPlateId() != null) {
+            if (dto.getActualPlateId() != null && !record.getActualPlateId().equals(dto.getActualPlateId()))
+                throw new BusinessException("已执行工序不能覆盖实际网版，请新建轮次");
+            return;
+        }
+        if (record.getArtworkVersionId() == null || dto.getActualPlateId() == null)
+            throw new BusinessException("印刷执行须明确图案版本及实际实体网版");
+        artworkService.requireUsableVersion(record.getArtworkVersionId());
+        var identity = requireSamplePlanningVersion(record.getArtworkVersionId(),order);
+        screenService.requireUsablePlate(record.getArtworkVersionId(),dto.getActualPlateId(),record.getPrintRequirements());
+        if (!sampleProcessMapper.productionUses(dto.getActualPlateId()).isEmpty()
+                || !sampleProcessMapper.otherSampleUses(dto.getActualPlateId(),record.getProcessId(),SampleProcessStatusEnum.IN_PROGRESS.getValue()).isEmpty())
+            throw new BusinessException("该实体网版正在其他工单或打样工序使用");
+        var snapshot = new LinkedHashMap<String,Object>(sampleProcessMapper.executionPlate(dto.getActualPlateId()));
+        snapshot.putAll(identity);
+        snapshot.put("artworkVersionId",record.getArtworkVersionId()); snapshot.put("actualPlateId",dto.getActualPlateId());
+        snapshot.put("processId",record.getProcessId()); snapshot.put("roundNo",record.getRoundNo());
+        snapshot.put("requirements",screenService.validateRequirements(record.getPrintRequirements()));
+        snapshot.put("operator",SecurityUtils.getUsername()); snapshot.put("executedAt",LocalDateTime.now().toString());
+        try { record.setExecutionSnapshot(objectMapper.writeValueAsString(snapshot)); }
+        catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new BusinessException("无法保存印刷执行快照"); }
+        record.setActualPlateId(dto.getActualPlateId());
+    }
+
     /**
      * 推进打样工序状态（方案A：逐项开始/完成）
      */
@@ -2103,15 +2222,41 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             throw new BusinessException("样品单不存在");
         }
 
-        Integer status = dto.getStatus() != null ? dto.getStatus() : 2;
-        if (status < 0 || status > 2) {
+        Integer status = dto.getStatus() != null ? dto.getStatus() : SampleProcessStatusEnum.COMPLETED.getValue();
+        if (java.util.Arrays.stream(SampleProcessStatusEnum.values()).noneMatch(value -> value.getValue().equals(status))) {
             throw new BusinessException("无效的工序状态");
         }
+        if ("PRINT".equals(record.getMajorCategory()) || record.getActualPlateId()!=null || record.getExecutionSnapshot()!=null) {
+            Long observedVersion=record.getArtworkVersionId();
+            String observedRequirements=record.getPrintRequirements();
+            if (observedVersion==null || sampleProcessMapper.lockArtworkVersion(observedVersion)==null)
+                throw new BusinessException("印刷工序缺少有效图案版本");
+            if (record.getActualPlateId()==null) captureSamplePrintingExecution(record,current,dto);
+            current=lockCurrentSample(orderId);
+            record = sampleProcessMapper.selectForUpdate(processId);
+            if (record == null || !orderId.equals(record.getOrderId())
+                    || !java.util.Objects.equals(record.getRoundNo(),current.getSampleRound() == null ? 1 : current.getSampleRound()))
+                throw new BusinessException("历史轮次只读，不能执行");
+            if (!java.util.Objects.equals(observedVersion,record.getArtworkVersionId())
+                    || !java.util.Objects.equals(observedRequirements,record.getPrintRequirements()) || !"PRINT".equals(record.getMajorCategory()))
+                throw new BusinessException("工序计划已变化，请刷新后执行");
+            if (!java.util.Set.of(SampleOrderStatusEnum.ENGINEERING.getValue(),SampleOrderStatusEnum.SAMPLE_READY.getValue())
+                    .contains(current.getSampleStatus())) throw new BusinessException("当前样品状态不能执行印刷");
+            if (SampleProcessStatusEnum.COMPLETED.getValue().equals(record.getStatus())) {
+                if (!SampleProcessStatusEnum.COMPLETED.getValue().equals(status)
+                        || (dto.getActualPlateId() != null && !dto.getActualPlateId().equals(record.getActualPlateId())))
+                    throw new BusinessException("已完成印刷工序不可改写");
+                return record;
+            }
+            if (SampleProcessStatusEnum.PENDING.getValue().equals(status)) throw new BusinessException("印刷执行不可回退为待做");
+            captureSamplePrintingExecution(record,current,dto);
+            if (java.util.Objects.equals(status,record.getStatus())) return record;
+        }
 
-        if (status == 1 && record.getStartTime() == null) {
+        if (SampleProcessStatusEnum.IN_PROGRESS.getValue().equals(status) && record.getStartTime() == null) {
             record.setStartTime(LocalDateTime.now());
         }
-        if (status == 2) {
+        if (SampleProcessStatusEnum.COMPLETED.getValue().equals(status)) {
             LocalDateTime endTime = LocalDateTime.now();
             record.setEndTime(endTime);
             if (dto.getDurationMinutes() != null) {
@@ -2313,6 +2458,14 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         for (SalesSampleBom old : sampleBomMapper.selectByOrderId(orderId)) {
             if (round.equals(old.getRoundNo()) && isProcessMaterialBom(old)) sampleBomMapper.deleteById(old.getBomId());
         }
+        for (SalesSampleBom bom : deriveProcessMaterialBom(orderId,round,plan)) {
+            bom.setCreateBy(SecurityUtils.getUsername());sampleBomMapper.insert(bom);
+        }
+        refreshSampleShortageAfterCommit(orderId);
+    }
+
+    private List<SalesSampleBom> deriveProcessMaterialBom(Long orderId,Integer round,List<SalesSampleProcess> plan) {
+        var out=new ArrayList<SalesSampleBom>();
         var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (SalesSampleProcess process : plan) {
@@ -2348,14 +2501,13 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     bom.setSplit(normalizeSampleSplit(row.get("split")));
                     bom.setProjectIds(mapper.writeValueAsString(process.getStdProcessId() == null ? List.of() : List.of(process.getStdProcessId())));
                     bom.setRemark(PROCESS_MATERIAL_BOM + process.getProcessId());
-                    bom.setCreateBy(SecurityUtils.getUsername());
-                    sampleBomMapper.insert(bom);
+                    out.add(bom);
                 }
             } catch (Exception e) {
                 throw new BusinessException("工序材料同步打样BOM失败：" + e.getMessage());
             }
         }
-        refreshSampleShortageAfterCommit(orderId);
+        return out;
     }
 
     /** 只比较独立材料的业务值，原样保存时保留记录ID及录入信息。 */
@@ -2364,6 +2516,11 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 row.getMaterialId(), row.getMaterialCode(), parseSampleProjects(row.getProjectIds()),
                 row.getBaseQty(), row.getModuleQty(), row.getQuantity() == null ? null : row.getQuantity().stripTrailingZeros(),
                 row.getUnit(), row.getSplit(), row.getRemark());
+    }
+
+    private record SampleShortageRefresh(Long orderId,Runnable refresh)
+            implements org.springframework.transaction.support.TransactionSynchronization {
+        @Override public void afterCommit() { refresh.run(); }
     }
 
     private void refreshSampleShortageAfterCommit(Long orderId) {
@@ -2375,10 +2532,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             }
         };
         if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
+            if (org.springframework.transaction.support.TransactionSynchronizationManager.getSynchronizations().stream()
+                    .anyMatch(value -> value instanceof SampleShortageRefresh pending && java.util.Objects.equals(pending.orderId(),orderId))) return;
             org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                    new org.springframework.transaction.support.TransactionSynchronization() {
-                        @Override public void afterCommit() { refresh.run(); }
-                    });
+                    new SampleShortageRefresh(orderId,refresh));
         } else {
             refresh.run();
         }
@@ -2491,494 +2648,78 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Override
         @Transactional(rollbackFor = Exception.class)
     public java.util.Map<String, Object> transferMaterials(Long orderId) {
-        SalesOrder sampleOrder = orderMapper.selectById(orderId);
-        if (sampleOrder == null || sampleOrder.getDeleted() == 1) {
-            throw new BusinessException("样品单不存在");
-        }
-        // 已确认(6)或已转量产(7)可转移（转量产后可补转移）
-        Integer st = sampleOrder.getSampleStatus();
-        if (!SampleOrderStatusEnum.CONFIRMED.getValue().equals(st)
-                && !SampleOrderStatusEnum.TRANSFERRED.getValue().equals(st)) {
-            throw new BusinessException("仅已确认或已转量产的样品单可进行资料转移");
-        }
-
-        String transferNo = redisSequenceService.generateBusinessNumberByType(
-                "material_transfer", "TF", "yyMMdd", 3);
-        String transferredVersion = null; // 本次转移生成的版本号（回填打样单）
-        java.util.List<String> details = new java.util.ArrayList<>();
-        String productAction = "NONE", bomAction = "NONE", routingAction = "NONE";
-        Long builtProductId = null, builtBomId = null, builtRoutingId = null;
-
-        // 明细：样品单若无明细则从报价单补复制（数据断链兜底）
-        java.util.List<com.jjx.sales.domain.vo.SalesOrderProductVO> prodList =
-                orderProductService.getListByOrderId(orderId);
-        if (prodList == null || prodList.isEmpty()) {
-            SalesQuotation sourceQuotation = findSourceQuotation(sampleOrder);
-            if (sourceQuotation != null) {
-                copyQuotationItemsToOrder(sourceQuotation.getQuotationId(), orderId);
-                updateTotalQuantityByItems(orderId);
-                prodList = orderProductService.getListByOrderId(orderId);
-            }
-        }
-        // DEV-500 联动：聚合源用最新轮次工序（避免旧轮次试错工序混入量产BOM/路线）
-        // 2026-08-10 DEV-766：聚合口径统一为「最新轮次全量工序」（与 previewTransfer/confirmTransfer 一致），
-        // 不再过滤状态（旧逻辑：有已完成工序则只取已完成）——由用户在对照版/轻量版弹窗中自行删减
-        java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> allProcesses =
-                sampleProcessMapper.selectByOrderId(orderId);
-        java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> processes = allProcesses;
-        if (allProcesses != null && !allProcesses.isEmpty()) {
-            Integer latestRound = allProcesses.stream()
-                    .map(com.jjx.sales.domain.entity.SalesSampleProcess::getRoundNo)
-                    .filter(java.util.Objects::nonNull)
-                    .max(Integer::compareTo).orElse(null);
-            if (latestRound != null) {
-                processes = allProcesses.stream()
-                        .filter(p -> latestRound.equals(p.getRoundNo()))
-                        .collect(java.util.stream.Collectors.toList());
-                // 按工序顺序排序（计划模式），无顺序的旧数据按记录ID排尾部
-                processes.sort(java.util.Comparator.comparing(
-                                (com.jjx.sales.domain.entity.SalesSampleProcess p) ->
-                                        p.getProcessOrder() != null && p.getProcessOrder() > 0 ? p.getProcessOrder() : 999999)
-                        .thenComparing(p -> p.getProcessId() != null ? p.getProcessId() : 0L));
-                log.info("样品单[{}] 资料转移聚合源：最新轮次Round{} (全量{}条)",
-                        orderId, latestRound, processes.size());
-            }
-        }
-
-        if (prodList != null) {
-            for (com.jjx.sales.domain.vo.SalesOrderProductVO prod : prodList) {
-                Long pid = prod.getProductId();
-
-                // ===== ① 产品建档：无则建草稿（待审核），有则核对 =====
-                com.jjx.product.domain.entity.Product product = pid != null ? productMapper.selectById(pid) : null;
-                if (product == null) {
-                    com.jjx.product.domain.entity.Product np = new com.jjx.product.domain.entity.Product();
-                    np.setProductCode(prod.getProductCode());
-                    np.setProductName(prod.getProductName());
-                    np.setProductStatus(2); // 待审核
-                    np.setUnit(prod.getUnit());
-                    np.setCreateBy(SecurityUtils.getUsername());
-                    productMapper.insert(np);
-                    pid = np.getProductId();
-                    productAction = "CREATE";
-                    details.add("产品[" + prod.getProductCode() + "]新建建档(待审核)");
-                    // 回写明细 productId
-                    try {
-                        com.jjx.sales.domain.entity.SalesOrderProduct op = new com.jjx.sales.domain.entity.SalesOrderProduct();
-                        op.setId(prod.getId());
-                        op.setProductId(pid);
-                        orderProductMapper.updateById(op);
-                    } catch (Exception e) {
-                        log.warn("样品单明细回写productId失败: {}", e.getMessage());
-                    }
-                } else {
-                    productAction = "UPDATE";
-                    details.add("产品[" + prod.getProductCode() + "]已存在，档案核对");
-                }
-                if (builtProductId == null) builtProductId = pid;
-                if (pid == null) continue;
-
-                // ===== ② BOM 建档：版本化（每次转移生成新版本，旧版本失效）=====
-                // 旧版本（当前生效）
-                com.jjx.engineering.domain.entity.EngineeringBom existBom = bomService.getOne(
-                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom>()
-                                .eq(com.jjx.engineering.domain.entity.EngineeringBom::getProductId, pid)
-                                .eq(com.jjx.engineering.domain.entity.EngineeringBom::getIsCurrent, true)
-                                .last("LIMIT 1"));
-                // 新版本号：该产品所有BOM版本(version/bom_version)最大整数部分+1
-                java.util.List<String> bomVersions = bomService.list(
-                                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom>()
-                                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getProductId, pid))
-                        .stream()
-                        .map(b -> b.getVersion() != null ? b.getVersion() : b.getBomVersion())
-                        .collect(java.util.stream.Collectors.toList());
-                String newBomVersion = computeNextVersion(bomVersions);
-                if (processes != null && !processes.isEmpty()) {
-                    // 旧版本失效
-                    if (existBom != null) {
-                        existBom.setIsCurrent(false);
-                        bomService.updateById(existBom);
-                    }
-                        com.jjx.engineering.domain.entity.EngineeringBom newBom = new com.jjx.engineering.domain.entity.EngineeringBom();
-                        newBom.setBomCode("BOM-" + prod.getProductCode() + "-SAMPLE");
-                        newBom.setBomName(prod.getProductName() + "（打样传承BOM）");
-                        newBom.setProductId(pid);
-                        newBom.setBomVersion(newBomVersion);
-                        newBom.setVersion(newBomVersion);
-                        newBom.setBomType("manufacturing");
-                        newBom.setIsCurrent(true);
-                        newBom.setSourceSampleId(orderId);
-                        newBom.setParentBomId(existBom != null ? existBom.getBomId() : null);
-                        newBom.setApproveStatus(1); // 草稿
-                        newBom.setRemark("由样品单[" + sampleOrder.getOrderNo() + "]资料转移生成V" + newBomVersion + "，请工程确认后批准");
-                        newBom.setCreateBy(SecurityUtils.getUsername());
-                        bomService.save(newBom);
-
-                        int order = 1;
-                        java.util.Map<String, com.jjx.engineering.domain.entity.EngineeringBomItem> aggMap = new java.util.LinkedHashMap<>();
-                        for (com.jjx.sales.domain.entity.SalesSampleProcess sp : processes) {
-                            if (sp.getMaterials() == null || sp.getMaterials().isEmpty()) continue;
-                            try {
-                                java.util.List<java.util.Map<String, Object>> mats =
-                                        new com.fasterxml.jackson.databind.ObjectMapper().readValue(sp.getMaterials(),
-                                                new com.fasterxml.jackson.core.type.TypeReference<java.util.List<java.util.Map<String, Object>>>() {});
-                                for (java.util.Map<String, Object> m : mats) {
-                                    String name = m.get("name") != null ? m.get("name").toString() : null;
-                                    if (name == null || name.isEmpty()) continue;
-                                    String key = name + "|" + (m.get("spec") != null ? m.get("spec") : "");
-                                    com.jjx.engineering.domain.entity.EngineeringBomItem item = aggMap.get(key);
-                                    if (item == null) {
-                                        item = new com.jjx.engineering.domain.entity.EngineeringBomItem();
-                                        item.setBomId(newBom.getBomId());
-                                        item.setMaterialName(name);
-                                        item.setSpecification(m.get("spec") != null ? m.get("spec").toString() : null);
-                                        item.setUnit(m.get("unit") != null ? m.get("unit").toString() : "PCS");
-                                        item.setLayer(sp.getProcessName());
-                                        item.setItemOrder(order++);
-                                        item.setQuantity(java.math.BigDecimal.ZERO);
-                                        aggMap.put(key, item);
-                                        try {
-                                            com.jjx.inventory.domain.InventoryMaterial mat = inventoryMaterialMapper.selectOne(
-                                                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
-                                                            .eq(com.jjx.inventory.domain.InventoryMaterial::getMaterialName, name)
-                                                            .last("LIMIT 1"));
-                                            if (mat != null) {
-                                                item.setMaterialId(mat.getMaterialId());
-                                                item.setMaterialCode(mat.getMaterialCode());
-                                            }
-                                        } catch (Exception me) {
-                                            log.warn("工序材料匹配物料失败: {}", me.getMessage());
-                                        }
-                                    }
-                                    if (m.get("qty") != null) {
-                                        try {
-                                            item.setQuantity(item.getQuantity().add(new java.math.BigDecimal(m.get("qty").toString())));
-                                        } catch (Exception qe) { /* ignore */ }
-                                    }
-                                }
-                            } catch (Exception pe) {
-                                log.warn("解析工序材料失败: {}", pe.getMessage());
-                            }
-                        }
-                        for (com.jjx.engineering.domain.entity.EngineeringBomItem item : aggMap.values()) {
-                            bomItemMapper.insert(item);
-                        }
-                        builtBomId = newBom.getBomId();
-                        bomAction = "CREATE";
-                        details.add("BOM[" + newBom.getBomCode() + "]生成草稿(" + aggMap.size() + "条明细)");
-                        // 回填产品当前BOM版本号+指针（DEV-771：发布校验用 current_bom_id）
-                        if (pid != null) {
-                            com.jjx.product.domain.entity.Product bomVerUpdate = new com.jjx.product.domain.entity.Product();
-                            bomVerUpdate.setProductId(pid);
-                            bomVerUpdate.setCurrentBomVersion(newBomVersion);
-                            bomVerUpdate.setCurrentBomId(newBom.getBomId());
-                            productMapper.updateById(bomVerUpdate);
-                        }
-                        transferredVersion = newBomVersion;
-                    } else {
-                        bomAction = "SKIP_NO_PROCESS";
-                        details.add("产品[" + prod.getProductCode() + "]无打样工序，未生成BOM");
-                    }
-
-                // ===== ③ 工艺路线建档：版本化（每次转移生成新版本，旧版本失效）=====
-                // 旧版本（当前生效）
-                com.jjx.engineering.domain.entity.EngineeringRouting existRouting = routingService.getOne(
-                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringRouting>()
-                                .eq(com.jjx.engineering.domain.entity.EngineeringRouting::getProductId, pid)
-                                .eq(com.jjx.engineering.domain.entity.EngineeringRouting::getIsCurrent, 1)
-                                .last("LIMIT 1"));
-                // 新版本号：该产品所有Routing版本(version/routing_version)最大整数部分+1
-                java.util.List<String> routingVersions = routingService.list(
-                                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringRouting>()
-                                        .eq(com.jjx.engineering.domain.entity.EngineeringRouting::getProductId, pid))
-                        .stream()
-                        .map(r -> r.getVersion() != null ? r.getVersion() : r.getRoutingVersion())
-                        .collect(java.util.stream.Collectors.toList());
-                String newRoutingVersion = computeNextVersion(routingVersions);
-                if (processes != null && !processes.isEmpty()) {
-                    // 旧版本失效
-                    if (existRouting != null) {
-                        existRouting.setIsCurrent(0);
-                        routingService.updateById(existRouting);
-                    }
-                        com.jjx.engineering.domain.entity.EngineeringRouting newRouting = new com.jjx.engineering.domain.entity.EngineeringRouting();
-                        newRouting.setRoutingCode("RTE-" + prod.getProductCode() + "-SAMPLE");
-                        newRouting.setRoutingName(prod.getProductName() + "（打样传承工艺路线）");
-                        newRouting.setProductId(pid);
-                        newRouting.setProductCode(prod.getProductCode());
-                        newRouting.setProductName(prod.getProductName());
-                        newRouting.setRoutingVersion(newRoutingVersion);
-                        newRouting.setVersion(newRoutingVersion);
-                        newRouting.setIsCurrent(1);
-                        newRouting.setSourceSampleId(orderId);
-                        newRouting.setParentRoutingId(existRouting != null ? existRouting.getRoutingId() : null);
-                        newRouting.setApproveStatus(1); // 草稿
-                        newRouting.setCreateBy(SecurityUtils.getUsername());
-                        routingService.save(newRouting);
-
-                        int stepOrder = 1;
-                        java.math.BigDecimal totalLabor = java.math.BigDecimal.ZERO;
-                        java.math.BigDecimal totalMachine = java.math.BigDecimal.ZERO;
-                        // 组合工序分组：process_order 相同 → 共享 group_id
-                        java.util.Map<Integer, Long> orderGroupMap = new java.util.HashMap<>();
-                        // 组合顺序号（2026-08-11：修复转移后编辑页组合排序）
-                        java.util.Map<Integer, Integer> orderGroupSeqMap = new java.util.HashMap<>();
-                        // 2026-09-05 父子结构：先收集行，循环后统一按组合分组插父+子
-                        java.util.List<RoutingRowData> routingRows = new java.util.ArrayList<>();
-                        for (com.jjx.sales.domain.entity.SalesSampleProcess sp : processes) {
-                            // 方案A适配：优先用 std_process_id 精确关联作业项目，无则按名称匹配兑底（兼容旧数据/自定义工序）
-                            com.jjx.product.domain.entity.ProductStandardProcess std = null;
-                            if (sp.getStdProcessId() != null) {
-                                std = standardProcessMapper.selectById(sp.getStdProcessId());
-                            }
-                            if (std == null && sp.getProcessName() != null) {
-                                std = standardProcessMapper.selectOne(
-                                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.product.domain.entity.ProductStandardProcess>()
-                                                .eq(com.jjx.product.domain.entity.ProductStandardProcess::getProcessName, sp.getProcessName())
-                                                .last("LIMIT 1"));
-                            }
-                            Long stdProcessId = std != null ? std.getProcessId() : null;
-                            // 2026-08-12：类别优先标准工序，无则保留打样子结构（PANEL/UP_LINE/DOWN_LINE），再兑底 OTHER
-                            String category = std != null && std.getProcessCategory() != null
-                                    ? std.getProcessCategory()
-                                    : (sp.getProcessCategory() != null && !sp.getProcessCategory().isEmpty()
-                                        ? sp.getProcessCategory() : "OTHER");
-                            java.math.BigDecimal laborHours = sp.getDurationMinutes() != null
-                                    ? java.math.BigDecimal.valueOf(sp.getDurationMinutes()).divide(java.math.BigDecimal.valueOf(60), 2, java.math.RoundingMode.HALF_UP)
-                                    : (std != null && std.getStandardLaborHours() != null ? std.getStandardLaborHours() : java.math.BigDecimal.ZERO);
-                            java.math.BigDecimal machineHours = std != null && std.getStandardMachineHours() != null
-                                    ? std.getStandardMachineHours() : laborHours;
-                            totalLabor = totalLabor.add(laborHours);
-                            totalMachine = totalMachine.add(machineHours);
-                            // 组合工序：同一 process_order 共享 group_id（独立工序为 null）
-                            Integer po = sp.getProcessOrder();
-                            Long groupId = null;
-                            String groupName = null;
-                            Integer groupOrder = null;
-                            if (po != null && po > 0) {
-                                groupId = orderGroupMap.computeIfAbsent(po, k -> generateGroupId());
-                                groupName = processCategoryToGroupName(sp.getProcessCategory());
-                                // 组合顺序号：按组合首次出现顺序 1,2,3...（2026-08-11 修复编辑页排序）
-                                groupOrder = orderGroupSeqMap.computeIfAbsent(po, k -> orderGroupSeqMap.size() + 1);
-                            }
-                            // 定制工艺参数 JSON 直通（dev-20260811-009）：印刷工序优先传 custom_process_params，否则文本兑底
-                            String processParams = (sp.getCustomProcessParams() != null && !sp.getCustomProcessParams().isEmpty())
-                                    ? sp.getCustomProcessParams()
-                                    : sp.getProcessNote();
-                            routingRows.add(new RoutingRowData(
-                                    stdProcessId != null ? stdProcessId : null,
-                                    sp.getMajorCategory() != null ? sp.getMajorCategory() : "ASSEMBLY",
-                                    sp.getProcessName(),
-                                    laborHours, machineHours,
-                                    processParams,
-                                    null,
-                                    sp.getProcessNote(),
-                                    sp.getRemark(),
-                                    category, groupId, groupName, groupOrder,
-                                    sp.getIndexNumber())); // DEV-777：打样下标透传到工艺路线
-                        }
-                        int processCnt = insertRoutingRowsGrouped(newRouting.getRoutingId(), routingRows);
-                        newRouting.setTotalLaborHours(totalLabor);
-                        newRouting.setTotalMachineHours(totalMachine);
-                        newRouting.setProcessCount(processCnt);
-                        routingService.updateById(newRouting);
-                        builtRoutingId = newRouting.getRoutingId();
-                        routingAction = "CREATE";
-                        details.add("工艺路线[" + newRouting.getRoutingCode() + "]生成草稿(" + processCnt + "道工序)");
-                        // 回填产品当前Routing版本号
-                        if (pid != null) {
-                            com.jjx.product.domain.entity.Product routingVerUpdate = new com.jjx.product.domain.entity.Product();
-                            routingVerUpdate.setProductId(pid);
-                            routingVerUpdate.setCurrentRoutingVersion(newRoutingVersion);
-                            routingVerUpdate.setCurrentRouteId(newRouting.getRoutingId());
-                            productMapper.updateById(routingVerUpdate);
-                        }
-                        transferredVersion = newRoutingVersion;
-                    } else {
-                        routingAction = "SKIP_NO_PROCESS";
-                        details.add("产品[" + prod.getProductCode() + "]无工序记录，未生成工艺路线");
-                    }
-
-                    // ===== ④ 菲林档案：由打样工程附件里的菲林图生成草稿（dev-20260911-003）=====
-                    generateFilmDraftsFromSample(orderId, pid, prod.getProductCode(), prod.getProductName(), details);
-            }
-        }
-
-        // 写转移记录
-        com.jjx.sales.domain.entity.SalesSampleTransfer transfer = new com.jjx.sales.domain.entity.SalesSampleTransfer();
-        transfer.setOrderId(orderId);
-        transfer.setOrderNo(sampleOrder.getOrderNo());
-        transfer.setTransferNo(transferNo);
-        transfer.setProductId(builtProductId);
-        transfer.setBomId(builtBomId);
-        transfer.setRoutingId(builtRoutingId);
-        transfer.setProductAction(productAction);
-        transfer.setBomAction(bomAction);
-        transfer.setRoutingAction(routingAction);
-        transfer.setStatus("SUCCESS");
-        transfer.setDetail(String.join("\n", details));
-        transfer.setCreateBy(SecurityUtils.getUsername());
-        sampleTransferMapper.insert(transfer);
-
-        // 版本化回填：打样单记录最近转移版本号 + 时间
-        if (transferredVersion != null) {
-            com.jjx.sales.domain.entity.SalesOrder formalUpdate = new com.jjx.sales.domain.entity.SalesOrder();
-            formalUpdate.setOrderId(orderId);
-            formalUpdate.setFormalVersion(transferredVersion);
-            formalUpdate.setLastTransferTime(java.time.LocalDateTime.now());
-            orderMapper.updateById(formalUpdate);
-        }
-
-        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
-        result.put("transferNo", transferNo);
-        result.put("transferId", transfer.getTransferId());
-        result.put("productAction", productAction);
-        result.put("bomAction", bomAction);
-        result.put("routingAction", routingAction);
-        result.put("productId", builtProductId);
-        result.put("bomId", builtBomId);
-        result.put("routingId", builtRoutingId);
-        result.put("detail", details);
-        log.info("样品单[{}] 资料转移完成[{}] 产品={} BOM={} 路线={}",
-                sampleOrder.getOrderNo(), transferNo, productAction, bomAction, routingAction);
-        // 2026-09-21（dev-20260921-013）：资料转移完成发事件（手写 payload 带单号；
-        // 原注解 bizId=#orderId 只能显示内部编号，模板里的 {bizNo} 取不到值）
-        java.util.Map<String, Object> transferPayload = com.jjx.event.EventPublishSupport.payload(
-                "sample", orderId, sampleOrder.getOrderNo());
-        transferPayload.put("orderNo", sampleOrder.getOrderNo());
-        transferPayload.put("customerName", sampleOrder.getCustomerName());
-        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "sample.transferred", transferPayload);
-
-        return result;
+        var round = requireConfirmedRound(orderId,null);
+        var dto = new com.jjx.sales.dto.transfer.SampleTransferConfirmDTO();
+        dto.setOrderId(orderId); dto.setRoundId(round.getRoundId()); dto.setConfirmedSchemeId(round.getRoundId());
+        dto.setRequestId("legacy-transfer-"+orderId+"-"+round.getRoundId());
+        return confirmTransfer(dto);
     }
 
-    /**
-     * A2 打样→菲林联动（dev-20260911-003）：
-     * 资料转移时把打样单工程附件里的「菲林图」转成菲林档案草稿（类型/尺寸人工核对后再走审批）。
-     * 规则：产品已有菲林档案则跳过；仅识别文件名含「菲林」或图纸类扩展名的附件；
-     * 任何异常只记日志，不影响资料转移主流程。
-     */
-    private int generateFilmDraftsFromSample(Long orderId, Long productId, String productCode,
-                                             String productName, java.util.List<String> details) {
-        if (productId == null) {
-            return 0;
-        }
+    private com.jjx.sales.domain.entity.SalesSampleRound requireConfirmedRound(Long orderId,Long roundId) {
+        var rounds = sampleRoundMapper.selectByOrderId(orderId).stream()
+                .filter(row -> SampleRoundResultEnum.CONFIRMED.getValue().equals(row.getResult()))
+                .filter(row -> roundId == null || roundId.equals(row.getRoundId())).toList();
+        if (rounds.size()!=1) throw new BusinessException("请选择本单唯一明确的已确认归档方案，不能自动取最新轮次");
+        var round=rounds.getFirst();
+        if (!orderId.equals(round.getOrderId()) || round.getRoundId()==null) throw new BusinessException("归档方案身份无效");
+        readRoundProcesses(round); readRoundMaterials(round);
+        return round;
+    }
+
+    private List<SalesSampleProcess> readRoundProcesses(com.jjx.sales.domain.entity.SalesSampleRound round) {
         try {
-            Long exists = engineeringFilmMapper.selectCount(new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringFilm>()
-                    .eq(com.jjx.engineering.domain.entity.EngineeringFilm::getProductId, productId));
-            if (exists != null && exists > 0) {
-                return 0;
+            if (round.getProcessSnapshot()==null || !objectMapper.readTree(round.getProcessSnapshot()).isArray())
+                throw new BusinessException("归档方案缺少工序快照");
+            List<SalesSampleProcess> rows=objectMapper.readValue(round.getProcessSnapshot(),new com.fasterxml.jackson.core.type.TypeReference<>() {});
+            java.util.Set<Long> ids=new java.util.HashSet<>();
+            for (var row : rows) {
+                if (row.getProcessId()==null || !ids.add(row.getProcessId()) || !java.util.Objects.equals(round.getOrderId(),row.getOrderId())
+                        || !java.util.Objects.equals(round.getRoundNo(),row.getRoundNo())) throw new BusinessException("归档工序身份与轮次不一致");
             }
-            java.util.List<com.jjx.system.domain.entity.SysAttachment> atts =
-                    attachmentService.getAttachments("sample", orderId);
-            if (atts == null || atts.isEmpty()) {
-                return 0;
-            }
-            String username = null;
-            Long userId = null;
-            try {
-                username = SecurityUtils.getUsername();
-                userId = SecurityUtils.getUserId();
-            } catch (Exception ignore) {
-                // 无登录上下文（系统调用）时留空
-            }
-            int created = 0;
-            for (com.jjx.system.domain.entity.SysAttachment att : atts) {
-                String fileName = att.getFileName() == null ? "" : att.getFileName();
-                if (!isFilmDrawingName(fileName)) {
-                    continue;
-                }
-                String filmType = guessFilmType(fileName);
-                com.jjx.engineering.domain.entity.EngineeringFilm film =
-                        new com.jjx.engineering.domain.entity.EngineeringFilm();
-                film.setFilmCode(nextFilmCode(productCode, filmType));
-                film.setFilmName(fileName.replaceAll("\\.[^.]+$", ""));
-                film.setFilmType(filmType);
-                film.setProductId(productId);
-                film.setProductCode(productCode);
-                film.setProductName(productName);
-                film.setVersion("v1.0");
-                film.setIsCurrent(0);
-                film.setIsReleased(0);
-                film.setApproveStatus(com.jjx.common.enums.ApproveStatusEnum.DRAFT.getValue());
-                film.setFileId(att.getId());
-                film.setFilePath(att.getFilePath());
-                film.setFileName(fileName);
-                film.setRemark("由打样单资料转移自动生成（附件#" + att.getId() + "），请核对菲林类型与尺寸后提交审批");
-                film.setDesignerId(userId);
-                film.setDesignerName(username);
-                film.setDesignTime(java.time.LocalDateTime.now());
-                film.setCreateBy(username);
-                engineeringFilmMapper.insert(film);
-                created++;
-            }
-            if (created > 0) {
-                details.add("菲林[自动生成" + created + "张草稿]由打样附件转入，待核对类型/尺寸");
-                log.info("样品单[{}] 资料转移自动生成菲林草稿 {} 张（产品{}）", orderId, created, productCode);
-            } else {
-                details.add("菲林[未生成]打样附件中未识别到菲林图（文件名含「菲林」或图纸类扩展名）");
-            }
-            return created;
-        } catch (Exception e) {
-            log.warn("打样菲林草稿生成失败（不影响资料转移）: {}", e.getMessage());
-            return 0;
-        }
+            if (rows.isEmpty()) throw new BusinessException("归档方案没有工序");
+            rows.sort(java.util.Comparator.comparing((SalesSampleProcess row)->java.util.Objects.requireNonNullElse(row.getProcessOrder(),Integer.MAX_VALUE))
+                    .thenComparing(SalesSampleProcess::getProcessId));
+            return rows;
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new BusinessException("归档工序快照损坏，请核实原轮次"); }
     }
 
-    /** 附件名是否像菲林图：含「菲林」，或扩展名属图纸类 */
-    private boolean isFilmDrawingName(String fileName) {
-        if (fileName == null || fileName.isEmpty()) {
-            return false;
-        }
-        if (fileName.contains("菲林")) {
-            return true;
-        }
-        String lower = fileName.toLowerCase();
-        return lower.endsWith(".dxf") || lower.endsWith(".dwg") || lower.endsWith(".ai")
-                || lower.endsWith(".cdr") || lower.endsWith(".pdf") || lower.endsWith(".plt")
-                || lower.endsWith(".eps") || lower.endsWith(".jpg") || lower.endsWith(".png");
+    private List<Map<String,Object>> readRoundMaterials(com.jjx.sales.domain.entity.SalesSampleRound round) {
+        try {
+            if (round.getBomSnapshot()==null || !objectMapper.readTree(round.getBomSnapshot()).isArray())
+                throw new BusinessException("归档方案缺少完整BOM快照，请核实原轮次");
+            return objectMapper.readValue(round.getBomSnapshot(),new com.fasterxml.jackson.core.type.TypeReference<>() {});
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new BusinessException("归档BOM快照损坏，请核实原轮次"); }
     }
 
-    /** 按文件名关键字猜菲林类型，缺省面板菲林 */
-    private String guessFilmType(String fileName) {
-        String n = fileName == null ? "" : fileName;
-        if (n.contains("上层") || n.toLowerCase().contains("upper")) {
-            return "UPPER_CIRCUIT";
-        }
-        if (n.contains("下层") || n.toLowerCase().contains("lower")) {
-            return "LOWER_CIRCUIT";
-        }
-        if (n.contains("间隔") || n.toLowerCase().contains("spacer")) {
-            return "SPACER";
-        }
-        if (n.contains("背胶") || n.toLowerCase().contains("adhesive")) {
-            return "BACK_ADHESIVE";
-        }
-        return "OVERLAY";
+    private BigDecimal snapshotDecimal(Map<String,Object> row,String key) {
+        Object value=row.get(key);
+        try { return value==null ? null : new BigDecimal(value.toString()); }
+        catch (NumberFormatException e) { throw new BusinessException("归档材料数量无效："+key); }
     }
 
-    /** 菲林编码：FILM-{产品编码}-{类型短码}，冲突时追加序号 */
-    private String nextFilmCode(String productCode, String filmType) {
-        String shortType = switch (filmType == null ? "" : filmType) {
-            case "UPPER_CIRCUIT" -> "UC";
-            case "SPACER" -> "SP";
-            case "LOWER_CIRCUIT" -> "LC";
-            case "BACK_ADHESIVE" -> "BA";
-            default -> "OV";
-        };
-        String base = "FILM-" + (productCode == null || productCode.isBlank() ? "NA" : productCode.trim())
-                + "-" + shortType;
-        String candidate = base;
-        int seq = 2;
-        while (seq < 100) {
-            Long cnt = engineeringFilmMapper.selectCount(new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringFilm>()
-                    .eq(com.jjx.engineering.domain.entity.EngineeringFilm::getFilmCode, candidate));
-            if (cnt == null || cnt == 0) {
-                return candidate;
-            }
-            candidate = base + "-" + seq++;
+    private List<com.jjx.sales.domain.vo.SampleTransferPreviewVO.SampleMaterialItem> previewRoundMaterials(
+            com.jjx.sales.domain.entity.SalesSampleRound round,List<com.jjx.inventory.domain.InventoryMaterial> standards) {
+        var out=new ArrayList<com.jjx.sales.domain.vo.SampleTransferPreviewVO.SampleMaterialItem>();
+        int index=0;
+        for (var source : readRoundMaterials(round)) {
+            var row=new com.jjx.sales.domain.vo.SampleTransferPreviewVO.SampleMaterialItem();
+            row.setRowKey("snapshot_"+round.getRoundId()+"_"+index++);
+            if (source.get("sourceProcessId")!=null) row.setSourceProcessId(Long.valueOf(source.get("sourceProcessId").toString()));
+            row.setSourceProcessName(source.get("process")==null ? null : source.get("process").toString());
+            row.setName(source.get("name")==null ? null : source.get("name").toString());
+            row.setSpec(source.get("spec")==null ? null : source.get("spec").toString());
+            row.setUnit(source.get("unit")==null ? null : source.get("unit").toString());
+            row.setQty(snapshotDecimal(source,"qty")); row.setModuleQty(snapshotDecimal(source,"moduleQty")); row.setBaseQty(snapshotDecimal(source,"baseQty"));
+            row.setSplit(normalizeSampleSplit(source.get("split")));
+            if (source.get("projectIds")!=null) row.setProjectIds(parseSampleProjects(objectMapper.valueToTree(source.get("projectIds")).toString()));
+            Long materialId=source.get("materialId")==null ? null : Long.valueOf(source.get("materialId").toString());
+            row.setMaterialId(materialId);
+            var match=materialId==null ? matchStandardMaterial(row.getName(),standards) : inventoryMaterialMapper.selectById(materialId);
+            row.setMatched(match!=null);
+            if (match!=null) { row.setMatchedMaterialId(match.getMaterialId());row.setMatchedMaterialName(match.getMaterialName());row.setMatchedMaterialCode(match.getMaterialCode()); }
+            out.add(row);
         }
-        return base + "-" + System.currentTimeMillis() % 10000;
+        return out;
     }
 
     /**
@@ -2988,6 +2729,12 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Override
     @Transactional(readOnly = true)
     public com.jjx.sales.domain.vo.SampleTransferPreviewVO previewTransfer(Long orderId) {
+        return previewTransfer(orderId,null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.jjx.sales.domain.vo.SampleTransferPreviewVO previewTransfer(Long orderId,Long roundId) {
         SalesOrder sampleOrder = orderMapper.selectById(orderId);
         if (sampleOrder == null || sampleOrder.getDeleted() == 1) {
             throw new BusinessException("样品单不存在");
@@ -2997,26 +2744,13 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         vo.setOrderId(orderId);
         vo.setOrderNo(sampleOrder.getOrderNo());
 
-        // ===== 取最新轮次打样工序（与转移一致，不过滤状态，让用户可删多余）=====
-        java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> allProcesses =
-                sampleProcessMapper.selectByOrderId(orderId);
-        java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> processes = allProcesses;
-        if (allProcesses != null && !allProcesses.isEmpty()) {
-            Integer latestRound = allProcesses.stream()
-                    .map(com.jjx.sales.domain.entity.SalesSampleProcess::getRoundNo)
-                    .filter(java.util.Objects::nonNull)
-                    .max(Integer::compareTo).orElse(null);
-            if (latestRound != null) {
-                processes = allProcesses.stream()
-                        .filter(p -> latestRound.equals(p.getRoundNo()))
-                        .collect(java.util.stream.Collectors.toList());
-            }
-            // 按工序顺序排序
-            processes.sort(java.util.Comparator.comparing(
-                            (com.jjx.sales.domain.entity.SalesSampleProcess p) ->
-                                    p.getProcessOrder() != null && p.getProcessOrder() > 0 ? p.getProcessOrder() : 999999)
-                    .thenComparing(p -> p.getProcessId() != null ? p.getProcessId() : 0L));
-        }
+        var selected = requireConfirmedRound(orderId,roundId);
+        var processes = readRoundProcesses(selected);
+        vo.setRoundId(selected.getRoundId()); vo.setConfirmedSchemeId(selected.getRoundId()); vo.setRoundNo(selected.getRoundNo());
+        vo.setConfirmedSchemes(sampleRoundMapper.selectByOrderId(orderId).stream()
+                .filter(value -> value.getRoundId()!=null && SampleRoundResultEnum.CONFIRMED.getValue().equals(value.getResult()))
+                .map(value -> { java.util.Map<String,Object> choice=new LinkedHashMap<>(); choice.put("roundId",value.getRoundId());
+                    choice.put("confirmedSchemeId",value.getRoundId()); choice.put("roundNo",value.getRoundNo()); return choice; }).toList());
 
         // ===== 标准库仅用于服务端名称兜底匹配，不再作为下拉选项返回 =====
         java.util.List<com.jjx.product.domain.entity.ProductStandardProcess> stdProcesses =
@@ -3040,6 +2774,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 item.setProcessNote(sp.getProcessNote());
                 item.setRemark(sp.getRemark());
                 item.setCustomProcessParams(sp.getCustomProcessParams());
+                item.setMajorCategory(sp.getMajorCategory());
+                item.setArtworkVersionId(sp.getArtworkVersionId()); item.setDefaultPlateId(sp.getDefaultPlateId()); item.setPrintRequirements(sp.getPrintRequirements());
                 item.setDurationMinutes(sp.getDurationMinutes());
                 // 匹配推荐：优先用打样已关联的标准工序，其次按名称模糊匹配
                 com.jjx.product.domain.entity.ProductStandardProcess match = null;
@@ -3067,94 +2803,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
         vo.setSampleProcesses(processItems);
 
-        // ===== 打样物料列表（materials JSON 展开）+ 匹配推荐 =====
-        java.util.List<com.jjx.sales.domain.vo.SampleTransferPreviewVO.SampleMaterialItem> materialItems =
-                new java.util.ArrayList<>();
-        if (processes != null) {
-            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
-            java.util.Set<Integer> expandedProcessOrders = new java.util.HashSet<>();
-            for (com.jjx.sales.domain.entity.SalesSampleProcess sp : processes) {
-                // 组合卡内的材料 JSON 是同一份产物：同 processOrder 只展开首行。
-                Integer processOrder = sp.getProcessOrder();
-                if (processOrder != null && processOrder > 0 && !expandedProcessOrders.add(processOrder)) continue;
-                if (sp.getMaterials() == null || sp.getMaterials().isEmpty()) continue;
-                try {
-                    java.util.List<java.util.Map<String, Object>> mats = om.readValue(sp.getMaterials(),
-                            new com.fasterxml.jackson.core.type.TypeReference<java.util.List<java.util.Map<String, Object>>>() {});
-                    for (int i = 0; i < mats.size(); i++) {
-                        java.util.Map<String, Object> m = mats.get(i);
-                        com.jjx.sales.domain.vo.SampleTransferPreviewVO.SampleMaterialItem item =
-                                new com.jjx.sales.domain.vo.SampleTransferPreviewVO.SampleMaterialItem();
-                        item.setRowKey(sp.getProcessId() + "_" + i);
-                        item.setSourceProcessId(sp.getProcessId());
-                        item.setSourceProcessName(sp.getProcessName());
-                        java.util.List<Long> projects = m.containsKey("projectIds")
-                                ? parseSampleProjects(m.get("projectIds"))
-                                : processes.stream().filter(row -> java.util.Objects.equals(row.getProcessOrder(), sp.getProcessOrder()))
-                                    .map(SalesSampleProcess::getStdProcessId).filter(java.util.Objects::nonNull).distinct().collect(Collectors.toList());
-                        item.setProjectIds(projects);
-                        java.math.BigDecimal[] quantities = SampleMaterialQuantity.normalize(sampleDecimal(m.get("baseQty")), sampleDecimal(m.get("moduleQty")), sampleDecimal(m.get("qty")));
-                        item.setBaseQty(quantities[0]);
-                        item.setModuleQty(quantities[1]);
-                        item.setSplit(normalizeSampleSplit(m.get("split")));
-                        item.setName(m.get("name") != null ? m.get("name").toString() : null);
-                        item.setSpec(m.get("spec") != null ? m.get("spec").toString() : null);
-                        if (m.get("qty") != null) {
-                            try { item.setQty(new java.math.BigDecimal(m.get("qty").toString())); }
-                            catch (Exception ignored) { }
-                        }
-                        item.setUnit(m.get("unit") != null ? m.get("unit").toString() : null);
-                        if (m.get("materialId") != null) {
-                            try { item.setMaterialId(Long.valueOf(m.get("materialId").toString())); }
-                            catch (Exception ignored) { }
-                        }
-                        item.setMaterialCode(m.get("materialCode") != null ? m.get("materialCode").toString() : null);
-                        // 匹配推荐：优先用打样 JSON 里的物料ID，其次按名称模糊匹配
-                        com.jjx.inventory.domain.InventoryMaterial matMatch = null;
-                        if (item.getMaterialId() != null) {
-                            matMatch = inventoryMaterialMapper.selectById(item.getMaterialId());
-                        }
-                        if (matMatch == null) {
-                            matMatch = matchStandardMaterial(item.getName(), stdMaterials);
-                        }
-                        if (matMatch != null) {
-                            item.setMatchedMaterialId(matMatch.getMaterialId());
-                            item.setMatchedMaterialCode(matMatch.getMaterialCode());
-                            item.setMatchedMaterialName(matMatch.getMaterialName());
-                            item.setMatched(true);
-                        } else {
-                            item.setMatched(false);
-                        }
-                        materialItems.add(item);
-                    }
-                } catch (Exception pe) {
-                    throw new BusinessException("打样材料数据需修正：" + pe.getMessage());
-                }
-            }
-        }
-        int bomRound = sampleOrder.getSampleRound() == null ? 1 : sampleOrder.getSampleRound();
-        for (SalesSampleBom bom : listSampleBom(orderId)) {
-            if (!java.util.Objects.equals(bom.getRoundNo(), bomRound)) continue;
-            var item = new com.jjx.sales.domain.vo.SampleTransferPreviewVO.SampleMaterialItem();
-            item.setRowKey("bom_" + bom.getBomId());
-            item.setSourceProcessName(bom.getLayerName());
-            item.setName(bom.getMaterialName());
-            item.setSpec(bom.getSpecification());
-            item.setQty(bom.getQuantity());
-            item.setUnit(bom.getUnit());
-            item.setMaterialId(bom.getMaterialId());
-            item.setMaterialCode(bom.getMaterialCode());
-            item.setProjectIds(parseSampleProjects(bom.getProjectIds()));
-            var quantities = SampleMaterialQuantity.normalize(bom.getBaseQty(), bom.getModuleQty(), bom.getQuantity());
-            item.setBaseQty(quantities[0]); item.setModuleQty(quantities[1]); item.setQty(quantities[2]);
-            item.setSplit(normalizeSampleSplit(bom.getSplit()));
-            var match = bom.getMaterialId() != null ? inventoryMaterialMapper.selectById(bom.getMaterialId()) : matchStandardMaterial(bom.getMaterialName(), stdMaterials);
-            item.setMatched(match != null);
-            if (match != null) {
-                item.setMatchedMaterialId(match.getMaterialId()); item.setMatchedMaterialCode(match.getMaterialCode()); item.setMatchedMaterialName(match.getMaterialName());
-            }
-            materialItems.add(item);
-        }
+        var materialItems = previewRoundMaterials(selected,stdMaterials);
         vo.setSampleMaterials(materialItems);
 
         log.info("样品单[{}] 打样转标准预览：工序{}道 物料{}行", orderId, processItems.size(), materialItems.size());
@@ -3170,16 +2819,32 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Transactional(rollbackFor = Exception.class)
     public java.util.Map<String, Object> confirmTransfer(com.jjx.sales.dto.transfer.SampleTransferConfirmDTO dto) {
         Long orderId = dto.getOrderId();
+        if (dto.getRoundId()==null || !dto.getRoundId().equals(dto.getConfirmedSchemeId()))
+            throw new BusinessException("转产必须明确选择已确认方案及轮次身份");
+        if (dto.getRequestId()==null || dto.getRequestId().isBlank() || dto.getRequestId().length()>64)
+            throw new BusinessException("资料转移须提供有效requestId");
+        String requestHash;
+        var requestReplay=sampleTransferMapper.selectOne(new LambdaQueryWrapper<SalesSampleTransfer>().eq(SalesSampleTransfer::getRequestId,dto.getRequestId()));
+        if (requestReplay!=null && (!orderId.equals(requestReplay.getOrderId()) || !dto.getRoundId().equals(requestReplay.getSourceRoundId())))
+            throw new BusinessException("requestId已用于其他转移");
+        var replay=sampleTransferMapper.selectOne(new LambdaQueryWrapper<SalesSampleTransfer>()
+                .eq(SalesSampleTransfer::getOrderId,orderId).eq(SalesSampleTransfer::getSourceRoundId,dto.getRoundId()));
+        if (replay!=null) {
+            return replayConfirmedTransfer(dto,replay);
+        }
         SalesOrder sampleOrder = orderMapper.selectById(orderId);
         if (sampleOrder == null || sampleOrder.getDeleted() == 1) {
             throw new BusinessException("样品单不存在");
         }
-        // 已确认(6)或已转量产(7)可转移
+        // 当前轮可继续试样；转移依据明确的历史已确认方案，不猜最新轮。
         Integer st = sampleOrder.getSampleStatus();
-        if (!SampleOrderStatusEnum.CONFIRMED.getValue().equals(st)
-                && !SampleOrderStatusEnum.TRANSFERRED.getValue().equals(st)) {
-            throw new BusinessException("仅已确认或已转量产的样品单可进行资料转移");
+        if (st==null || !java.util.Set.of(SampleOrderStatusEnum.CONFIRMED.getValue(),SampleOrderStatusEnum.TRANSFERRED.getValue(),
+                SampleOrderStatusEnum.ENGINEERING.getValue(),SampleOrderStatusEnum.SAMPLE_READY.getValue(),
+                SampleOrderStatusEnum.SAMPLE_SENT.getValue(),SampleOrderStatusEnum.REJECTED.getValue()).contains(st)) {
+            throw new BusinessException("当前状态不可转移已确认方案");
         }
+        var selectedRound=requireConfirmedRound(orderId,dto.getRoundId());
+        var canonical=buildRoundTransferMappings(orderId,selectedRound.getRoundId());
         java.util.List<com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.ProcessMapping> processMappings =
                 dto.getProcessMappings();
         java.util.List<com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.MaterialMapping> materialMappings =
@@ -3188,12 +2853,17 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 && (materialMappings == null || materialMappings.isEmpty());
         if (automaticMode) {
             com.jjx.sales.dto.transfer.SampleTransferConfirmDTO automaticMappings =
-                    buildAutomaticTransferMappings(orderId);
+                    canonical;
             processMappings = automaticMappings.getProcessMappings();
             materialMappings = automaticMappings.getMaterialMappings();
         } else if (processMappings == null || processMappings.isEmpty()) {
             throw new BusinessException("工序映射不能为空");
+        } else {
+            mergeConfirmedMappings(canonical,dto);
+            processMappings=canonical.getProcessMappings(); materialMappings=canonical.getMaterialMappings();
         }
+        var printingVersions=processMappings.stream().map(com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.ProcessMapping::getArtworkVersionId)
+                .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
         // 必填校验：工序必须选择标准工序（2026-08-12 豁免：带自定义参数的印刷工序可不选，原样转入路线）
         for (com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.ProcessMapping pm : processMappings) {
             boolean hasCustomParams = pm.getCustomProcessParams() != null && !pm.getCustomProcessParams().isBlank();
@@ -3217,14 +2887,38 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 mm.setProcessId(null);
             } else {
                 if (mm.getProjectIds() != null && !mm.getProjectIds().isEmpty() && !mm.getProjectIds().contains(mm.getProcessId())) throw new BusinessException("所选项目不在材料项目范围内");
-                var project = standardProcessMapper.selectById(mm.getProcessId());
-                if (project == null || !Integer.valueOf(1).equals(project.getIsEnabled())) throw new BusinessException("所选项目不存在或已停用");
+                if (replay==null) {
+                    var project = standardProcessMapper.selectById(mm.getProcessId());
+                    if (project == null || !Integer.valueOf(1).equals(project.getIsEnabled())) throw new BusinessException("所选项目不存在或已停用");
+                }
             }
             var quantities = SampleMaterialQuantity.normalize(mm.getBaseQty(), mm.getModuleQty(), mm.getQty());
             mm.setBaseQty(quantities[0]); mm.setModuleQty(quantities[1]); mm.setQty(quantities[2]);
             mm.setSplit(normalizeSampleSplit(mm.getSplit()));
         }
         if (!choices.isEmpty()) throw new BusinessException("材料已变化，请刷新资料转移预览后重新确认");
+        try {
+            requestHash=com.jjx.common.utils.Sha256Utils.ofText(objectMapper.writeValueAsString(List.of(processMappings,materialMappings)));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new BusinessException("转移请求无效"); }
+        for (Long versionId : printingVersions) if (sampleProcessMapper.lockArtworkVersion(versionId)==null)
+            throw new BusinessException("图案版本不存在");
+        for (var pm:processMappings) if (pm.getDefaultPlateId()!=null) {
+            if (pm.getArtworkVersionId()==null) throw new BusinessException("建议网版缺少图案版本");
+            screenService.lockPlateReference(pm.getArtworkVersionId(),pm.getDefaultPlateId());
+        }
+        SalesOrder lockedSample=lockCurrentSample(orderId);
+        if (SampleOrderStatusEnum.CLOSED.getValue().equals(lockedSample.getSampleStatus())
+                || SampleOrderStatusEnum.CANCELLED.getValue().equals(lockedSample.getSampleStatus()))
+            throw new BusinessException("样品单已结束，不能新建转移");
+        sampleOrder=lockedSample;
+        var concurrentReplay=sampleTransferMapper.lockByRound(orderId,selectedRound.getRoundId());
+        if (concurrentReplay!=null) return replayConfirmedTransfer(dto,concurrentReplay);
+        for (Long versionId : printingVersions) { artworkService.requireUsableVersion(versionId);requireSamplePlanningVersion(versionId,sampleOrder); }
+        for (var pm:processMappings) if ("PRINT".equals(pm.getMajorCategory())) {
+            if (pm.getArtworkVersionId()==null) throw new BusinessException("正式转产的印刷工序必须绑定已发布图案版本");
+            screenService.validateRequirements(pm.getPrintRequirements());
+            if (pm.getDefaultPlateId()!=null) screenService.requireUsablePlate(pm.getArtworkVersionId(),pm.getDefaultPlateId(),pm.getPrintRequirements());
+        }
 
         String transferNo = redisSequenceService.generateBusinessNumberByType(
                 "material_transfer", "TF", "yyMMdd", 3);
@@ -3245,6 +2939,15 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             }
         }
 
+        if (prodList==null || prodList.isEmpty()) throw new BusinessException("归档方案缺少产品明细，请先核实产品归属");
+        if (dto.getTargetProductId()!=null) {
+            if (prodList.size()!=1) throw new BusinessException("多产品打样不能用单一目标产品覆盖");
+            productCustomerValidator.validateBelongsToCustomer(dto.getTargetProductId(),sampleOrder.getCustomerId());
+            var target=productMapper.selectById(dto.getTargetProductId());
+            if (target==null) throw new BusinessException("目标产品不存在");
+            prodList.getFirst().setProductId(target.getProductId());
+            prodList.getFirst().setProductCode(target.getProductCode());prodList.getFirst().setProductName(target.getProductName());
+        }
         if (prodList != null) {
             for (com.jjx.sales.domain.vo.SalesOrderProductVO prod : prodList) {
                 Long pid = prod.getProductId();
@@ -3276,6 +2979,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 }
                 if (builtProductId == null) builtProductId = pid;
                 if (pid == null) continue;
+                for (Long versionId : printingVersions) {
+                    var identity=requireSamplePlanningVersion(versionId,sampleOrder);
+                    sampleProcessMapper.linkArtworkProduct(((Number)identity.get("artworkId")).longValue(),pid);
+                }
 
                 // ===== ② BOM 建档：版本化，明细来自前端物料映射 =====
                 com.jjx.engineering.domain.entity.EngineeringBom existBom = bomService.getOne(
@@ -3366,11 +3073,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         .collect(java.util.stream.Collectors.toList());
                 String newRoutingVersion = computeNextVersion(routingVersions);
                 if (processMappings != null && !processMappings.isEmpty()) {
-                    // 旧版本失效
-                    if (existRouting != null) {
-                        existRouting.setIsCurrent(0);
-                        routingService.updateById(existRouting);
-                    }
+                    // 新版保持草稿；由P08批准/设现行流程替换旧现行路线。
                     com.jjx.engineering.domain.entity.EngineeringRouting newRouting = new com.jjx.engineering.domain.entity.EngineeringRouting();
                     newRouting.setRoutingCode("RTE-" + prod.getProductCode() + "-SAMPLE");
                     newRouting.setRoutingName(prod.getProductName() + "（打样传承工艺路线）");
@@ -3379,12 +3082,11 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     newRouting.setProductName(prod.getProductName());
                     newRouting.setRoutingVersion(newRoutingVersion);
                     newRouting.setVersion(newRoutingVersion);
-                    newRouting.setIsCurrent(1);
+                    newRouting.setIsCurrent(0);
                     newRouting.setSourceSampleId(orderId);
                     newRouting.setParentRoutingId(existRouting != null ? existRouting.getRoutingId() : null);
-                    newRouting.setApproveStatus(1); // 草稿
+                    newRouting.setApproveStatus(com.jjx.common.enums.ApproveStatusEnum.DRAFT.getValue());
                     newRouting.setCreateBy(SecurityUtils.getUsername());
-                    routingService.save(newRouting);
 
                     int stepOrder = 1;
                     java.math.BigDecimal totalLabor = java.math.BigDecimal.ZERO;
@@ -3425,7 +3127,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         routingRows.add(new RoutingRowData(
                                 stdProcessId,
                                 // 2026-08-12：大类透传（印刷工序=PRINT，其余组装）
-                                hasCustomParams ? "PRINT" : "ASSEMBLY",
+                                pm.getMajorCategory(),
                                 pm.getProcessName(),
                                 laborHours,
                                 machineHours,
@@ -3439,22 +3141,14 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                                 groupName,
                                 groupOrder,
                                 pm.getIndexNumber())); // DEV-777：对照版下标透传到工艺路线
+                        var binding=routingRows.getLast();
+                        binding.artworkVersionId=pm.getArtworkVersionId();binding.defaultPlateId=pm.getDefaultPlateId();binding.printRequirements=pm.getPrintRequirements();
                     }
-                    int processCnt = insertRoutingRowsGrouped(newRouting.getRoutingId(), routingRows);
-                    newRouting.setTotalLaborHours(totalLabor);
-                    newRouting.setTotalMachineHours(totalMachine);
-                    newRouting.setProcessCount(processCnt);
-                    routingService.updateById(newRouting);
+                    newRouting.setRoutingId(createTransferredRouting(newRouting,routingRows));
+                    int processCnt = (int)routingRows.stream().map(row->row.groupId==null ? row : row.groupId).distinct().count();
                     builtRoutingId = newRouting.getRoutingId();
                     routingAction = "CREATE";
                     details.add("工艺路线[" + newRouting.getRoutingCode() + "]生成草稿(" + processCnt + "道工序)");
-                    if (pid != null) {
-                        com.jjx.product.domain.entity.Product routingVerUpdate = new com.jjx.product.domain.entity.Product();
-                        routingVerUpdate.setProductId(pid);
-                        routingVerUpdate.setCurrentRoutingVersion(newRoutingVersion);
-                        routingVerUpdate.setCurrentRouteId(newRouting.getRoutingId());
-                        productMapper.updateById(routingVerUpdate);
-                    }
                     transferredVersion = newRoutingVersion;
                 } else {
                     routingAction = "SKIP_NO_PROCESS";
@@ -3466,6 +3160,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         // 写转移记录
         com.jjx.sales.domain.entity.SalesSampleTransfer transfer = new com.jjx.sales.domain.entity.SalesSampleTransfer();
         transfer.setOrderId(orderId);
+        transfer.setSourceRoundId(selectedRound.getRoundId()); transfer.setRequestId(dto.getRequestId()); transfer.setRequestHash(requestHash);
         transfer.setOrderNo(sampleOrder.getOrderNo());
         transfer.setTransferNo(transferNo);
         transfer.setProductId(builtProductId);
@@ -3475,7 +3170,12 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         transfer.setBomAction(bomAction);
         transfer.setRoutingAction(routingAction);
         transfer.setStatus("SUCCESS");
-        transfer.setDetail(String.join("\n", details));
+        var frozen=new com.jjx.sales.dto.transfer.SampleTransferConfirmDTO();
+        frozen.setOrderId(orderId);frozen.setRoundId(selectedRound.getRoundId());frozen.setConfirmedSchemeId(selectedRound.getRoundId());
+        frozen.setProcessMappings(processMappings);frozen.setMaterialMappings(materialMappings);
+        var audit=new LinkedHashMap<String,Object>();audit.put("messages",details);audit.put("canonical",frozen);audit.put("version",transferredVersion);
+        try { transfer.setDetail(objectMapper.writeValueAsString(audit)); }
+        catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new BusinessException("无法保存转移结果快照"); }
         transfer.setCreateBy(SecurityUtils.getUsername());
         sampleTransferMapper.insert(transfer);
 
@@ -3498,163 +3198,131 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         result.put("bomId", builtBomId);
         result.put("routingId", builtRoutingId);
         result.put("version", transferredVersion);
+        result.put("roundId",selectedRound.getRoundId());result.put("confirmedSchemeId",selectedRound.getRoundId());
         result.put("detail", details);
         log.info("样品单[{}] 打样转标准确认完成[{}] 产品={} BOM={} 路线={} 版本={}",
                 sampleOrder.getOrderNo(), transferNo, productAction, bomAction, routingAction, transferredVersion);
         return result;
     }
 
+    private Map<String,Object> replayConfirmedTransfer(com.jjx.sales.dto.transfer.SampleTransferConfirmDTO requested,SalesSampleTransfer transfer) {
+        if (requested.getTargetProductId()!=null && !requested.getTargetProductId().equals(transfer.getProductId()))
+            throw new BusinessException("该确认方案已经转移到其他目标产品");
+        try {
+            var audit=objectMapper.readTree(transfer.getDetail());
+            if (!audit.hasNonNull("canonical")) throw new BusinessException("转移记录缺少冻结映射，不能猜测重放");
+            var frozen=objectMapper.treeToValue(audit.get("canonical"),com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.class);
+            if (!java.util.Objects.equals(frozen.getOrderId(),transfer.getOrderId()) || !java.util.Objects.equals(frozen.getRoundId(),transfer.getSourceRoundId()))
+                throw new BusinessException("冻结转移身份不一致");
+            boolean explicit=requested.getProcessMappings()!=null && !requested.getProcessMappings().isEmpty();
+            if (explicit) mergeConfirmedMappings(frozen,requested);
+            else if (requested.getMaterialMappings()!=null && !requested.getMaterialMappings().isEmpty()) throw new BusinessException("工序映射不能为空");
+            var choices=new java.util.HashMap<String,com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.MaterialProjectSelection>();
+            if (requested.getMaterialProjects()!=null) for (var choice:requested.getMaterialProjects())
+                if (choices.put(choice.getRowKey(),choice)!=null) throw new BusinessException("材料项目确认重复");
+            for (var row:frozen.getMaterialMappings()) {
+                var choice=choices.remove(row.getRowKey());
+                if (choice!=null) row.setProcessId(choice.getProcessId());
+                row.setIsCommon(row.getProcessId()==null);
+                var quantity=SampleMaterialQuantity.normalize(row.getBaseQty(),row.getModuleQty(),row.getQty());
+                row.setBaseQty(quantity[0]);row.setModuleQty(quantity[1]);row.setQty(quantity[2]);row.setSplit(normalizeSampleSplit(row.getSplit()));
+            }
+            if (!choices.isEmpty()) throw new BusinessException("材料不属于原转移记录");
+            var hash=com.jjx.common.utils.Sha256Utils.ofText(objectMapper.writeValueAsString(List.of(frozen.getProcessMappings(),frozen.getMaterialMappings())));
+            if (!java.util.Objects.equals(hash,transfer.getRequestHash())) throw new BusinessException("该确认方案已经转移，请勿改写重放载荷");
+            return sampleTransferReplay(transfer);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new BusinessException("转移快照损坏，不能猜测重放"); }
+    }
+
+    private Map<String,Object> sampleTransferReplay(SalesSampleTransfer transfer) {
+        var result=new LinkedHashMap<String,Object>();
+        result.put("transferId",transfer.getTransferId());result.put("transferNo",transfer.getTransferNo());
+        result.put("productId",transfer.getProductId());result.put("bomId",transfer.getBomId());result.put("routingId",transfer.getRoutingId());
+        result.put("productAction",transfer.getProductAction());result.put("bomAction",transfer.getBomAction());result.put("routingAction",transfer.getRoutingAction());
+        result.put("roundId",transfer.getSourceRoundId());result.put("confirmedSchemeId",transfer.getSourceRoundId());
+        try {
+            var audit=objectMapper.readTree(transfer.getDetail());
+            result.put("detail",objectMapper.convertValue(audit.path("messages"),new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {}));
+            result.put("version",audit.path("version").isNull() ? null : audit.path("version").asText());
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new BusinessException("转移结果快照损坏"); }
+        return result;
+    }
+
+    /** 客户端只能补标准库映射，不能改写已确认方案的成员、版本、参数或数量。 */
+    private void mergeConfirmedMappings(com.jjx.sales.dto.transfer.SampleTransferConfirmDTO canonical,
+            com.jjx.sales.dto.transfer.SampleTransferConfirmDTO requested) {
+        var processMap=new java.util.HashMap<Long,com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.ProcessMapping>();
+        for (var row:requested.getProcessMappings()) {
+            if (row.getSampleProcessId()==null || processMap.put(row.getSampleProcessId(),row)!=null)
+                throw new BusinessException("工序映射必须来自所选归档方案且不能重复");
+        }
+        if (processMap.size()!=canonical.getProcessMappings().size()) throw new BusinessException("归档方案工序成员不完整");
+        for (var source:canonical.getProcessMappings()) {
+            var input=processMap.remove(source.getSampleProcessId());
+            if (input==null) throw new BusinessException("工序不属于所选已确认方案");
+            if ((input.getArtworkVersionId()!=null && !input.getArtworkVersionId().equals(source.getArtworkVersionId()))
+                    || (input.getDefaultPlateId()!=null && !input.getDefaultPlateId().equals(source.getDefaultPlateId()))
+                    || (input.getPrintRequirements()!=null && !sameSampleJson(input.getPrintRequirements(),source.getPrintRequirements())))
+                throw new BusinessException("不能在转产时修改已确认印刷版本和要求");
+            if (source.getStdProcessId()==null) source.setStdProcessId(input.getStdProcessId());
+            else if (input.getStdProcessId()!=null && !input.getStdProcessId().equals(source.getStdProcessId()))
+                throw new BusinessException("不能改写已确认工序的标准作业身份");
+        }
+        var materials=new java.util.HashMap<String,com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.MaterialMapping>();
+        if (requested.getMaterialMappings()!=null) for (var row:requested.getMaterialMappings()) {
+            if (materials.put(row.getRowKey(),row)!=null) throw new BusinessException("材料映射重复");
+        }
+        if (materials.size()!=canonical.getMaterialMappings().size()) throw new BusinessException("归档方案材料成员不完整");
+        for (var source:canonical.getMaterialMappings()) {
+            var input=materials.remove(source.getRowKey());
+            if (input==null) throw new BusinessException("材料不属于所选已确认方案");
+            if (source.getMaterialId()==null) source.setMaterialId(input.getMaterialId());
+            else if (input.getMaterialId()!=null && !source.getMaterialId().equals(input.getMaterialId()))
+                throw new BusinessException("不能改写已确认材料身份");
+            var sourceQty=SampleMaterialQuantity.normalize(source.getBaseQty(),source.getModuleQty(),source.getQty());
+            var inputQty=SampleMaterialQuantity.normalize(input.getBaseQty()==null ? source.getBaseQty() : input.getBaseQty(),
+                    input.getModuleQty()==null ? source.getModuleQty() : input.getModuleQty(),input.getQty()==null ? source.getQty() : input.getQty());
+            if (sourceQty[0].compareTo(inputQty[0])!=0 || sourceQty[1].compareTo(inputQty[1])!=0 || sourceQty[2].compareTo(inputQty[2])!=0
+                    || (input.getSplit()!=null && !java.util.Objects.equals(normalizeSampleSplit(input.getSplit()),normalizeSampleSplit(source.getSplit())))
+                    || (input.getUnit()!=null && !java.util.Objects.equals(input.getUnit(),source.getUnit())))
+                throw new BusinessException("不能在转产时修改已确认材料数量、单位或跳距");
+            source.setProcessId(input.getProcessId());source.setIsCommon(input.getIsCommon());
+        }
+    }
+
     /**
-     * 直接转移模式：从最新轮次打样数据构建与旧显式入参一致的映射结构。
+     * 直接转移模式：从明确已确认的归档方案构建映射。
      * 全部匹配校验在建档/版本化之前完成，避免部分落库。
      */
     private com.jjx.sales.dto.transfer.SampleTransferConfirmDTO buildAutomaticTransferMappings(Long orderId) {
-        java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> allProcesses =
-                sampleProcessMapper.selectByOrderId(orderId);
-        java.util.List<com.jjx.sales.domain.entity.SalesSampleProcess> processes = allProcesses;
-        if (allProcesses != null && !allProcesses.isEmpty()) {
-            Integer latestRound = allProcesses.stream()
-                    .map(com.jjx.sales.domain.entity.SalesSampleProcess::getRoundNo)
-                    .filter(java.util.Objects::nonNull)
-                    .max(Integer::compareTo).orElse(null);
-            if (latestRound != null) {
-                processes = allProcesses.stream()
-                        .filter(p -> latestRound.equals(p.getRoundNo()))
-                        .collect(java.util.stream.Collectors.toList());
-            }
-            processes.sort(java.util.Comparator.comparing(
-                            (com.jjx.sales.domain.entity.SalesSampleProcess p) ->
-                                    p.getProcessOrder() != null && p.getProcessOrder() > 0 ? p.getProcessOrder() : 999999)
-                    .thenComparing(p -> p.getProcessId() != null ? p.getProcessId() : 0L));
+        return buildRoundTransferMappings(orderId,null);
+    }
+
+    private com.jjx.sales.dto.transfer.SampleTransferConfirmDTO buildRoundTransferMappings(Long orderId,Long roundId) {
+        var preview=previewTransfer(orderId,roundId);
+        var result=new com.jjx.sales.dto.transfer.SampleTransferConfirmDTO();
+        result.setOrderId(orderId); result.setRoundId(preview.getRoundId()); result.setConfirmedSchemeId(preview.getConfirmedSchemeId());
+        var processes=new ArrayList<com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.ProcessMapping>();
+        for (var source : preview.getSampleProcesses()) {
+            var row=new com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.ProcessMapping();
+            row.setSampleProcessId(source.getProcessId()); row.setMajorCategory(source.getMajorCategory());
+            row.setStdProcessId(source.getMatchedStdProcessId()); row.setProcessName(source.getProcessName()); row.setProcessOrder(source.getProcessOrder());
+            if (source.getProcessOrder()!=null) row.setGroupId(source.getProcessOrder().longValue());
+            row.setProcessCategory(source.getProcessCategory()); row.setProcessNote(source.getProcessNote()); row.setRemark(source.getRemark());
+            row.setCustomProcessParams(source.getCustomProcessParams()); row.setDurationMinutes(source.getDurationMinutes()); row.setIndexNumber(source.getIndexNumber());
+            row.setArtworkVersionId(source.getArtworkVersionId()); row.setDefaultPlateId(source.getDefaultPlateId()); row.setPrintRequirements(source.getPrintRequirements());
+            processes.add(row);
         }
-
-        java.util.List<com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.ProcessMapping> processMappings =
-                new java.util.ArrayList<>();
-        java.util.List<com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.MaterialMapping> materialMappings =
-                new java.util.ArrayList<>();
-        java.util.Set<String> unmatchedProcesses = new java.util.LinkedHashSet<>();
-        java.util.Set<String> unmatchedMaterials = new java.util.LinkedHashSet<>();
-        java.util.List<com.jjx.product.domain.entity.ProductStandardProcess> stdProcesses = null;
-        java.util.List<com.jjx.inventory.domain.InventoryMaterial> stdMaterials = null;
-
-        if (processes != null) {
-            for (com.jjx.sales.domain.entity.SalesSampleProcess sp : processes) {
-                Long stdProcessId = sp.getStdProcessId();
-                boolean hasCustomParams = sp.getCustomProcessParams() != null
-                        && !sp.getCustomProcessParams().isBlank();
-                if (stdProcessId == null && !hasCustomParams) {
-                    if (stdProcesses == null) stdProcesses = standardProcessMapper.selectEnabledProcesses();
-                    com.jjx.product.domain.entity.ProductStandardProcess match =
-                            matchStandardProcess(sp.getProcessName(), stdProcesses);
-                    if (match != null) stdProcessId = match.getProcessId();
-                }
-                if (stdProcessId == null && !hasCustomParams) {
-                    unmatchedProcesses.add(sp.getProcessName());
-                    continue;
-                }
-
-                com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.ProcessMapping pm =
-                        new com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.ProcessMapping();
-                pm.setSampleProcessId(sp.getProcessId());
-                pm.setStdProcessId(stdProcessId);
-                pm.setProcessName(sp.getProcessName());
-                pm.setProcessOrder(sp.getProcessOrder());
-                if (sp.getProcessOrder() != null && sp.getProcessOrder() > 0) {
-                    pm.setGroupId(sp.getProcessOrder().longValue());
-                    pm.setGroupName(processCategoryToGroupName(sp.getProcessCategory()));
-                }
-                pm.setProcessCategory(sp.getProcessCategory());
-                pm.setProcessNote(sp.getProcessNote());
-                pm.setRemark(sp.getRemark());
-                pm.setCustomProcessParams(sp.getCustomProcessParams());
-                pm.setDurationMinutes(sp.getDurationMinutes());
-                pm.setIndexNumber(sp.getIndexNumber());
-                processMappings.add(pm);
-            }
-
-            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
-            java.util.Set<Integer> expandedProcessOrders = new java.util.HashSet<>();
-            for (com.jjx.sales.domain.entity.SalesSampleProcess sp : processes) {
-                Integer processOrder = sp.getProcessOrder();
-                if (processOrder != null && processOrder > 0 && !expandedProcessOrders.add(processOrder)) continue;
-                if (sp.getMaterials() == null || sp.getMaterials().isEmpty()) continue;
-                try {
-                    java.util.List<java.util.Map<String, Object>> mats = om.readValue(sp.getMaterials(),
-                            new com.fasterxml.jackson.core.type.TypeReference<java.util.List<java.util.Map<String, Object>>>() {});
-                    for (int i = 0; i < mats.size(); i++) {
-                        java.util.Map<String, Object> m = mats.get(i);
-                        String materialName = m.get("name") != null ? m.get("name").toString() : null;
-                        Long materialId = null;
-                        if (m.get("materialId") != null) {
-                            try { materialId = Long.valueOf(m.get("materialId").toString()); }
-                            catch (Exception ignored) { }
-                        }
-                        com.jjx.inventory.domain.InventoryMaterial match = null;
-                        if (materialId == null) {
-                            if (stdMaterials == null) {
-                                stdMaterials = inventoryMaterialMapper.selectList(
-                                        new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
-                                                .eq(com.jjx.inventory.domain.InventoryMaterial::getStatus, 1));
-                            }
-                            match = matchStandardMaterial(materialName, stdMaterials);
-                            if (match != null) materialId = match.getMaterialId();
-                        }
-                        if (materialId == null) {
-                            unmatchedMaterials.add(materialName);
-                            continue;
-                        }
-
-                        com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.MaterialMapping mm =
-                                new com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.MaterialMapping();
-                        mm.setRowKey(sp.getProcessId() + "_" + i);
-                        mm.setSourceProcessId(sp.getProcessId());
-                        mm.setSourceProcessName(sp.getProcessName());
-                        mm.setMaterialId(materialId);
-                        mm.setMaterialName(match != null ? match.getMaterialName() : materialName);
-                        mm.setSpec(m.get("spec") != null ? m.get("spec").toString() : null);
-                        if (m.get("qty") != null) {
-                            try { mm.setQty(new java.math.BigDecimal(m.get("qty").toString())); }
-                            catch (Exception ignored) { }
-                        }
-                        mm.setUnit(m.get("unit") != null ? m.get("unit").toString() : null);
-                        materialMappings.add(mm);
-                    }
-                } catch (Exception pe) {
-                    log.warn("解析打样工序材料失败: {}", pe.getMessage());
-                }
-            }
+        var materials=new ArrayList<com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.MaterialMapping>();
+        for (var source : preview.getSampleMaterials()) {
+            var row=new com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.MaterialMapping();
+            row.setRowKey(source.getRowKey()); row.setSourceProcessId(source.getSourceProcessId()); row.setSourceProcessName(source.getSourceProcessName());
+            row.setMaterialId(source.getMatchedMaterialId()); row.setMaterialName(source.getName()); row.setSpec(source.getSpec()); row.setUnit(source.getUnit());
+            row.setQty(source.getQty()); row.setBaseQty(source.getBaseQty()); row.setModuleQty(source.getModuleQty()); row.setProjectIds(source.getProjectIds()); row.setSplit(source.getSplit());
+            if (source.getProjectIds()!=null && source.getProjectIds().size()==1) row.setProcessId(source.getProjectIds().getFirst());
+            materials.add(row);
         }
-
-        if (!unmatchedProcesses.isEmpty() || !unmatchedMaterials.isEmpty()) {
-            java.util.List<String> messages = new java.util.ArrayList<>();
-            if (!unmatchedProcesses.isEmpty()) {
-                messages.add("以下打样工序未匹配到标准工序，请先在标准工序库建档后再转移："
-                        + String.join("、", unmatchedProcesses));
-            }
-            if (!unmatchedMaterials.isEmpty()) {
-                messages.add("以下打样物料未匹配到标准物料，请先在标准物料库建档后再转移："
-                        + String.join("、", unmatchedMaterials));
-            }
-            throw new BusinessException(String.join("；", messages));
-        }
-
-        com.jjx.sales.dto.transfer.SampleTransferConfirmDTO result =
-                new com.jjx.sales.dto.transfer.SampleTransferConfirmDTO();
-        result.setOrderId(orderId);
-        result.setProcessMappings(processMappings);
-        materialMappings.clear();
-        for (var source : previewTransfer(orderId).getSampleMaterials()) {
-            if (!Boolean.TRUE.equals(source.getMatched())) throw new BusinessException("物料未匹配：" + source.getName());
-            var mm = new com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.MaterialMapping();
-            mm.setRowKey(source.getRowKey()); mm.setSourceProcessId(source.getSourceProcessId()); mm.setSourceProcessName(source.getSourceProcessName());
-            mm.setMaterialId(source.getMatchedMaterialId()); mm.setMaterialName(source.getMatchedMaterialName());
-            mm.setSpec(source.getSpec()); mm.setQty(source.getQty()); mm.setUnit(source.getUnit());
-            mm.setModuleQty(source.getModuleQty()); mm.setBaseQty(source.getBaseQty()); mm.setProjectIds(source.getProjectIds());
-            mm.setSplit(source.getSplit());
-            if (source.getProjectIds() != null && source.getProjectIds().size() == 1) mm.setProcessId(source.getProjectIds().getFirst());
-            materialMappings.add(mm);
-        }
-        result.setMaterialMappings(materialMappings);
+        result.setProcessMappings(processes); result.setMaterialMappings(materials);
         return result;
     }
 

@@ -38,8 +38,9 @@ public class SampleTransferController extends BaseController {
     @Operation(summary = "打样转标准-预览（读取打样数据+自动匹配推荐）")
     @SaCheckPermission(value = {"sales:sample:convert", "sales:sample:view", "engineering:sample:workbench", "engineering:sample:transfer"}, mode = cn.dev33.satoken.annotation.SaMode.OR)
     @GetMapping("/preview/{orderId}")
-    public Result<SampleTransferPreviewVO> preview(@PathVariable Long orderId) {
-        return Result.success(sampleOrderService.previewTransfer(orderId));
+    public Result<SampleTransferPreviewVO> preview(@PathVariable Long orderId,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) Long roundId) {
+        return Result.success(sampleOrderService.previewTransfer(orderId, roundId));
     }
 
     /**

@@ -8,6 +8,10 @@
     :close-on-click-modal="false"
     @open="onOpen"
   >
+    <el-select v-model="store.selectedRoundId" placeholder="请选择客户已确认的归档轮次" :disabled="store.confirming"
+      @change="props.orderId && store.loadPreview(props.orderId)">
+      <el-option v-for="round in store.confirmedRounds" :key="round.roundId" :value="round.roundId" :label="`Round ${round.roundNo}`" />
+    </el-select>
     <div v-loading="store.loading" class="preview-body">
       <template v-if="!store.loading && store.preview">
         <el-descriptions :column="1" border size="small" class="order-summary">
@@ -215,7 +219,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useSampleTransferStore } from '@/store/modules/sampleTransfer'
 
@@ -229,7 +233,7 @@ const emit = defineEmits<{
   (e: 'success'): void
 }>()
 
-const store = useSampleTransferStore()
+const store = reactive(useSampleTransferStore())
 const visible = ref(props.modelValue)
 const transferredFlag = ref(false)
 const TRANSFER_FLAG_KEY = 'sample_transferred_orders'
@@ -301,7 +305,7 @@ async function onOpen() {
   if (!props.orderId) return
   activeStep.value = 0
   transferredFlag.value = getTransferredIds().includes(props.orderId)
-  await store.loadPreview(props.orderId)
+  await store.loadRounds(props.orderId)
 }
 
 async function onConfirm() {

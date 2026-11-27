@@ -221,6 +221,7 @@ public interface ISampleOrderService {
      * 打样转标准-预览：读取打样数据（工序+物料JSON），自动匹配标准工序/物料，返回带匹配推荐的预览数据
      */
     com.jjx.sales.domain.vo.SampleTransferPreviewVO previewTransfer(Long orderId);
+    com.jjx.sales.domain.vo.SampleTransferPreviewVO previewTransfer(Long orderId, Long roundId);
 
     /**
      * 打样转标准-确认转移：接收前端编辑后的标准数据（工序映射+物料映射），

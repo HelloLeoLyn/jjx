@@ -90,6 +90,11 @@ export function useProcessExecution(context: ExecutionContext) {
       ElMessage.warning(printReason)
       return
     }
+    if (row.status === SampleProcessStatusEnum.DONE.value) return
+    if (row.status === SampleProcessStatusEnum.TODO.value && row.selectedActualPlateId == null) {
+      ElMessage.warning('请选择本次印刷实际实体版')
+      return
+    }
     warnPartialPick()
     const next =
       row.status === SampleProcessStatusEnum.DOING.value
@@ -97,8 +102,10 @@ export function useProcessExecution(context: ExecutionContext) {
         : SampleProcessStatusEnum.DOING.value
     row.advancing = true
     try {
-      const res: any = await sampleOrderApi.updateProcessItemStatus(orderId.value, row.processId, { status: next })
+      const res: any = await sampleOrderApi.updateProcessItemStatus(orderId.value, row.processId, { status: next, actualPlateId: row.actualPlateId ?? row.selectedActualPlateId })
       const updated: any = res?.data
+      row.actualPlateId = updated?.actualPlateId ?? row.actualPlateId
+      row.executionSnapshot = updated?.executionSnapshot ?? row.executionSnapshot
       row.status = updated?.status ?? next
       row.startTime = updated?.startTime ?? row.startTime
       row.endTime = updated?.endTime ?? null

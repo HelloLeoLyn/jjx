@@ -65,6 +65,9 @@ public class SampleProcessPlanDTO {
          * 定制工艺参数(JSON, 印刷: {printName,colorNo,inkNo,screenNo})（dev-20260811-009）
          */
         private String customProcessParams;
+        private Long artworkVersionId;
+        private Long defaultPlateId;
+        private String printRequirements;
 
         /**
          * 工序名称（作业项目名或自定义工序名）

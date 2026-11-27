@@ -15,7 +15,7 @@ export function cardDraft(pc: any) {
 }
 export function planFingerprint(plan: any[], prints: any[]): string {
   return JSON.stringify({ plan: plan.map(cardDraft), prints: prints.filter((r) => String(r.printName || '').trim()).map((r) => ({
-    processId: r.processId, printName: r.printName, category: r.category, colorNo: r.colorNo,
+    artworkVersionId: r.artworkVersionId, defaultPlateId: r.defaultPlateId, printRequirements: r.printRequirements, processId: r.processId, printName: r.printName, category: r.category, colorNo: r.colorNo,
     colorNoLabel: r.colorNoLabel, inkMaterialId: r.inkMaterialId, inkNo: r.inkNo, screenNo: r.screenNo, materials: r.materials,
   })) })
 }

@@ -185,6 +185,15 @@ export interface SampleProcessMaterial {
 }
 
 export interface SampleProcess {
+  artworkNo?: string
+  artworkVersionNo?: string
+  defaultPlateNo?: string
+  defaultFrameNo?: string
+  artworkVersionId?: number | null
+  defaultPlateId?: number | null
+  printRequirements?: string
+  readonly actualPlateId?: number | null
+  readonly executionSnapshot?: string
   processId: number
   orderId: number
   roundNo: number
@@ -208,6 +217,9 @@ export interface SampleProcess {
 }
 
 export interface SampleProcessPlanItem {
+  artworkVersionId?: number | null
+  defaultPlateId?: number | null
+  printRequirements?: string
   processId?: number
   stdProcessId?: number
   indexNumber?: number
@@ -230,6 +242,7 @@ export interface SampleProcessPlanDTO {
 }
 
 export interface SampleProcessStatusDTO {
+  actualPlateId?: number | null
   status: number
   durationMinutes?: number
   processNote?: string

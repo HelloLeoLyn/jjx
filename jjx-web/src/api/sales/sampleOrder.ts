@@ -70,6 +70,12 @@ export type { SampleOrderQueryParams } from '@/types/sales/sampleOrder'
 
 // 样品单接口
 export const sampleOrderApi = {
+  previewConfirmedRound(orderId: number, roundId: number) {
+    return request({ url: `/sample/transfer/preview/${orderId}`, method: 'get', params: { roundId } })
+  },
+  confirmArchivedScheme(data: { orderId: number; roundId: number; confirmedSchemeId: number; requestId: string; targetProductId?: number | null; materialProjects?: import('@/api/sales/sampleTransfer').MaterialProjectSelection[] }) {
+    return request({ url: '/sample/transfer/confirm', method: 'post', data })
+  },
   getOrderSampleOptions(sourceOrderId: number) {
     return request<R<OrderSampleOptions>>({
       url: `/sales/sample-order/from-order/${sourceOrderId}`,

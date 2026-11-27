@@ -98,6 +98,12 @@ export function usePlanCopy(context: PlanCopyContext) {
     let addedPrint = 0
     for (const r of printRows) {
       const row = makePrintRow(r, printList.value.length + 1)
+      row.actualPlateId = null
+      row.executionSnapshot = undefined
+      row.startTime = null
+      row.endTime = null
+      row.durationMinutes = null
+      row.operator = ''
       row.status = SampleProcessStatusEnum.TODO.value
       row.uid = `new-${genUid()}`
       printList.value.push(row)

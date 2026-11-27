@@ -74,6 +74,21 @@ public class SalesSampleProcess {
      * 定制工艺参数(JSON, 印刷: {printName,colorNo,inkNo,screenNo})（dev-20260811-009）
      */
     private String customProcessParams;
+    /** 打样计划可未定稿，正式转产前须验证已发布。 */
+    private Long artworkVersionId;
+    private Long defaultPlateId;
+    private String printRequirements;
+    /** 本轮本工序执行事实，不随方案复制。 */
+    private Long actualPlateId;
+    private String executionSnapshot;
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false)
+    private String artworkNo;
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false)
+    private String artworkVersionNo;
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false)
+    private String defaultPlateNo;
+    @com.baomidou.mybatisplus.annotation.TableField(exist=false)
+    private String defaultFrameNo;
 
     /** 操作人 */
     private String operator;

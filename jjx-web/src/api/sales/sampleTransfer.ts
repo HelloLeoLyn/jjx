@@ -5,6 +5,10 @@ import type { AxiosPromise } from 'axios'
 
 /** 打样工序项（预览返回） */
 export interface SampleProcessItem {
+  majorCategory?: string
+  artworkVersionId?: number | null
+  defaultPlateId?: number | null
+  printRequirements?: string | null
   processId: number
   processName: string
   processOrder: number | null
@@ -67,6 +71,10 @@ export interface StandardMaterialOption {
 
 /** 预览返回结构 */
 export interface SampleTransferPreview {
+  roundId: number
+  confirmedSchemeId: number
+  roundNo: number
+  confirmedSchemes?: { roundId: number; confirmedSchemeId: number; roundNo: number }[]
   orderId: number
   orderNo: string
   sampleProcesses: SampleProcessItem[]
@@ -126,6 +134,10 @@ export interface MaterialProjectSelection {
 /** 确认转移入参 */
 export interface SampleTransferConfirmDTO {
   orderId: number
+  roundId: number
+  confirmedSchemeId: number
+  requestId: string
+  targetProductId?: number
   processMappings?: ProcessMapping[]
   materialMappings?: MaterialMapping[]
   materialProjects?: MaterialProjectSelection[]
@@ -133,6 +145,8 @@ export interface SampleTransferConfirmDTO {
 
 /** 确认转移返回 */
 export interface SampleTransferConfirmResult {
+  roundId?: number
+  confirmedSchemeId?: number
   transferNo: string
   transferId: number
   productAction: string

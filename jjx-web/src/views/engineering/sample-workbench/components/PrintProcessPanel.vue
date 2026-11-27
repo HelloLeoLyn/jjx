@@ -44,6 +44,39 @@
                 />
               </template>
             </el-table-column>
+            <el-table-column label="图案版本 / 默认实体版" min-width="260">
+              <template #default="{ row }">
+                <PrintResourceSelector :model-value="null" :disabled="readonly || row.status !== ProcessStatusEnum.TODO.value"
+                  :placeholder="row.artworkVersionId ? `${row.artworkNo || '图案'} / ${row.artworkVersionNo || row.artworkVersionId}` : '选择图案版本（未定稿可留空）'"
+                  @select="resource => { row.artworkVersionId = resource.versionId ?? null; row.artworkNo = resource.artworkNo; row.artworkVersionNo = resource.versionNo; row.defaultPlateId = resource.plateId ?? null; row.defaultPlateNo = resource.plateNo; row.defaultFrameNo = resource.frameNo }"
+                  @clear="row.artworkVersionId = null; row.defaultPlateId = null" />
+                <span>建议网版：{{ row.defaultPlateNo || row.defaultPlateId || '未指定' }}</span>
+                <el-button v-if="!readonly && row.status === ProcessStatusEnum.TODO.value" link @click="row.defaultPlateId = null; row.defaultPlateNo = ''">清空建议版</el-button>
+              </template>
+            </el-table-column>
+            <el-table-column label="实际实体版" min-width="240">
+              <template #default="{ row }">
+                <PrintResourceSelector v-if="row.status === ProcessStatusEnum.TODO.value" :disabled="readonly || row.advancing"
+                  :model-value="row.selectedActualResource ?? null"
+                  @select="resource => { row.selectedActualResource = resource; row.selectedActualPlateId = resource.plateId ?? null }"
+                  @clear="row.selectedActualResource = null; row.selectedActualPlateId = null" />
+                <span>实际版：{{ row.actualPlateId ?? row.selectedActualPlateId ?? '未选' }}</span>
+                <div v-if="row.executionSnapshot">{{ executionSummary(row) }}</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="固定印刷要求" min-width="300">
+              <template #default="{ row }">
+                <el-input :model-value="requirementValue(row, 'position')" :disabled="readonly || row.status !== ProcessStatusEnum.TODO.value" placeholder="印刷位置" @update:model-value="v => setRequirement(row, 'position', v)" />
+                <div style="display:flex;gap:4px;margin-top:4px">
+                  <el-input :model-value="requirementValue(row, 'meshMin')" :disabled="readonly || row.status !== ProcessStatusEnum.TODO.value" placeholder="目数下限" @update:model-value="v => setRequirement(row, 'meshMin', v)" />
+                  <el-input :model-value="requirementValue(row, 'meshMax')" :disabled="readonly || row.status !== ProcessStatusEnum.TODO.value" placeholder="目数上限" @update:model-value="v => setRequirement(row, 'meshMax', v)" />
+                </div>
+                <div style="display:flex;gap:4px;margin-top:4px">
+                  <el-input :model-value="requirementValue(row, 'tensionMin')" :disabled="readonly || row.status !== ProcessStatusEnum.TODO.value" placeholder="张力下限 N/cm" @update:model-value="v => setRequirement(row, 'tensionMin', v)" />
+                  <el-input :model-value="requirementValue(row, 'tensionMax')" :disabled="readonly || row.status !== ProcessStatusEnum.TODO.value" placeholder="张力上限 N/cm" @update:model-value="v => setRequirement(row, 'tensionMax', v)" />
+                </div>
+              </template>
+            </el-table-column>
             <el-table-column label="色号" width="140">
               <template #default="{ row }">
                 <PrintFieldAutocomplete
@@ -236,6 +269,7 @@
 </template>
 
 <script setup lang="ts">
+import PrintResourceSelector from '@/components/Selector/PrintResourceSelector.vue'
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import MaterialSelector from '@/components/Selector/MaterialSelector.vue'
@@ -321,9 +355,32 @@ function isEmptyRow(r: any) {
   )
 }
 
+function requirementObject(row: any): Record<string, unknown> {
+  try { return JSON.parse(row.printRequirements || '{}') } catch { return {} }
+}
+function requirementValue(row: any, key: string): string {
+  return String(requirementObject(row)[key] ?? '')
+}
+function setRequirement(row: any, key: string, value: string) {
+  const requirements = requirementObject(row)
+  if (!value.trim()) delete requirements[key]
+  else requirements[key] = key === 'position' ? value.trim() : Number.isFinite(Number(value)) ? Number(value) : value
+  row.printRequirements = JSON.stringify(requirements)
+  row.saveState = 'dirty'
+}
+function executionSummary(row: any): string {
+  try {
+    const fact = JSON.parse(row.executionSnapshot)
+    return [fact.artworkNo && `${fact.artworkNo} / ${fact.versionNo || ''}`,
+      fact.plateNo && `网版 ${fact.plateNo}`, fact.frameNo && `网框 ${fact.frameNo}`,
+      fact.mesh && `${fact.mesh}目`, fact.tensionNcm && `${fact.tensionNcm} N/cm`, fact.operator, fact.executedAt,
+    ].filter(Boolean).join(' · ')
+  } catch { return '历史执行信息未核验' }
+}
+
 /** 行内容串（dirty 比对用，不含 uid） */
 function rowContent(r: any) {
-  return `${(r.printName || '').trim()}|${(r.colorNo || '').trim()}|${(r.colorNoLabel || '').trim()}|${r.inkMaterialId ?? ''}|${(r.inkNo || '').trim()}|${(r.screenNo || '').trim()}|${r.materials || ''}`
+  return `${r.artworkVersionId ?? ''}|${r.defaultPlateId ?? ''}|${r.printRequirements ?? ''}|${(r.printName || '').trim()}|${(r.colorNo || '').trim()}|${(r.colorNoLabel || '').trim()}|${r.inkMaterialId ?? ''}|${(r.inkNo || '').trim()}|${(r.screenNo || '').trim()}|${r.materials || ''}`
 }
 
 // 删除行：空行/内容行都直接移除，删完不回弹（dev-20261018-036：不再自动补空行，新增只由按钮触发）；
