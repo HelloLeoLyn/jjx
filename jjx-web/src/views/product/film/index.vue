@@ -21,7 +21,7 @@
         <el-form-item label="关键字">
           <el-input
             v-model="keyword"
-            placeholder="图案编号/名称/菲林号/网版/网框"
+            placeholder="菲林编号/名称/菲林号/网版/网框"
             clearable
             style="width: 240px"
             @keyup.enter="doSearch"
@@ -33,7 +33,7 @@
         </el-form-item>
       </el-form>
       <div class="search-tip">
-        按类别与状态筛选图案；关键字走统一搜索，可同时命中图案、菲林、网版、网框。
+        按类别与状态筛选菲林；关键字走统一搜索，可同时命中菲林、菲林、网版、网框。
       </div>
     </el-card>
 
@@ -46,7 +46,7 @@
       <el-table :data="searchRows" border size="small" v-loading="searchLoading">
         <el-table-column label="命中" prop="matchedType" width="100" />
         <el-table-column label="候选" prop="displayName" min-width="240" show-overflow-tooltip />
-        <el-table-column label="图案编号" prop="artworkNo" width="140" />
+        <el-table-column label="菲林编号" prop="artworkNo" width="140" />
         <el-table-column label="版本" prop="versionNo" width="100" />
         <el-table-column label="底片号" prop="filmNo" width="130" />
         <el-table-column label="网版/网框" min-width="120">
@@ -73,7 +73,7 @@
               size="small"
               @click="openDetailById(scope.row.artworkId)"
             >
-              打开图案
+              打开菲林
             </el-button>
             <span v-else class="muted">-</span>
           </template>
@@ -81,7 +81,7 @@
       </el-table>
     </el-card>
 
-    <!-- 图案列表：按类别分组 -->
+    <!-- 菲林列表：按类别分组 -->
     <el-card shadow="never" class="table-card">
       <div class="toolbar">
         <el-button
@@ -90,10 +90,10 @@
           v-hasPermi="['engineering:film:edit']"
           @click="openArtworkDialog()"
         >
-          新建图案
+          新建菲林
         </el-button>
         <span class="toolbar-tip">
-          「上线」= 当前有生效版本的图案；「下线 / 草稿」= 尚未生效。
+          「上线」= 当前有生效版本的菲林；「下线 / 草稿」= 尚未生效。
         </span>
       </div>
       <el-table
@@ -103,7 +103,7 @@
         stripe
         row-key="artworkId"
       >
-        <el-table-column label="图案编号" prop="artworkNo" width="160" />
+        <el-table-column label="菲林编号" prop="artworkNo" width="160" />
         <el-table-column label="名称" prop="name" min-width="160" show-overflow-tooltip />
         <el-table-column label="类别" width="100" align="center">
           <template #default="scope">
@@ -172,12 +172,12 @@
       />
     </el-card>
 
-    <!-- 图案详情 -->
-    <el-drawer v-model="detailVisible" size="1100px" title="图案详情" destroy-on-close>
+    <!-- 菲林详情 -->
+    <el-drawer v-model="detailVisible" size="1100px" title="菲林详情" destroy-on-close>
       <div v-loading="detailLoading">
         <template v-if="detail">
           <el-descriptions :column="3" border size="small">
-            <el-descriptions-item label="图案编号">{{ detail.artworkNo }}</el-descriptions-item>
+            <el-descriptions-item label="菲林编号">{{ detail.artworkNo }}</el-descriptions-item>
             <el-descriptions-item label="名称">{{ detail.name }}</el-descriptions-item>
             <el-descriptions-item label="类别">{{ detail.family || '-' }}</el-descriptions-item>
             <el-descriptions-item label="用途">{{ detail.purpose || '-' }}</el-descriptions-item>
@@ -398,17 +398,17 @@
       </div>
     </el-drawer>
 
-    <!-- 新建/编辑图案 -->
+    <!-- 新建/编辑菲林 -->
     <el-dialog
       v-model="artworkDialogVisible"
-      :title="artworkForm.artworkId ? '编辑图案' : '新建图案'"
+      :title="artworkForm.artworkId ? '编辑菲林' : '新建菲林'"
       width="800px"
       append-to-body
     >
       <el-form ref="artworkFormRef" :model="artworkForm" :rules="artworkRules" label-width="100px">
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="图案编号" prop="artworkNo">
+            <el-form-item label="菲林编号" prop="artworkNo">
               <el-input v-model="artworkForm.artworkNo" maxlength="64" placeholder="如 PW-0001" />
             </el-form-item>
           </el-col>
@@ -423,17 +423,17 @@
           </el-col>
         </el-row>
         <el-form-item label="名称" prop="name">
-          <el-input v-model="artworkForm.name" maxlength="200" placeholder="图案名称" />
+          <el-input v-model="artworkForm.name" maxlength="200" placeholder="菲林名称" />
         </el-form-item>
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="用途">
-              <el-input v-model="artworkForm.purpose" maxlength="200" placeholder="如 面板图案" />
+              <el-input v-model="artworkForm.purpose" maxlength="200" placeholder="如 面板菲林" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="整套分组">
-              <el-input v-model="artworkForm.setCode" maxlength="64" placeholder="同一套图案共用编码" />
+              <el-input v-model="artworkForm.setCode" maxlength="64" placeholder="同一套菲林共用编码" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -616,7 +616,7 @@ function productLabel(pid: number) {
   return p ? `${p.productCode || ''} ${p.productName || ''}`.trim() || String(pid) : String(pid)
 }
 
-/** 图案编号自动生成：PW-yyMM-序号（可手改，唯一性由后端兜底） */
+/** 菲林编号自动生成：PW-yyMM-序号（可手改，唯一性由后端兜底） */
 function nextArtworkNo(): string {
   const d = new Date()
   const yy = String(d.getFullYear()).slice(2)
@@ -743,7 +743,7 @@ function versionNoOf(versionId: number) {
   return v?.versionNo || String(versionId)
 }
 
-/* ==================== 图案表单 ==================== */
+/* ==================== 菲林表单 ==================== */
 const artworkDialogVisible = ref(false)
 const artworkFormRef = ref<FormInstance>()
 const artworkForm = reactive<any>({
@@ -758,7 +758,7 @@ const artworkForm = reactive<any>({
   revision: 0,
 })
 const artworkRules: FormRules = {
-  artworkNo: [{ required: true, message: '请输入图案编号', trigger: 'blur' }],
+  artworkNo: [{ required: true, message: '请输入菲林编号', trigger: 'blur' }],
   name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
   family: [{ required: true, message: '请选择类别', trigger: 'change' }],
   productIds: [

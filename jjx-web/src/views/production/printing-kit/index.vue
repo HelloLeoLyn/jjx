@@ -24,10 +24,10 @@
         <el-alert
           :type="productKit.ok ? 'success' : 'warning'"
           :closable="false"
-          :title="productKit.ok ? '图案版本均有可用网版' : `缺版 ${productKit.gaps?.length || 0} 项`"
+          :title="productKit.ok ? '菲林版本均有可用网版' : `缺版 ${productKit.gaps?.length || 0} 项`"
         />
         <el-table :data="productKit.items || []" size="small" border style="margin-top: 10px">
-          <el-table-column label="图案编号" prop="artworkNo" width="160" />
+          <el-table-column label="菲林编号" prop="artworkNo" width="160" />
           <el-table-column label="名称" prop="artworkName" min-width="160" show-overflow-tooltip />
           <el-table-column label="生效版本" prop="versionNo" width="110" align="center" />
           <el-table-column label="需要" prop="need" width="80" align="center" />
@@ -72,8 +72,8 @@
         </el-descriptions>
         <el-table :data="orderKit.checks || []" size="small" border style="margin-top: 10px">
           <el-table-column label="工序" prop="processName" min-width="140" />
-          <el-table-column label="图案编号" prop="resourceCode" width="160" />
-          <el-table-column label="图案版本" prop="resourceName" width="120" />
+          <el-table-column label="菲林编号" prop="resourceCode" width="160" />
+          <el-table-column label="菲林版本" prop="resourceName" width="120" />
           <el-table-column label="需要(张)" prop="need" width="90" align="center" />
           <el-table-column label="可用" prop="available" width="80" align="center" />
           <el-table-column label="缺口" width="90" align="center">
@@ -102,7 +102,7 @@
       <el-table :data="shortages" v-loading="loading" size="small" border>
         <el-table-column label="工单" prop="orderNo" width="150" />
         <el-table-column label="工序" prop="processName" min-width="130" />
-        <el-table-column label="图案/版本" min-width="170">
+        <el-table-column label="菲林/版本" min-width="170">
           <template #default="{ row }">{{ row.resourceCode }} {{ row.resourceName }}</template>
         </el-table-column>
         <el-table-column label="需要" prop="needQty" width="70" align="center" />

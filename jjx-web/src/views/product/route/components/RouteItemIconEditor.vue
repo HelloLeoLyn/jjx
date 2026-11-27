@@ -331,7 +331,7 @@
                     />
                   </template>
                 </el-table-column>
-                <el-table-column label="图案版本" width="210">
+                <el-table-column label="菲林版本" width="210">
                   <template #default="{ row }">
                     <div v-if="row.artworkVersionId" class="artwork-version-cell">
                       <span class="artwork-version-label">
@@ -346,7 +346,7 @@
                       v-else
                       :model-value="null"
                       size="small"
-                      placeholder="按图案/菲林号搜索"
+                      placeholder="按菲林/菲林号搜索"
                       @select="(item: any) => onPickArtworkVersion(row, item)"
                     />
                   </template>
@@ -624,10 +624,10 @@ function setPrintParam(row: any, key: string, val: string) {
   }
 }
 
-/** P08（dev-20261125-014）：印刷工序绑定图案版本；只接受带 versionId 的候选。 */
+/** P08（dev-20261125-014）：印刷工序绑定菲林版本；只接受带 versionId 的候选。 */
 function onPickArtworkVersion(row: any, item: any) {
   if (!item?.versionId) {
-    ElMessage.warning('请选择带图案版本的候选（网框候选不能直接绑定）')
+    ElMessage.warning('请选择带菲林版本的候选（网框候选不能直接绑定）')
     return
   }
   row.artworkVersionId = Number(item.versionId)
@@ -654,7 +654,7 @@ function clearDefaultPlate(row: any) {
 
 function onPickDefaultPlate(row: any, item: any) {
   if (!item?.plateId || Number(item.versionId) !== Number(row.artworkVersionId)) {
-    ElMessage.warning('请选择当前图案版本的实体网版')
+    ElMessage.warning('请选择当前菲林版本的实体网版')
     return
   }
   row.defaultPlateId = Number(item.plateId)

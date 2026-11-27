@@ -111,8 +111,8 @@
 
     <el-dialog v-model="plateVisible" title="制版" width="800px" append-to-body>
       <el-form label-width="110px">
-        <el-form-item label="图案版本" required>
-          <PrintResourceSelector :model-value="picked" size="small" placeholder="按图案/菲林号搜索版本" @select="onPickVersion" />
+        <el-form-item label="菲林版本" required>
+          <PrintResourceSelector :model-value="picked" size="small" placeholder="按菲林/菲林号搜索版本" @select="onPickVersion" />
         </el-form-item>
         <el-form-item v-if="picked" label="已选版本">{{ picked.artworkNo }} {{ picked.name }} / {{ picked.versionNo }}</el-form-item>
         <el-form-item label="实体底片" required>
@@ -294,7 +294,7 @@ async function openPlate(row: any) {
 
 async function onPickVersion(item: PrintSearchRow) {
   if (!item?.versionId || !item?.artworkId) {
-    ElMessage.warning('请选择图案版本候选（网框候选不能制版）')
+    ElMessage.warning('请选择菲林版本候选（网框候选不能制版）')
     return
   }
   picked.value = item
@@ -306,7 +306,7 @@ async function onPickVersion(item: PrintSearchRow) {
 
 async function submitPlate() {
   if (!currentFrame || !picked.value?.versionId) {
-    ElMessage.warning('请先选择图案版本')
+    ElMessage.warning('请先选择菲林版本')
     return
   }
   if (!plateForm.filmId) {

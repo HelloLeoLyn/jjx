@@ -407,7 +407,7 @@
             <el-table-column label="网框" width="110">
               <template #default="{ row }">{{ row.frameNo || '-' }}</template>
             </el-table-column>
-            <el-table-column label="图案版本" min-width="180">
+            <el-table-column label="菲林版本" min-width="180">
               <template #default="{ row }">
                 {{ row.artworkNo || '' }} {{ row.versionNo || (row.versionId ?? '') }}
               </template>
@@ -842,11 +842,11 @@
 
     <!-- P10：印刷工序开工选实体网版（dev-20261125-017） -->
     <el-dialog v-model="plateDialogVisible" title="选择实体网版" width="720px" append-to-body>
-      <div class="plate-tip">印刷工序必须选择一张已放行、未洗版的实体网版，且图案版本须与工单要求一致。</div>
+      <div class="plate-tip">印刷工序必须选择一张已放行、未洗版的实体网版，且菲林版本须与工单要求一致。</div>
       <PrintResourceSelector
         v-model="pickedPlate"
         size="small"
-        placeholder="按图案 / 版本 / 网版号搜索"
+        placeholder="按菲林 / 版本 / 网版号搜索"
         @select="onPickPlate"
       />
       <div v-if="pickedPlate" class="plate-tip">
@@ -1185,7 +1185,7 @@ let pendingStart: {
 
 function onPickPlate(item: PrintSearchRow) {
   if (!item?.plateId) {
-    ElMessage.warning('请选择带实体网版的候选（图案/图纸候选不能用于开工）')
+    ElMessage.warning('请选择带实体网版的候选（菲林/图纸候选不能用于开工）')
     return
   }
   pickedPlate.value = item
