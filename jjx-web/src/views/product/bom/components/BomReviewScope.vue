@@ -48,6 +48,15 @@
             {{ issueLocation(plan, issue) }}：{{ issue.message }}
           </div>
         </el-alert>
+        <el-alert
+          v-if="reviewPackageVersionIssues(plan).length"
+          title="BOM版本信息不完整，暂时不能确认整套操作"
+          type="error"
+          :closable="false"
+          show-icon
+        >
+          <div v-for="message in reviewPackageVersionIssues(plan)" :key="message">{{ message }}</div>
+        </el-alert>
         <el-table
           :data="buildBomReviewTree(plan)"
           row-key="key"
@@ -187,12 +196,22 @@ export type ReviewAction = 'SUBMIT' | 'APPROVE' | 'REJECT'
  * 把预览结果转成执行请求：只提交可执行产品；范围和指纹全部来自本次预览，
  * 不在前端重新选择版本或方案。
  */
+/** 兼容旧后端预览：范围不可提交时直接说明缺版本的位置。 */
+export function reviewPackageVersionIssues(plan: BomReviewPackage): string[] {
+  const issues = new Map<number, string>()
+  if (!plan.rootBomVersion?.trim()) issues.set(plan.rootBomId, `${plan.rootBomCode || plan.rootBomId}：BOM版本号为空，请补齐版本号并保存后重新检查`)
+  for (const node of plan.nodes || []) {
+    if (!node.bomVersion?.trim()) issues.set(node.bomId, `${node.bomCode || node.bomId}：BOM版本号为空，请补齐版本号并保存后重新检查`)
+  }
+  return [...issues.values()]
+}
+
 export function buildReviewPackageScopes(
   plans: BomReviewPackage[],
   action: ReviewAction
 ): BomReviewProductScope[] {
   return (plans || [])
-    .filter((plan) => plan && plan.executable)
+    .filter((plan) => plan && plan.executable && !reviewPackageVersionIssues(plan).length)
     .map((plan) => {
       const nodes =
         action === 'REJECT'
@@ -200,10 +219,10 @@ export function buildReviewPackageScopes(
           : plan.nodes || []
       return {
         rootBomId: plan.rootBomId,
-        expectedVersion: plan.rootBomVersion || '',
+        expectedVersion: plan.rootBomVersion?.trim() || '',
         expectedNodes: nodes.map((node) => ({
           bomId: node.bomId,
-          version: node.bomVersion || '',
+          version: node.bomVersion?.trim() || '',
           status: Number(node.status),
           packageRevision: node.packageRevision || '',
         })),

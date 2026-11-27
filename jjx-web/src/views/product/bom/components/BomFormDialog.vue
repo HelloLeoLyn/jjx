@@ -407,7 +407,10 @@ const rules = reactive<FormRules>({
       },
     },
   ],
-  bomVersion: [{ message: '请输入BOM版本', trigger: 'blur' }],
+  bomVersion: [{ trigger: 'blur', validator: (_rule, value, callback) => {
+    const error = bomVersionError(value)
+    error ? callback(new Error(error)) : callback()
+  } }],
   bomName: [{ required: true, message: '请输入BOM名称', trigger: 'blur' }],
   bomCode: [{ required: true, message: '请输入BOM编码', trigger: 'blur' }],
   effectiveDate: [{ required: true, message: '请选择生效日期', trigger: 'change' }],
@@ -1149,10 +1152,16 @@ const handleReloadLatest = async () => {
 }
 
 /** 保存（供「确定」与「保存并离开」共用）；成功返回 true，失败/校验不过返回 false 且不清数据。 */
+// 新建可留空由后端生成；已有BOM不能把版本清空后保存。
+const bomVersionError = (value: unknown): string =>
+  formData.bomId && !String(value ?? '').trim() ? 'BOM版本不能为空，请重新加载后保存' : ''
+
 const doSave = async (): Promise<boolean> => {
   if (!bomFormRef.value || submitting.value) return false
   // 只读（占用失败/编辑权失效/占用服务不可用）一律不允许保存
   if (!editSession.ensureEditable()) return false
+  const versionError = bomVersionError(formData.bomVersion)
+  if (versionError) { ElMessage.warning(versionError); return false }
   submitting.value = true
   try {
     try {
@@ -1176,7 +1185,7 @@ const doSave = async (): Promise<boolean> => {
       return false
     }
     // 基线对应本次实际提交的内容，不能把请求期间新增的修改误记为已保存。
-    const savedSnapshot = fullFormSnapshot()
+    let savedSnapshot = fullFormSnapshot()
     const payload: any = { ...formData, items: formData.items }
     const schemeChoices = schemeChoicesPayload()
     const isEditingBom = formData.bomId !== undefined && formData.bomId !== null
@@ -1237,8 +1246,19 @@ const doSave = async (): Promise<boolean> => {
         try {
           const created = await productBomApi.getEngineeringBomInfo(bomId)
           formData.expectedContentRevision = created?.data?.contentRevision ?? null
+          const actualVersion = String(created?.data?.bomVersion ?? '').trim()
+          if (!actualVersion) {
+            ElMessage.warning('BOM已创建，但未读取到生成的版本号，请重新加载后继续编辑')
+            return false
+          }
+          const saved = JSON.parse(savedSnapshot)
+          if (formData.bomVersion === saved.bomVersion) formData.bomVersion = actualVersion
+          saved.bomVersion = actualVersion
+          savedSnapshot = JSON.stringify(saved)
         } catch (revisionError) {
-          console.warn('回读新建BOM内容指纹失败:', revisionError)
+          console.warn('回读新建BOM版本及内容指纹失败:', revisionError)
+          ElMessage.warning('BOM已创建，但读取版本信息失败，请重新加载后继续编辑')
+          return false
         }
       }
       if (schemeChoices.length) {

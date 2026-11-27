@@ -305,3 +305,21 @@ describe('整套提交审核与审核流程', () => {
     wrapper.unmount()
   })
 })
+
+
+describe('缺少版本号的范围必须明确提示（dev-20261127-010）', () => {
+  it.each(['root', 'child'])('旧后端仍返回可执行但%s缺版本时，禁用且说明位置，重查修复后可提交', async (missing) => {
+    const incomplete = plan()
+    if (missing === 'root') incomplete.rootBomVersion = ''
+    else incomplete.nodes[0].bomVersion = ' '
+    api.planReviewPackages.mockResolvedValueOnce({ data: [incomplete] })
+    const wrapper = await mountScope()
+    expect(wrapper.text()).toContain('BOM版本号为空')
+    expect(wrapper.text()).toContain(missing === 'root' ? 'YL1026MEOO-BOM' : 'AUX000347-MFG')
+    expect(button(wrapper, '确认整套提交').attributes('disabled')).toBeDefined()
+    expect(buildReviewPackageScopes([incomplete], 'SUBMIT')).toEqual([])
+    await button(wrapper, '重新检查').trigger('click'); await flushPromises()
+    expect(button(wrapper, '确认整套提交').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+})

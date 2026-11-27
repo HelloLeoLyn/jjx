@@ -520,6 +520,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
      */
     private void generateBomVersion(EngineeringBom bom) {
         if (StringUtils.isNotBlank(bom.getBomVersion())) {
+            bom.setBomVersion(bom.getBomVersion().trim());
+            bom.setVersion(bom.getBomVersion());
             return;
         }
 
@@ -633,6 +635,13 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             throw new BusinessException("BOM已审批，不允许修改");
         }
 
+        // 旧调用未传版本时保留原值；显式空白不能清掉已生成的版本。
+        String requestedVersion = dto.getBomVersion() == null ? existingBom.getBomVersion() : dto.getBomVersion();
+        if (StringUtils.isBlank(requestedVersion)) {
+            throw new BusinessException("BOM版本不能为空，请重新加载后保存");
+        }
+        dto.setBomVersion(requestedVersion.trim());
+
         // 既有未改行保留原保存行为；仅新增/变更行执行新制造规则。
         Map<Long, EngineeringBomItem> storedRows = new HashMap<>();
         // 已锁父行后明细用当前读，避免 MySQL RR 早快照把「他人刚保存」的行当成本次基线。
@@ -664,6 +673,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         // 普通保存仅修改内容；审核和生效只能通过专用流程变更，不能信任客户端回传值。
         bom.setApproveStatus(existingBom.getApproveStatus());
         bom.setIsCurrent(existingBom.getIsCurrent());
+        bom.setVersion(bom.getBomVersion());
 
         // 更新BOM主表
         boolean bomUpdated = productBomMapper.updateById(bom) > 0;
@@ -2046,6 +2056,10 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         int reuseCount = 0;
         int pendingReuseCount = 0;
         for (EngineeringBom nodeBom : scan.nodes.values()) {
+            if (StringUtils.isBlank(nodeBom.getBomVersion())) {
+                vo.getBlockingIssues().add(planIssue(nodeBom.getBomId(), null, "bomVersion",
+                        "BOM版本号为空，请打开对应BOM补齐版本号并保存后重新检查"));
+            }
             List<EngineeringBomItem> items = scan.items.get(nodeBom.getBomId());
             ProductEnums.BomStatus status = ProductEnums.BomStatus.fromValue(nodeBom.getApproveStatus());
             BomReviewPackageVO.Node node;

@@ -281,6 +281,7 @@ describe('父保存：主方案只有显式调整才提交，并带 schemeRevisi
     mocks.getEngineeringBomInfo.mockResolvedValue({
       data: {
         bomId: 9,
+        bomVersion: 'V1.0',
         productId: 42,
         productCode: 'P42',
         productName: '产品甲',
@@ -522,5 +523,49 @@ describe('关闭期间迟到的BOM加载', () => {
     await flushPromises()
     expect(mocks.acquireBomEditSession).not.toHaveBeenCalled()
     expect(state.formData.remark).not.toBe('迟到内容')
+  })
+})
+
+
+describe('新建后版本回填与编辑防清空（dev-20261127-010）', () => {
+  it('空版本新建取得后端版本，紧接着编辑保存不会再发送空版本', async () => {
+    const { state } = await newForm()
+    expect(state.formData.bomVersion).toBe('')
+    expect(await state.doSave()).toBe(true)
+    expect(mocks.addEngineeringBom).toHaveBeenCalledWith(expect.objectContaining({ bomVersion: '' }))
+    expect(state.formData.bomVersion).toBe('V1.0')
+    expect(state.isDirty).toBe(false)
+    state.formData.remark = '再次保存'
+    expect(await state.doSave()).toBe(true)
+    expect(mocks.editEngineeringBom).toHaveBeenCalledWith(expect.objectContaining({ bomId: 9, bomVersion: 'V1.0', expectedContentRevision: 'rev-1' }))
+  })
+  it.each(['', ' ', '\t'])('编辑显式清空版本 %s 时不发送保存请求', async (blank) => {
+    const { state } = await editingForm()
+    state.formData.bomVersion = blank
+    expect(await state.doSave()).toBe(false)
+    expect(mocks.warning).toHaveBeenCalledWith(expect.stringContaining('BOM版本不能为空'))
+    expect(mocks.editEngineeringBom).not.toHaveBeenCalled()
+  })
+  it('生成版本回读失败时保留已创建ID，阻止再次新建并提示重载', async () => {
+    const { state } = await newForm()
+    mocks.getEngineeringBomInfo.mockRejectedValueOnce(new Error('读取失败'))
+    expect(await state.doSave()).toBe(false)
+    expect(state.formData.bomId).toBe(9)
+    expect(await state.doSave()).toBe(false)
+    expect(mocks.addEngineeringBom).toHaveBeenCalledOnce()
+    expect(mocks.editEngineeringBom).not.toHaveBeenCalled()
+    expect(mocks.warning).toHaveBeenCalledWith(expect.stringContaining('BOM已创建'))
+  })
+  it('回填版本只更新已保存基线，不吞掉请求期间其他未保存修改', async () => {
+    const { state } = await newForm()
+    let finish!: (value: any) => void
+    mocks.getEngineeringBomInfo.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const pending = state.doSave(); await flushPromises()
+    state.formData.remark = '请求中新增的备注'
+    finish({ data: { bomVersion: 'V1.0', contentRevision: 'rev-1' } })
+    expect(await pending).toBe(true)
+    expect(state.formData.bomVersion).toBe('V1.0')
+    expect(state.formData.remark).toBe('请求中新增的备注')
+    expect(state.isDirty).toBe(true)
   })
 })

@@ -864,4 +864,58 @@ class ManufacturingBomSchemeTest {
                 "保存返回的指纹必须等于重新加载的指纹，前端下一次保存才不会误判过期");
         assertNotEquals(created, updated.getContentRevision(), "名称变更后内容指纹应随之变化");
     }
+    @Test
+    void generatedVersionCannotBeClearedByTheNextProductSave() {
+        var product = product("VERSION-ROOT");
+        var draft = parent(product.getProductId(), "VERSION-ROOT-BOM", List.of(buyRow(110)), List.of(), null);
+        draft.setBomVersion("");
+        long id = service.createBomReturnId(draft);
+        assertEquals("V1.0", db.queryForObject("SELECT bom_version FROM engineering_bom WHERE bom_id=?", String.class, id));
+        assertEquals("V1.0", db.queryForObject("SELECT version FROM engineering_bom WHERE bom_id=?", String.class, id));
+        var before = db.queryForList("SELECT * FROM engineering_bom_item WHERE bom_id=?", id);
+        var update = parent(product.getProductId(), "VERSION-ROOT-BOM", List.of(buyRow(110)), List.of(), null);
+        update.setBomId(id); withStoredItemIds(update); update.setBomName("不应保存");
+        for (String blank : List.of("", " ", "\t")) {
+            update.setBomVersion(blank);
+            assertTrue(assertThrows(com.jjx.common.exception.BusinessException.class,
+                    () -> service.updateBomWithDetail(update)).getMessage().contains("BOM版本不能为空"));
+            assertEquals("VERSION-ROOT-BOM", db.queryForObject("SELECT bom_name FROM engineering_bom WHERE bom_id=?", String.class, id));
+            assertEquals(before, db.queryForList("SELECT * FROM engineering_bom_item WHERE bom_id=?", id));
+        }
+        // 旧客户端未传版本时保留当前版本，不能通过普通编辑写空。
+        update.setBomVersion(null); update.setBomName("正常修改");
+        assertTrue(service.updateBomWithDetail(update).isSuccess());
+        assertEquals("V1.0", db.queryForObject("SELECT bom_version FROM engineering_bom WHERE bom_id=?", String.class, id));
+        assertEquals("V1.0", db.queryForObject("SELECT version FROM engineering_bom WHERE bom_id=?", String.class, id));
+        update.setBomVersion(" V1.2 ");
+        assertTrue(service.updateBomWithDetail(update).isSuccess());
+        assertEquals("V1.2", db.queryForObject("SELECT bom_version FROM engineering_bom WHERE bom_id=?", String.class, id));
+        assertEquals("V1.2", db.queryForObject("SELECT version FROM engineering_bom WHERE bom_id=?", String.class, id));
+    }
+
+    @Test
+    void explicitlySuppliedNewVersionAlsoKeepsBothColumnsInSync() {
+        long id = service.createBomReturnId(scheme("VERSION-MATERIAL", " V2.3 ", 349));
+        assertEquals("V2.3", db.queryForObject("SELECT bom_version FROM engineering_bom WHERE bom_id=?", String.class, id));
+        assertEquals("V2.3", db.queryForObject("SELECT version FROM engineering_bom WHERE bom_id=?", String.class, id));
+    }
+
+    @Test
+    void reviewPlanExplainsMissingRootAndChildVersionNumbers() {
+        var product = product("VERSION-PLAN");
+        long child = scheme(349, "VERSION-CHILD");
+        long root = service.createBomReturnId(parent(product.getProductId(), 349, child, 0));
+        db.update("UPDATE engineering_bom SET bom_version='' WHERE bom_id=?", child);
+        var childPlan = service.planReviewPackage(root, "SUBMIT");
+        assertFalse(childPlan.isExecutable());
+        assertTrue(childPlan.getBlockingIssues().stream().anyMatch(issue -> issue.getBomId().equals(child)
+                && "bomVersion".equals(issue.getField()) && issue.getMessage().contains("版本号为空")));
+        db.update("UPDATE engineering_bom SET bom_version='V1.0' WHERE bom_id=?", child);
+        db.update("UPDATE engineering_bom SET bom_version='' WHERE bom_id=?", root);
+        var rootPlan = service.planReviewPackage(root, "SUBMIT");
+        assertFalse(rootPlan.isExecutable());
+        assertTrue(rootPlan.getBlockingIssues().stream().anyMatch(issue -> issue.getBomId().equals(root)
+                && "bomVersion".equals(issue.getField()) && issue.getMessage().contains("版本号为空")));
+    }
+
 }
