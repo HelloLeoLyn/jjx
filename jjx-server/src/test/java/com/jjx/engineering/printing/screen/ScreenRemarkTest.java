@@ -28,7 +28,7 @@ class ScreenRemarkTest {
         tx = new TransactionTemplate(new DataSourceTransactionManager(source));
         service = new ScreenService(new ScreenRepository(db), json);
         db.execute("CREATE TABLE engineering_screen_frame(frame_id BIGINT PRIMARY KEY,frame_no VARCHAR(50),frame_type VARCHAR(30),location VARCHAR(200),status VARCHAR(20),revision INT,remark VARCHAR(500),v2_registered INT,del_flag CHAR,update_by VARCHAR(64))");
-        db.execute("CREATE TABLE engineering_resource_maintenance(maintenance_id BIGINT AUTO_INCREMENT PRIMARY KEY,resource_type VARCHAR(30),resource_id BIGINT,action_type VARCHAR(30),operator VARCHAR(64),request_id VARCHAR(64) UNIQUE,request_hash VARCHAR(64),result_snapshot VARCHAR(8000),before_status VARCHAR(20),after_status VARCHAR(20),description VARCHAR(2000),operate_time TIMESTAMP)");
+        db.execute("CREATE TABLE engineering_resource_maintenance(maintenance_id BIGINT AUTO_INCREMENT PRIMARY KEY,resource_type VARCHAR(30),resource_id BIGINT,action_type VARCHAR(30),operator VARCHAR(64),request_id VARCHAR(64) UNIQUE,request_hash VARCHAR(64),result_snapshot VARCHAR(8000),before_status VARCHAR(20),after_status VARCHAR(20),description VARCHAR(500),operate_time TIMESTAMP)");
         db.execute("CREATE TABLE print_frame_stretch(stretch_id BIGINT,frame_id BIGINT,open_frame_id BIGINT,mesh INT,tension_n_cm DECIMAL(10,2),qualified INT,end_time TIMESTAMP,material VARCHAR(200),stretch_time TIMESTAMP)");
         db.execute("CREATE TABLE engineering_screen_plate(plate_id BIGINT,occupied_frame_id BIGINT,frame_id BIGINT,version_id BIGINT,stretch_id BIGINT,v2_registered INT,status VARCHAR(20),washed_time TIMESTAMP,position VARCHAR(64))");
         db.execute("CREATE TABLE print_artwork_version(version_id BIGINT,status VARCHAR(20))");
@@ -52,9 +52,9 @@ class ScreenRemarkTest {
         save(c); // 同命令重放不增加revision或履历。
         assertEquals(1,db.queryForObject("SELECT revision FROM engineering_screen_frame",Integer.class));
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM engineering_resource_maintenance",Integer.class));
-        var audit=json.readTree(db.queryForObject("SELECT description FROM engineering_resource_maintenance",String.class));
+        var audit=json.readTree(db.queryForObject("SELECT result_snapshot FROM engineering_resource_maintenance",String.class));
         assertEquals("旧备注",audit.path("beforeRemark").asText());
-        assertEquals("存放B架，注意防潮",audit.path("afterRemark").asText());
+        assertEquals("存放B架，注意防潮",audit.path("remark").asText());
         assertEquals("存放B架，注意防潮",new ScreenView(new ScreenRepository(db)).get(true,1).get("remark"));
         save(command("remark-2",1,""));
         var row=db.queryForMap("SELECT * FROM engineering_screen_frame");
@@ -71,6 +71,14 @@ class ScreenRemarkTest {
         assertThrows(BusinessException.class,()->save(command("long",1,"字".repeat(501))));
         assertEquals("别人刚修改",db.queryForObject("SELECT remark FROM engineering_screen_frame",String.class));
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM engineering_resource_maintenance",Integer.class));
+    }
+
+    @Test void fullLengthBeforeAndAfterRemarksFitAuditStorage() throws Exception {
+        db.update("UPDATE engineering_screen_frame SET remark=?", "旧".repeat(500));
+        save(command("max",0,"新".repeat(500)));
+        var audit=json.readTree(db.queryForObject("SELECT result_snapshot FROM engineering_resource_maintenance",String.class));
+        assertEquals(500,audit.path("beforeRemark").asText().length());
+        assertEquals(500,audit.path("remark").asText().length());
     }
 
     @Test void endpointRequiresResourceEditPermission() throws Exception {

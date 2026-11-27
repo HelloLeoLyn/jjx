@@ -62,5 +62,7 @@ class PrintKitServiceTest {
         when(db.queryForList(contains("SELECT a.artwork_id"),eq(2L))).thenReturn(List.of());
         assertEquals(false,service.productPrecheck(2).get("ok"));
         assertEquals(false,service.productPrecheck(2).get("verified"));
+        when(db.queryForList(contains("FROM engineering_resource_product_rel r"),eq(2L))).thenReturn(List.of());
+        assertTrue(((List<?>)service.orderKit(1).get("warnings")).isEmpty());
     }
 }

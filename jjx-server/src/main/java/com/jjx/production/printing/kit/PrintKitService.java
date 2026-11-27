@@ -141,7 +141,7 @@ public class PrintKitService {
             JOIN engineering_die d ON d.die_id=r.resource_id AND d.del_flag='0'
             WHERE r.resource_type='DIE' AND r.product_id=? AND r.is_active=1 ORDER BY d.die_no
             """, productId);
-        if (dies.isEmpty()) return List.of("尚未关联刀模，请核实该产品是否需要刀模；此提示不拦截网版齐套");
+        if (dies.isEmpty()) return List.of();
         return dies.stream().filter(die -> !"AVAILABLE".equals(die.get("status")))
                 .map(die -> "刀模 " + die.get("die_no") + " 当前不可用，请核实；此提示不拦截网版齐套").toList();
     }

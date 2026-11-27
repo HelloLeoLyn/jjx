@@ -201,6 +201,7 @@ public class ScreenService {
     private Change changeFrame(long id,String action,ScreenCommands c,String operator) {
         String before = null;
         String description = c.reason();
+        Object beforeRemark = null;
         if (action.equals("create")) {
             checkRevision(c,0);
             required(c.frameNo(),50,"框号");
@@ -217,10 +218,8 @@ public class ScreenService {
             String after = before;
             switch (action) {
                 case "remark" -> {
-                    var audit = json.createObjectNode();
-                    audit.set("beforeRemark", json.valueToTree(row.get("remark")));
-                    audit.set("afterRemark", json.valueToTree(c.remark()));
-                    description = audit.toString();
+                    beforeRemark = row.get("remark");
+                    description = "修改网框备注（前后内容见动作快照）";
                     repo.db.update("update engineering_screen_frame set remark=? where frame_id=?", c.remark(), id);
                 }
                 case "edit" -> {
@@ -261,6 +260,7 @@ public class ScreenService {
             repo.db.update("update engineering_screen_frame set status=?,revision=revision+1,update_by=? where frame_id=?",after,operator,id);
         }
         var result=repo.frame(id,true);
+        if (action.equals("remark")) result.put("beforeRemark", beforeRemark);
         var stretch=repo.db.queryForList("select stretch_id from print_frame_stretch where open_frame_id=?",Long.class,id);
         var active=repo.db.queryForList("select plate_id from engineering_screen_plate where occupied_frame_id=?",Long.class,id);
         result.put("stretchId",stretch.isEmpty()?null:stretch.getFirst());
