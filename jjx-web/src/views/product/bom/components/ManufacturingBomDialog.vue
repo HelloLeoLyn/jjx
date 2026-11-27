@@ -56,10 +56,10 @@
 
     <div class="scheme-area">
       <div class="scheme-toolbar">
-        <el-button v-if="canCreate" type="primary" plain size="small" @click="startNewScheme"
+        <el-button v-if="canCreate" type="primary" plain size="small" :disabled="actionBusy" @click="startNewScheme"
           >新建方案</el-button
         >
-        <el-button size="small" :loading="loading" @click="reloadOptions">刷新候选</el-button>
+        <el-button size="small" :loading="loading" :disabled="actionBusy" @click="reloadOptions">刷新候选</el-button>
         <span class="scheme-hint"
           >候选为已保存的生产BOM；保存与采用都不会自动审核或生效。</span
         >
@@ -103,16 +103,8 @@
               link
               type="primary"
               size="small"
-              @click="selectSchemeByBomId(scope.row.bomId)"
+              :disabled="actionBusy" @click="selectSchemeByBomId(scope.row.bomId)"
               >查看/编辑</el-button
-            >
-            <el-button
-              link
-              type="success"
-              size="small"
-              :disabled="!canSetPrimary"
-              @click="markPrimary(scope.row)"
-              >设为主方案</el-button
             >
           </template>
         </el-table-column>
@@ -125,7 +117,7 @@
           <el-form-item label="方案编码">
             <el-input
               v-model="current.draft.bomCode"
-              :disabled="!editable"
+              :disabled="!editable || actionBusy"
               maxlength="50"
               placeholder="必填"
             />
@@ -135,7 +127,7 @@
           <el-form-item label="方案名称">
             <el-input
               v-model="current.draft.bomName"
-              :disabled="!editable"
+              :disabled="!editable || actionBusy"
               maxlength="50"
               placeholder="必填"
             />
@@ -145,7 +137,7 @@
           <el-form-item label="版本">
             <el-input
               v-model="current.draft.bomVersion"
-              :disabled="!editable"
+              :disabled="!editable || actionBusy"
               maxlength="20"
               placeholder="留空则自动按已有版本续号"
             />
@@ -158,7 +150,7 @@
               type="date"
               value-format="YYYY-MM-DD"
               placeholder="留空表示不限"
-              :disabled="!editable"
+              :disabled="!editable || actionBusy"
               style="width: 100%"
             />
           </el-form-item>
@@ -170,7 +162,7 @@
               type="date"
               value-format="YYYY-MM-DD"
               placeholder="留空表示不限"
-              :disabled="!editable"
+              :disabled="!editable || actionBusy"
               style="width: 100%"
             />
           </el-form-item>
@@ -179,7 +171,7 @@
           <el-form-item label="备注">
             <el-input
               v-model="current.draft.remark"
-              :disabled="!editable"
+              :disabled="!editable || actionBusy"
               maxlength="200"
               placeholder="选填"
             />
@@ -191,7 +183,7 @@
     <ManufacturingBomItemTable
       ref="itemTableRef"
       v-model="current.draft.items"
-      :readonly="!editable"
+      :readonly="!editable || actionBusy"
       :scheme-labels="schemeLabels"
       :output-unit="current.archive?.unit || current.material.unit || ''"
       :output-length-mm="current.archive?.lengthMm ?? current.material.lengthMm"
@@ -201,17 +193,34 @@
     <template #footer>
       <div class="dialog-footer">
         <span class="footer-tip">{{ footerTip }}</span>
-        <el-button @click="handleCancel">关 闭</el-button>
+        <el-checkbox
+          v-if="canSetPrimary && hasProductContext"
+          v-model="current.setPrimaryOnAdopt"
+          :disabled="actionBusy"
+        >同时设为本产品该物料的主方案</el-checkbox>
+        <el-button :disabled="actionBusy" @click="handleCancel">关 闭</el-button>
         <el-button
-          v-if="canCreate || canEditStored"
-          type="primary"
-          :loading="saving"
-          :disabled="!editable"
-          @click="saveScheme"
-          >保存生产BOM</el-button
+          v-if="(canCreate || canEditStored) && (!current.draft.bomId || currentDirty)"
+          :loading="saving && !completing"
+          :disabled="!editable || actionBusy"
+          @click="saveOnly"
+          >仅保存</el-button
         >
-        <el-button v-if="canAdoptVisible" type="success" :disabled="!canAdopt" @click="adoptScheme"
+        <el-button
+          v-if="canAdoptVisible && current.draft.bomId && !currentDirty"
+          type="primary"
+          :loading="completing"
+          :disabled="!canAdopt || actionBusy"
+          @click="adoptAndReturn"
           >采用此方案</el-button
+        >
+        <el-button
+          v-if="(canCreate || canEditStored) && (!current.draft.bomId || currentDirty)"
+          type="primary"
+          :loading="completing"
+          :disabled="!editable || actionBusy"
+          @click="saveAndAdopt"
+          >保存并采用</el-button
         >
       </div>
     </template>
@@ -226,7 +235,7 @@
  * 1）只保存独立生产BOM（POST/PUT /engineering/bom/manufacturing），不自动发布、不改父 BOM、不生成库存/工单；
  * 2）采用：顶层把结果交给产品BOM草稿行；下层只回填直接上层投入行（subBomId/sourceType），
  *    由上层保存后才持久化，父/上层取消不删除已保存方案；
- * 3）主方案按 product × material 独立，只由用户显式“设为主方案”触发；深层设主先记录，
+ * 3）主方案按 product × material 独立，只由用户明确勾选设主或显式设置触发；深层设主先记录，
  *    等显式引用链逐层保存、回到根且图可达后才随产品BOM保存提交；
  * 4）下层只看显式 sub_bom_id 引用，不按分组/规格推断；已建档投入物料即使没有 sub_bom_id 也能进入
  *    该物料的候选并新建（只读用户不允许新建）；
@@ -282,6 +291,7 @@ interface ParentRowRef {
 }
 
 interface Frame {
+  setPrimaryOnAdopt: boolean
   key: string
   material: ManufacturingMaterialContext
   /** 该层已采用/已显式引用的方案 */
@@ -340,6 +350,9 @@ const visible = computed({
 
 const loading = ref(false)
 const saving = ref(false)
+const completing = ref(false)
+const actionBusy = computed(() => loading.value || saving.value || completing.value)
+let savedInitialDraft: { frameKey: string; bomId: number; originKey?: string } | null = null
 const itemTableRef = ref<{ validate?: (items?: EngineeringBomItem[]) => string } | null>(null)
 /** 当前产品上下文下的主方案覆盖（按 materialId 记录，跨层生效） */
 const primaryOverride = ref<{ materialId: number; bomId: number } | null>(null)
@@ -434,6 +447,7 @@ const createFrame = (
   const draft = emptyDraft()
   return {
     key: nextFrameKey(),
+    setPrimaryOnAdopt: false,
     material: { ...material },
     subBomId: Number(subBomId) > 0 ? Number(subBomId) : null,
     options: [],
@@ -627,7 +641,7 @@ const footerTip = computed(() => {
   if (activeIndex.value > 0) {
     return '采用只回填直接上层投入行；上层保存后才持久化关联，产品BOM最后保存'
   }
-  return '保存只落该生产BOM；采用后还需在父 BOM 点保存才会持久化关联'
+  return '仅保存不改变采用关系；采用及主方案设置随产品BOM最终保存生效'
 })
 
 const statusLabel = (value: unknown): string => BomStatusEnum.getLabel(Number(value) || 0)
@@ -673,6 +687,7 @@ const loadScheme = async (frame: Frame, bomId: number): Promise<boolean> => {
 const resetDraft = (frame: Frame): void => {
   const code = String(frame.material.materialCode || '').trim()
   const name = String(frame.material.materialName || code || '').trim()
+  frame.setPrimaryOnAdopt = false
   frame.selectedBomId = null
   frame.approveStatus = null
   frame.draft = {
@@ -749,6 +764,7 @@ const resetStack = (): void => {
   activeIndex.value = 0
   primaryOverride.value = null
   pendingPrimary.value = {}
+  savedInitialDraft = null
 }
 
 // ==================== 未保存处理 ====================
@@ -806,12 +822,12 @@ const resolveLeave = async (): Promise<boolean> => {
 }
 
 const handleBeforeClose = async (done: () => void): Promise<void> => {
-  if (saving.value) return
+  if (actionBusy.value) return
   if (await resolveLeave()) done()
 }
 
 const handleCancel = async (): Promise<void> => {
-  if (saving.value) return
+  if (actionBusy.value) return
   if (!(await resolveLeave())) return
   visible.value = false
 }
@@ -819,10 +835,12 @@ const handleCancel = async (): Promise<void> => {
 // ==================== 交互 ====================
 
 const selectSchemeByBomId = async (bomId: number): Promise<void> => {
+  if (actionBusy.value) return
   const frame = current.value
   if (Number(frame.selectedBomId) === Number(bomId)) return
   const resolved = await resolveDirty('保存并切换', '放弃修改')
   if (resolved === 'cancel') return
+  frame.setPrimaryOnAdopt = false
   try {
     loading.value = true
     await loadScheme(frame, Number(bomId))
@@ -836,13 +854,14 @@ const selectSchemeByBomId = async (bomId: number): Promise<void> => {
 }
 
 const startNewScheme = async (): Promise<void> => {
-  if (!canCreate.value) return
+  if (!canCreate.value || actionBusy.value) return
   const resolved = await resolveDirty('保存并新建', '放弃修改')
   if (resolved === 'cancel') return
   resetDraft(current.value)
 }
 
 const reloadOptions = async (): Promise<void> => {
+  if (actionBusy.value) return
   try {
     loading.value = true
     await refreshOptions(current.value)
@@ -860,7 +879,7 @@ const reloadOptions = async (): Promise<void> => {
  * 只读用户不允许在此新建层级。
  */
 const drillDown = async (row: EngineeringBomItem): Promise<void> => {
-  if (!row) return
+  if (!row || actionBusy.value) return
   const materialId = Number(row.materialId)
   const subBomId = Number(row.subBomId) > 0 ? Number(row.subBomId) : null
   if (!materialId) return
@@ -907,8 +926,11 @@ const findParentRow = (frame: Frame, parent: ParentRowRef): EngineeringBomItem |
       if (Number(byId.materialId) !== Number(parent.materialId)) return null
       return byId
     }
+    // 已有明细被删除时不得按相同物料回填到兄弟行。
+    if (parent.itemId > 0) return null
   }
-  return items.find((item) => Number(item.materialId) === Number(parent.materialId)) || null
+  const matches = items.filter((item) => Number(item.materialId) === Number(parent.materialId))
+  return matches.length === 1 ? matches[0] : null
 }
 
 /** 显式引用链是否已经逐层保存且被上层行引用（决定深层主方案能否随产品BOM保存）。 */
@@ -937,7 +959,7 @@ const flushPendingPrimary = (): void => {
 }
 
 const handlePathNavigate = async (index: number): Promise<void> => {
-  if (index < 0 || index >= activeIndex.value) return
+  if (actionBusy.value || index < 0 || index >= activeIndex.value) return
   const resolved = await resolveDirty('保存并返回', '放弃修改')
   if (resolved === 'cancel') return
   activeIndex.value = index
@@ -1004,6 +1026,7 @@ const saveScheme = async (): Promise<boolean> => {
   // 只读（占用失败/编辑权失效）不得保存
   if (!editSession.ensureEditable()) return false
   const frame = current.value
+  const productId = props.productId
   const isNewScheme = !Number(frame.draft.bomId)
   const fromInitialDraft = isNewScheme && activeIndex.value === 0 && props.initialItems !== undefined
   const draftOriginKey = props.draftOriginKey
@@ -1023,6 +1046,7 @@ const saveScheme = async (): Promise<boolean> => {
       ElMessage.error('保存返回缺少方案ID，请刷新后核对')
       return false
     }
+    if (!props.modelValue || current.value.key !== frame.key || props.productId !== productId) return false
     frame.draft.bomId = Number(detail.bomId)
     frame.selectedBomId = Number(detail.bomId)
     frame.approveStatus = detail.approveStatus ?? null
@@ -1063,10 +1087,7 @@ const saveScheme = async (): Promise<boolean> => {
     }
     flushPendingPrimary()
     if (fromInitialDraft) {
-      emit('draft-saved', {
-        materialId: Number(frame.material.materialId), bomId: Number(detail.bomId),
-        ...(draftOriginKey ? { originKey: draftOriginKey } : {}),
-      })
+      savedInitialDraft = { frameKey: frame.key, bomId: Number(detail.bomId), originKey: draftOriginKey }
     }
     return true
   } catch (error) {
@@ -1114,6 +1135,7 @@ const applyAdoptToParent = (frame: Frame, bomId: number): boolean => {
 
 const adoptScheme = async (): Promise<boolean> => {
   const frame = current.value
+  const productId = props.productId
   if (!canAdoptVisible.value) return false
   if (!Number(frame.draft.bomId)) {
     ElMessage.warning('请先保存生产BOM；未保存的方案不能被采用')
@@ -1125,16 +1147,25 @@ const adoptScheme = async (): Promise<boolean> => {
   }
   try {
     const response = await productBomApi.adoptManufacturingBom(Number(frame.draft.bomId))
+    if (!props.modelValue || current.value.key !== frame.key || props.productId !== productId) return false
     frame.subBomId = Number(frame.draft.bomId)
     const isRoot = activeIndex.value === 0
     if (isRoot) {
-      emit('adopt', {
-        materialId: Number(frame.material.materialId),
-        bomId: Number(frame.draft.bomId),
-        scheme: response?.data ?? null,
-      })
+      if (savedInitialDraft?.frameKey === frame.key && savedInitialDraft.bomId === Number(frame.draft.bomId)) {
+        emit('draft-saved', {
+          materialId: Number(frame.material.materialId), bomId: savedInitialDraft.bomId,
+          ...(savedInitialDraft.originKey ? { originKey: savedInitialDraft.originKey } : {}),
+        })
+        savedInitialDraft = null
+      } else {
+        emit('adopt', {
+          materialId: Number(frame.material.materialId), bomId: Number(frame.draft.bomId),
+          scheme: response?.data ?? null,
+        })
+      }
       ElMessage.success('已采用该生产BOM；保存产品BOM后才会持久化关联')
-    } else if (applyAdoptToParent(frame, Number(frame.draft.bomId))) {
+    } else {
+      if (!applyAdoptToParent(frame, Number(frame.draft.bomId))) return false
       ElMessage.success('已回填上层投入行；返回上层保存后才持久化关联')
     }
     flushPendingPrimary()
@@ -1145,6 +1176,44 @@ const adoptScheme = async (): Promise<boolean> => {
     return false
   }
 }
+
+/** 仅保存不会采用或设置主方案，另存子料草稿也保持这一语义。 */
+const saveOnly = async (): Promise<boolean> => {
+  if (actionBusy.value) return false
+  return saveScheme()
+}
+
+const completeAdoption = async (persist: boolean): Promise<boolean> => {
+  if (actionBusy.value || !canAdoptVisible.value) return false
+  if (persist ? !editable.value : !canAdopt.value) return false
+  const frame = current.value
+  const productId = props.productId
+  const setPrimary = frame.setPrimaryOnAdopt && canSetPrimary.value && hasProductContext.value
+  completing.value = true
+  try {
+    if (persist && !await saveScheme()) return false
+    if (!props.modelValue || current.value.key !== frame.key || props.productId !== productId) return false
+    if (!await adoptScheme()) return false
+    if (setPrimary) markPrimary()
+    if (activeIndex.value === 0) {
+      if (Object.keys(pendingPrimary.value).length > 0) {
+        ElMessage.warning('当前方案已采用，部分下层主方案尚未关联到已保存明细，请核对后再关闭')
+        return false
+      }
+      visible.value = false
+    } else {
+      // 当前层已保存并采用；上层带着明确的引用继续编辑，不自动保存其余修改。
+      activeIndex.value -= 1
+      prunePendingPrimary()
+      flushPendingPrimary()
+    }
+    return true
+  } finally {
+    completing.value = false
+  }
+}
+const saveAndAdopt = () => completeAdoption(true)
+const adoptAndReturn = () => completeAdoption(false)
 
 /**
  * 设为主方案：顶层显式调整直接交给产品BOM；深层先记录（保持原始产品上下文），
@@ -1238,6 +1307,11 @@ defineExpose({
   schemeLabels,
   validateDraft,
   saveScheme,
+  saveOnly,
+  saveAndAdopt,
+  adoptAndReturn,
+  completing,
+  actionBusy,
   adoptScheme,
   markPrimary,
   drillDown,

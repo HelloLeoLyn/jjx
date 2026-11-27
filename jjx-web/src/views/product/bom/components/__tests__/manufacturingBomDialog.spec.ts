@@ -801,3 +801,163 @@ describe('制造BOM：编辑占用与服务端内容版本', () => {
     expect(mocks.warning).toHaveBeenCalled()
   })
 })
+
+
+describe('保存并采用、仅保存与可选设主（dev-20261127-009）', () => {
+  const prepareNew = async (props: Record<string, unknown> = {}) => {
+    const wrapper = await dialog(props)
+    const state = wrapper.vm as any
+    state.current.draft.items = [item({ itemId: -1 })]
+    return { wrapper, state }
+  }
+  it('主按钮一次保存并采用后关闭窗口，默认不设置主方案', async () => {
+    const { wrapper, state } = await prepareNew()
+    expect(state.current.setPrimaryOnAdopt).toBe(false)
+    expect(wrapper.text()).toContain('仅保存')
+    expect(wrapper.text()).toContain('同时设为本产品该物料的主方案')
+    await wrapper.findAll('button').find(button => button.text() === '保存并采用')!.trigger('click')
+    await flushPromises()
+    expect(mocks.saveManufacturingBom).toHaveBeenCalledOnce()
+    expect(mocks.adoptManufacturingBom).toHaveBeenCalledWith(130)
+    expect(wrapper.emitted('adopt')?.[0]?.[0]).toMatchObject({ materialId: 349, bomId: 130 })
+    expect(wrapper.emitted('primary-change')).toBeUndefined()
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([false])
+  })
+  it('勾选设主后，采用成功才设置当前产品该物料的主方案', async () => {
+    const { wrapper, state } = await prepareNew()
+    state.current.setPrimaryOnAdopt = true
+    expect(await state.saveAndAdopt()).toBe(true)
+    expect(wrapper.emitted('primary-change')?.[0]?.[0]).toEqual({ materialId: 349, bomId: 130 })
+  })
+  it('编辑方案保存并采用走更新接口，已有未改方案直接采用不重复保存', async () => {
+    mocks.manufacturingOptions.mockResolvedValue({ data: [scheme()] })
+    mocks.listEngineeringBomItem.mockResolvedValue({ data: [item()] })
+    const edited = await dialog({ subBomId: 124 }); const editing = edited.vm as any
+    editing.current.draft.remark = '新备注'
+    expect(await editing.saveAndAdopt()).toBe(true)
+    expect(mocks.updateManufacturingBom).toHaveBeenCalledWith(124, expect.objectContaining({ remark: '新备注' }))
+    const existing = await dialog({ subBomId: 124 }); const state = existing.vm as any
+    mocks.updateManufacturingBom.mockClear()
+    expect(await state.adoptAndReturn()).toBe(true)
+    expect(mocks.saveManufacturingBom).not.toHaveBeenCalled()
+    expect(mocks.updateManufacturingBom).not.toHaveBeenCalled()
+    expect(mocks.adoptManufacturingBom).toHaveBeenLastCalledWith(124)
+  })
+  it('子料草稿仅保存时不采用不设主；之后明确采用才发回填与清理事件', async () => {
+    const { wrapper, state } = await prepareNew({ initialItems: [item({ itemId: -1 })], draftOriginKey: 'origin-1' })
+    state.current.setPrimaryOnAdopt = true
+    expect(await state.saveOnly()).toBe(true)
+    expect(mocks.adoptManufacturingBom).not.toHaveBeenCalled()
+    expect(wrapper.emitted('adopt')).toBeUndefined()
+    expect(wrapper.emitted('draft-saved')).toBeUndefined()
+    expect(wrapper.emitted('primary-change')).toBeUndefined()
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(await state.adoptAndReturn()).toBe(true)
+    expect(wrapper.emitted('draft-saved')?.[0]?.[0]).toEqual({ materialId: 349, bomId: 130, originKey: 'origin-1' })
+    expect(wrapper.emitted('primary-change')?.[0]?.[0]).toEqual({ materialId: 349, bomId: 130 })
+    expect(mocks.saveManufacturingBom).toHaveBeenCalledOnce()
+  })
+  it('深层保存采用只回填直接父行并返回；设主等父层保存后才发出', async () => {
+    const wrapper = await dialog(); const state = wrapper.vm as any
+    const child = item({ itemId: 21, materialId: 350, unit: 'PCS' })
+    state.current.draft.items = [child, item({ itemId: 22, materialId: 351 })]
+    expect(await state.saveOnly()).toBe(true)
+    await state.drillDown(child)
+    expect(state.current.setPrimaryOnAdopt).toBe(false)
+    state.current.draft.items = [item({ itemId: -1 })]
+    state.current.setPrimaryOnAdopt = true
+    expect(await state.saveAndAdopt()).toBe(true)
+    expect(state.activeIndex).toBe(0)
+    expect(state.current.draft.items[0].subBomId).toBe(131)
+    expect(state.current.draft.items[1].subBomId).toBeFalsy()
+    expect(state.currentDirty).toBe(true)
+    expect(wrapper.emitted('adopt')).toBeUndefined()
+    expect(wrapper.emitted('primary-change')).toBeUndefined()
+    await flushPromises()
+    expect(await state.saveOnly()).toBe(true)
+    expect(wrapper.emitted('primary-change')?.[0]?.[0]).toEqual({ materialId: 350, bomId: 131 })
+  })
+  it('下层采用时原父行已删除，不得误回填同物料的兄弟行', async () => {
+    const wrapper = await dialog(); const state = wrapper.vm as any
+    const target = item({ itemId: 21, materialId: 350, unit: 'PCS' })
+    const sibling = item({ itemId: 22, materialId: 350, unit: 'PCS' })
+    state.current.draft.items = [target, sibling]
+    await state.saveOnly(); await state.drillDown(target)
+    state.current.draft.items = [item({ itemId: -1 })]
+    state.stack[0].draft.items = [sibling]
+    state.current.setPrimaryOnAdopt = true
+    expect(await state.saveAndAdopt()).toBe(false)
+    expect(state.stack[0].draft.items[0].subBomId).toBeFalsy()
+    expect(state.activeIndex).toBe(1)
+    expect(wrapper.emitted('primary-change')).toBeUndefined()
+  })
+  it('下层设主尚未形成已保存引用链时，不自动关闭丢失该选择', async () => {
+    const { wrapper, state } = await prepareNew()
+    state.pendingPrimary[350] = { materialId: 350, bomId: 999, frameKey: 'unresolved-child' }
+    expect(await state.saveAndAdopt()).toBe(false)
+    expect(wrapper.emitted('adopt')).toHaveLength(1)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(mocks.warning).toHaveBeenCalledWith(expect.stringContaining('部分下层主方案'))
+  })
+  it('保存失败保留修改，不采用、不设主、不关闭', async () => {
+    const { wrapper, state } = await prepareNew()
+    state.current.setPrimaryOnAdopt = true
+    mocks.saveManufacturingBom.mockRejectedValueOnce(new Error('保存失败'))
+    expect(await state.saveAndAdopt()).toBe(false)
+    expect(state.currentDirty).toBe(true)
+    expect(mocks.adoptManufacturingBom).not.toHaveBeenCalled()
+    expect(wrapper.emitted('primary-change')).toBeUndefined()
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+  })
+  it('保存成功但采用失败时保留已存方案；直接重试采用不再保存', async () => {
+    const { wrapper, state } = await prepareNew()
+    state.current.setPrimaryOnAdopt = true
+    mocks.adoptManufacturingBom.mockRejectedValueOnce(new Error('采用失败'))
+    expect(await state.saveAndAdopt()).toBe(false)
+    expect(state.current.draft.bomId).toBe(130)
+    expect(wrapper.emitted('primary-change')).toBeUndefined()
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(await state.adoptAndReturn()).toBe(true)
+    expect(mocks.saveManufacturingBom).toHaveBeenCalledOnce()
+    expect(wrapper.emitted('primary-change')?.[0]?.[0]).toEqual({ materialId: 349, bomId: 130 })
+  })
+  it('保存和采用等待期间重复点击、切换方案和关闭均不触发额外操作', async () => {
+    const { wrapper, state } = await prepareNew()
+    let finishSave!: (value: any) => void, finishAdopt!: (value: any) => void
+    mocks.saveManufacturingBom.mockReturnValueOnce(new Promise(resolve => { finishSave = resolve }))
+    mocks.adoptManufacturingBom.mockReturnValueOnce(new Promise(resolve => { finishAdopt = resolve }))
+    const first = state.saveAndAdopt()
+    expect(await state.saveAndAdopt()).toBe(false)
+    expect(await state.saveOnly()).toBe(false)
+    await state.selectSchemeByBomId(999); await state.handleCancel()
+    expect(mocks.getEngineeringBomInfo).not.toHaveBeenCalled()
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    finishSave({ data: { bomId: 130 } }); await flushPromises()
+    expect(await state.adoptAndReturn()).toBe(false)
+    expect(await state.saveOnly()).toBe(false)
+    finishAdopt({ data: scheme({ bomId: 130 }) }); expect(await first).toBe(true)
+    expect(mocks.saveManufacturingBom).toHaveBeenCalledOnce()
+    expect(mocks.adoptManufacturingBom).toHaveBeenCalledOnce()
+  })
+  it('只读用户不能组合操作；仅新增权限或无产品上下文都不能借勾选设主', async () => {
+    permission.perms = new Set(['engineering:bom:view'])
+    const readonly = await dialog({ readonly: true }); const viewing = readonly.vm as any
+    expect(await viewing.saveAndAdopt()).toBe(false)
+    expect(await viewing.adoptAndReturn()).toBe(false)
+    permission.perms = new Set(['engineering:bom:add'])
+    const { wrapper, state } = await prepareNew({ productId: null })
+    state.current.setPrimaryOnAdopt = true
+    expect(await state.saveAndAdopt()).toBe(true)
+    expect(wrapper.emitted('primary-change')).toBeUndefined()
+  })
+  it('外部关闭窗口后，迟到的保存结果不能再采用或设置主方案', async () => {
+    const { wrapper, state } = await prepareNew()
+    let finishSave!: (value: any) => void
+    mocks.saveManufacturingBom.mockReturnValueOnce(new Promise(resolve => { finishSave = resolve }))
+    const saving = state.saveAndAdopt()
+    await wrapper.setProps({ modelValue: false })
+    finishSave({ data: { bomId: 130 } }); expect(await saving).toBe(false)
+    expect(mocks.adoptManufacturingBom).not.toHaveBeenCalled()
+    expect(wrapper.emitted('primary-change')).toBeUndefined()
+  })
+})
