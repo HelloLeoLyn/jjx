@@ -105,7 +105,7 @@
 
 ## 4. scripts/db-clean-test-data.sh —— 清理测试数据入口
 
-出片申请 `print_film_request` 随实际菲林片来源保留，不作测试数据清理；SQL 第12节与 RETAINED_TABLES 同步（dev-20261127-002）。
+印刷台账 `print_artwork`、`print_artwork_version`、`print_film_copy`、`print_frame_stretch`、`print_film_request` 保留，SQL 第12节与 RETAINED_TABLES 同步（dev-20261127-002）。印刷/网框网版维护履历按资源类型保留，被菲林版本引用的图纸及附件引用不删除（即使原上传类型为产品或业务单据）。`print_use_segment`、`print_kit_shortage` 随业务清理并核验归零。全量包含产品的规则不变，产品关联仍清空以避免ID重用错挂。
 
 - 用途：`jjx-docs/sql/00_clean_test_data.sql`（整表 TRUNCATE + 条件 DELETE，表清单以脚本实际解析为准）的**唯一**入口。
 - 危险等级：🟢 无参数/`--domains`=只读体检（不写库）／🔴 `--execute` 真清理（固定顺序：体检 → 校验手工备份 → 人工确认 → 执行）。

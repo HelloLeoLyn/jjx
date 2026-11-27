@@ -12,9 +12,11 @@ DROP PROCEDURE assert_clean_test_target//
 DELIMITER ;
 
 -- =====================================================
--- 清理测试数据脚本（v26）
+-- 清理测试数据脚本（v27）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
+-- v27 变更（2026-11-27，dev-20261127-002）：印刷主档/版本/实物/绷网/申请随网版保留；
+--   用版分段/齐套缺口随业务清理；保护台账维护履历和版本图纸，产品关联仍按既定规则清。
 -- v26 变更（2026-11-25，任务 dev-20261125-005，用户确认）：
 --   库位 inventory_storage_location、生产设备 production_equipment、门户语言配置 portal_language_config
 --   转为保留基础资料；全量与各域清理都保留，基础资料核验展示三表数量。
@@ -238,14 +240,21 @@ TRUNCATE product_work_spec_version;
 -- TRUNCATE product;
 
 
+-- 印刷执行/齐套记录引用将清空的工单、规范、路线与产品，不随工装台账保留。
+TRUNCATE print_use_segment;
+
+TRUNCATE print_kit_shortage;
+
 -- ==================== 4. 工程模块（v5 起标准工序保留，其余清） ====================
 -- 迁移 366 的 BOM 变更单属业务数据，先明细再主表，随后清理其引用的 BOM（dev-20261114-006）。
 TRUNCATE bom_change_request_item;
 
 TRUNCATE bom_change_request;
 
-TRUNCATE engineering_resource_maintenance;
+-- 印刷/工装台账保留，其版本发布摘要、申请幂等及维护履历也必须保留。
+DELETE FROM engineering_resource_maintenance WHERE resource_type NOT IN ('ARTWORK','ARTWORK_VERSION','FILM_COPY','FILM_REQUEST','SCREEN_FRAME','SCREEN_PLATE');
 
+-- 产品关联随既有产品清理策略清空，避免产品ID重用后错挂旧资源。
 TRUNCATE engineering_resource_product_rel;
 
 TRUNCATE engineering_routing_item;
@@ -425,8 +434,8 @@ TRUNCATE quality_lot;
 --   （2026-10-13 实测清库执行 ERROR 1644）；故清库时先摘掉该守卫、删完立即按原样恢复。
 --   同时清掉被删附件的引用行（sys_attachment_ref），否则 FK/悬空引用会留下孤儿引用。
 DROP TRIGGER IF EXISTS trg_attachment_v1_no_delete;
-DELETE FROM sys_attachment_ref WHERE attachment_id IN (SELECT id FROM sys_attachment WHERE biz_type IN ('inquiry','quotation','sales_order','sales_order_confirmation','sample','order','sales_delivery','purchase_payment','requirement','task','bom','routing'));
-DELETE FROM sys_attachment WHERE biz_type IN ('inquiry','quotation','sales_order','sales_order_confirmation','sample','order','sales_delivery','purchase_payment','requirement','task','bom','routing');
+DELETE FROM sys_attachment_ref WHERE attachment_id IN (SELECT id FROM sys_attachment WHERE biz_type IN ('inquiry','quotation','sales_order','sales_order_confirmation','sample','order','sales_delivery','purchase_payment','requirement','task','bom','routing') AND id NOT IN (SELECT drawing_file_id FROM print_artwork_version WHERE drawing_file_id IS NOT NULL));
+DELETE FROM sys_attachment WHERE biz_type IN ('inquiry','quotation','sales_order','sales_order_confirmation','sample','order','sales_delivery','purchase_payment','requirement','task','bom','routing') AND id NOT IN (SELECT drawing_file_id FROM print_artwork_version WHERE drawing_file_id IS NOT NULL);
 CREATE TRIGGER trg_attachment_v1_no_delete BEFORE DELETE ON sys_attachment
 FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='V1-A: physical attachment deletion disabled; preview only';
 
@@ -450,8 +459,8 @@ TRUNCATE sales_sample_order;
 --   否则 product 被 TRUNCATE 后自增 ID 归零，新产品复用同一 ID → 遗留附件错挂到新产品的客供资料。
 -- 【v25 清库窗口】同第 11 节：删前先摘触发器、清引用行，删完按原样恢复。
 -- INCLUDE_PRODUCTS: DROP TRIGGER IF EXISTS trg_attachment_v1_no_delete;
--- INCLUDE_PRODUCTS: DELETE FROM sys_attachment_ref WHERE attachment_id IN (SELECT id FROM sys_attachment WHERE biz_type = 'product');
--- INCLUDE_PRODUCTS: DELETE FROM sys_attachment WHERE biz_type = 'product';
+-- INCLUDE_PRODUCTS: DELETE FROM sys_attachment_ref WHERE attachment_id IN (SELECT id FROM sys_attachment WHERE biz_type = 'product' AND id NOT IN (SELECT drawing_file_id FROM print_artwork_version WHERE drawing_file_id IS NOT NULL));
+-- INCLUDE_PRODUCTS: DELETE FROM sys_attachment WHERE biz_type = 'product' AND id NOT IN (SELECT drawing_file_id FROM print_artwork_version WHERE drawing_file_id IS NOT NULL);
 -- INCLUDE_PRODUCTS: CREATE TRIGGER trg_attachment_v1_no_delete BEFORE DELETE ON sys_attachment
 -- INCLUDE_PRODUCTS: FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='V1-A: physical attachment deletion disabled; preview only';
 -- INCLUDE_PRODUCTS: TRUNCATE product_config_option;
@@ -491,6 +500,8 @@ DELETE FROM inventory_item WHERE item_type = 'PRODUCT' AND NOT EXISTS (SELECT 1 
 --   engineering_die（刀模实体，老台账 12,134 条）/ engineering_screen_frame（网框 7,291 条）
 --   engineering_screen_plate（网版当前版面 4,503 条；v15 曾误列清理清单，清理会清掉网版内容）
 -- （engineering_bom_backup_20260809 当前 0 行且无代码/外键依赖，迁移 241 退役）
+-- 印刷工装台账：print_artwork / print_artwork_version / print_film_copy / print_frame_stretch。
+-- 网版引用版本、实物与绷网段，整体保留；发布/维护履历按resource_type保留，图纸按版本引用保护。
 -- print_film_request：保留，来源申请随实际菲林片追溯，不能清成悬空来源（dev-20261127-002）。
 -- 以上保留
 
@@ -525,6 +536,8 @@ UNION ALL SELECT 'quality_capa', COUNT(*) FROM quality_capa
 UNION ALL SELECT 'quality_ncr_piece', COUNT(*) FROM quality_ncr_piece
 UNION ALL SELECT 'quality_ncr_piece_defect', COUNT(*) FROM quality_ncr_piece_defect
 UNION ALL SELECT 'quality_scrap_order', COUNT(*) FROM quality_scrap_order
+UNION ALL SELECT 'print_use_segment', COUNT(*) FROM print_use_segment
+UNION ALL SELECT 'print_kit_shortage', COUNT(*) FROM print_kit_shortage
 UNION ALL SELECT 'engineering_archive_import', COUNT(*) FROM engineering_archive_import
 UNION ALL SELECT 'bom_change_request_item', COUNT(*) FROM bom_change_request_item
 UNION ALL SELECT 'bom_change_request', COUNT(*) FROM bom_change_request

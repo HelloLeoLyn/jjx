@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import pty
 import re
+import sqlite3
 import subprocess
 import tempfile
 import unittest
@@ -100,6 +101,45 @@ class CleanProductsTest(unittest.TestCase):
             if slave is not None:
                 os.close(slave)
             os.close(master)
+
+    def test_printing_retention_and_runtime_cleanup_plan(self):
+        r = self.run_script(('--execute', '--backup', str(self.backup)), terminal=True)
+        self.assertEqual(0, r.returncode, r.stdout + r.stderr)
+        plan = self.capture.read_text()
+        for table in ('print_artwork', 'print_artwork_version', 'print_film_copy',
+                      'print_frame_stretch', 'print_film_request'):
+            self.assertNotIn('TRUNCATE ' + table + ';', plan)
+            self.assertIn(table, self.tables)
+        for table in ('print_use_segment', 'print_kit_shortage'):
+            self.assertIn('TRUNCATE ' + table + ';', plan)
+        self.assertNotIn('TRUNCATE engineering_resource_maintenance;', plan)
+
+    def test_retained_printing_drawings_and_audit_survive_cleanup_predicates(self):
+        # 在内存库实际执行生成计划中的DELETE，覆盖产品/业务来源图纸及其引用。
+        r = self.run_script(('--execute', '--backup', str(self.backup)), terminal=True)
+        self.assertEqual(0, r.returncode, r.stdout + r.stderr)
+        with sqlite3.connect(':memory:') as db:
+            db.executescript("""
+                CREATE TABLE print_artwork_version(drawing_file_id INTEGER);
+                INSERT INTO print_artwork_version VALUES(1),(2),(NULL);
+                CREATE TABLE sys_attachment(id INTEGER, biz_type TEXT);
+                INSERT INTO sys_attachment VALUES(1,'product'),(2,'inquiry'),
+                    (3,'product'),(4,'bom'),(5,'engineering_jjx_icon');
+                CREATE TABLE sys_attachment_ref(attachment_id INTEGER);
+                INSERT INTO sys_attachment_ref VALUES(1),(2),(3),(4),(5);
+                CREATE TABLE engineering_resource_maintenance(resource_type TEXT);
+                INSERT INTO engineering_resource_maintenance VALUES('ARTWORK'),('ARTWORK_VERSION'),
+                    ('FILM_COPY'),('FILM_REQUEST'),('SCREEN_FRAME'),('SCREEN_PLATE'),('BOM');
+            """)
+            targets = ('sys_attachment', 'sys_attachment_ref', 'engineering_resource_maintenance')
+            for line in self.capture.read_text().splitlines():
+                match = re.match(r'^DELETE FROM (\w+) WHERE ', line)
+                if match and match[1] in targets:
+                    db.execute(line)
+            self.assertEqual([(1,), (2,), (5,)], db.execute('SELECT id FROM sys_attachment ORDER BY id').fetchall())
+            self.assertEqual([(1,), (2,), (5,)], db.execute('SELECT attachment_id FROM sys_attachment_ref ORDER BY attachment_id').fetchall())
+            self.assertEqual(6, db.execute('SELECT COUNT(*) FROM engineering_resource_maintenance').fetchone()[0])
+            self.assertEqual(0, db.execute("SELECT COUNT(*) FROM engineering_resource_maintenance WHERE resource_type='BOM'").fetchone()[0])
 
     def test_default_includes_products(self):
         # 2026-10-13 口径：全量清理默认包含产品（不再需要 --include-products）。
