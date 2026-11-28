@@ -292,11 +292,11 @@
                   </template>
                 </el-table-column>
                 <el-table-column type="index" label="#" width="44" align="center" />
-                <el-table-column label="网版／菲林样式" min-width="610">
+                <el-table-column label="网版 / 印刷样式" min-width="460">
                   <template #default="{ row }">
                     <PrintResourceSelector
                       :model-value="row.defaultPlateId ? { plateId: row.defaultPlateId, plateNo: row.defaultPlateNo || `网版 #${row.defaultPlateId}` } : null"
-                      scene="PLATE" size="small" placeholder="搜索网版或菲林，选择后勾选使用样式"
+                      scene="PLATE" size="small" placeholder="搜索网版或菲林，再点选一个样式"
                       @select="(item: any) => onPickPlate(row, item)" @clear="clearPlate(row)"
                     />
                     <RoutePrintStyleFields :plate-id="row.defaultPlateId" :sources-json="row._printSourcesJson" :requirements="row.printRequirements"
@@ -580,7 +580,9 @@ function onPickPlate(row: any, item: any) {
   row.defaultPlateNo = item.plateNo || ''
   row.defaultFrameNo = item.frameNo || ''
   row._printSourcesJson = item.sourcesJson ?? null
-  row.printRequirements = selectPlateStyles(row.printRequirements, readSources(item.sourcesJson))
+  const sources = readSources(item.sourcesJson)
+  row.printRequirements = selectPlateStyles(row.printRequirements, sources, true)
+  if (sources.some(source => source.styles.length) && !JSON.parse(row.printRequirements).styles?.length) row.processName = ''
   clearLegacyResourceText(row)
   // 不从实测目数/张力推导固定工艺上下限，更换网版也保留已有要求。
   syncToParent()

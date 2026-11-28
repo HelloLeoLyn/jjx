@@ -115,14 +115,17 @@ async function save(wrapper: ReturnType<typeof mount>, close = false) {
 const printInput = (wrapper: ReturnType<typeof mount>) =>
   wrapper.find('input[placeholder="如：丝印/移印/网印"]')
 describe('新增工艺路线印刷名称保存', () => {
-  it('前端预览从样式带名称和色号，部分选择保存重开且不提交预览字段', async () => {
+  it('样式平铺单选带名称和色号，保存重开且不提交预览字段', async () => {
     const sourcesJson = JSON.stringify([{ filmId: 21, filmNo: 'FL-A', artworkNo: 'F001', versionNo: 'V2', versionId: 3,
       styles: [{ styleNo: 'A', name: '正面文字', inkColor: 'RED' }, { styleNo: 'B', name: '图标', inkColor: 'BLUE' }] }])
     vi.mocked(printingSearchApi.plate).mockImplementation(async id => ({ data: { plateId: id, sourcesJson, availability: true } }) as any)
     const wrapper = await open(); await addPrint(wrapper, '旧印刷名称'); await choosePlate(wrapper, { sourcesJson })
     const fields = wrapper.findComponent(RoutePrintStyleFields)
-    expect(fields.text()).toContain('正面文字 / 图标'); expect(fields.text()).toContain('待关联')
-    await fields.findAll('input[type="checkbox"]')[1].setValue(false); await flushPromises()
+    expect(fields.text()).toContain('正面文字'); expect(fields.text()).toContain('图标')
+    expect(fields.findAll('input[type="checkbox"]')).toHaveLength(0)
+    expect(fields.find('input[placeholder="样式色号"]').exists()).toBe(false)
+    await save(wrapper); expect(productRouteApi.addProductRoute).not.toHaveBeenCalled()
+    await fields.findAll('input[type="radio"]')[0].setValue(true); await flushPromises()
     await fields.find('input[placeholder="样式色号"]').setValue('LOCAL'); await flushPromises()
     await save(wrapper)
     expect(stored.items[0].processName).toBe('正面文字')
@@ -134,13 +137,38 @@ describe('新增工艺路线印刷名称保存', () => {
     expect(wrapper.findComponent(RoutePrintStyleFields).find('input[placeholder="样式色号"]').element).toHaveProperty('value', 'LOCAL')
     await save(wrapper); expect(stored.items[0].processName).toBe('正面文字')
   })
-  it('多菲林工序部分样式及覆盖色号通过新增和编辑接口保存重开，同身份换版保留覆盖', async () => {
+  it('单个候选直接带出，历史多项保存不静默裁减，显式选择后才改单项', async () => {
+    const sourcesJson = JSON.stringify([{ filmId: 21, filmNo: 'FL-A', versionId: 3,
+      styles: [{ styleNo: 'A', name: '正面文字', inkColor: 'RED' }] }])
+    vi.mocked(printingSearchApi.plate).mockImplementation(async id => ({ data: { plateId: id, sourcesJson, availability: true } }) as any)
+    const wrapper = await open(); await addPrint(wrapper, '旧名'); await choosePlate(wrapper, { sourcesJson }); await save(wrapper)
+    expect(stored.items[0].processName).toBe('正面文字')
+    expect(JSON.parse(stored.items[0].printRequirements).styles).toHaveLength(1)
+    const multipleSources = JSON.stringify([{ filmId: 21, filmNo: 'FL-A', versionId: 3, styles: [
+      { styleNo: 'A', name: '正面文字', inkColor: 'RED' }, { styleNo: 'B', name: '图标', inkColor: 'BLUE' },
+    ] }])
+    const historical = { styles: [{ versionId: 3, styleNo: 'A', inkColor: 'SPECIAL' }, { versionId: 3, styleNo: 'B', inkColor: 'BLUE' }] }
+    stored.items[0].printRequirements = JSON.stringify(historical)
+    stored.items[0].processName = '历史多样式工序'
+    vi.mocked(printingSearchApi.plate).mockImplementation(async id => ({ data: { plateId: id, sourcesJson: multipleSources, availability: true } }) as any)
+    await wrapper.setProps({ modelValue: false }); await wrapper.setProps({ routingId: 77, modelValue: true }); await flushPromises()
+    await save(wrapper)
+    expect(JSON.parse(stored.items[0].printRequirements)).toEqual(historical)
+    expect(stored.items[0].processName).toBe('历史多样式工序')
+    await wrapper.findComponent(RoutePrintStyleFields).findAll('input[type="radio"]')[1].setValue(true); await flushPromises(); await save(wrapper)
+    expect(stored.items[0].processName).toBe('图标')
+    expect(JSON.parse(stored.items[0].printRequirements).styles).toEqual([{ versionId: 3, styleNo: 'B', inkColor: 'BLUE' }])
+  })
+  it('跨菲林单选仅保存一项，覆盖色号通过新增编辑保存重开，同身份换版保留覆盖', async () => {
     const wrapper = await open()
     await addPrint(wrapper, '多菲林印刷')
     const sourcesJson = JSON.stringify([{ filmId: 21, filmNo: 'FL-A', versionId: 3, styles: [{ styleNo: 'A', name: '正面', inkColor: 'RED' }] }, { filmId: 22, filmNo: 'FL-B', versionId: 5, styles: [{ styleNo: 'B', name: '背面', inkColor: 'BLACK' }] }])
     await choosePlate(wrapper, { sourcesJson })
+    const fields = wrapper.findComponent(RoutePrintStyleFields)
+    await fields.findAll('input[type="radio"]')[1].setValue(true); await flushPromises()
     await save(wrapper)
-    expect(JSON.parse(stored.items[0].printRequirements).styles).toHaveLength(2)
+    expect(JSON.parse(stored.items[0].printRequirements).styles).toEqual([{ versionId: 5, styleNo: 'B', inkColor: 'BLACK' }])
+    expect(stored.items[0].processName).toBe('背面')
     const override = { meshMin: 100, styles: [{ versionId: 5, styleNo: 'B', inkColor: 'SPECIAL' }] }
     wrapper.findComponent(PrintPlateDetails).vm.$emit('update:requirements', JSON.stringify(override))
     await nextTick(); await save(wrapper)
