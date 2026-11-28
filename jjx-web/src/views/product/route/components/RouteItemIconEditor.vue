@@ -292,51 +292,29 @@
                   </template>
                 </el-table-column>
                 <el-table-column type="index" label="#" width="44" align="center" />
-                <el-table-column label="印刷名称 *" min-width="140">
-                  <template #default="{ row }">
-                    <el-input
-                      v-model="row.processName"
-                      size="small"
-                      placeholder="如：丝印/移印/网印"
-                    />
-                  </template>
-                </el-table-column>
-                <el-table-column label="色号" width="150">
-                  <template #default="{ row }">
-                    <PrintFieldAutocomplete
-                      :model-value="getPrintParam(row, 'colorNo')"
-                      field="colorNo"
-                      width="140px"
-                      @update:model-value="(v: string) => setPrintParam(row, 'colorNo', v)"
-                    />
-                  </template>
-                </el-table-column>
-                <el-table-column label="油墨编号" width="150">
-                  <template #default="{ row }">
-                    <PrintFieldAutocomplete
-                      :model-value="getPrintParam(row, 'inkNo')"
-                      field="inkNo"
-                      width="140px"
-                      @update:model-value="(v: string) => setPrintParam(row, 'inkNo', v)"
-                    />
-                  </template>
-                </el-table-column>
-                <el-table-column label="网版" min-width="260">
+                <el-table-column label="网版／菲林样式" min-width="610">
                   <template #default="{ row }">
                     <PrintResourceSelector
                       :model-value="row.defaultPlateId ? { plateId: row.defaultPlateId, plateNo: row.defaultPlateNo || `网版 #${row.defaultPlateId}` } : null"
-                      scene="PLATE"
-                      size="small"
-                      placeholder="按网版/菲林/网框搜索"
-                      @select="(item: any) => onPickPlate(row, item)"
-                      @clear="clearPlate(row)"
+                      scene="PLATE" size="small" placeholder="搜索网版或菲林，选择后勾选使用样式"
+                      @select="(item: any) => onPickPlate(row, item)" @clear="clearPlate(row)"
                     />
-                    <small v-if="!row.defaultPlateId && row.artworkVersionId">已有菲林版本，尚未选择网版</small>
+                    <RoutePrintStyleFields :plate-id="row.defaultPlateId" :sources-json="row._printSourcesJson" :requirements="row.printRequirements"
+                      @update:requirements="(value: string) => { row.printRequirements = value; syncToParent() }"
+                      @update:name="(value: string) => { row.processName = value; syncToParent() }">
+                      <template #legacy>
+                        <div class="legacy-print-fields">
+                          <label>印刷名称<el-input v-model="row.processName" size="small" placeholder="如：丝印/移印/网印" /></label>
+                          <label>色号<PrintFieldAutocomplete :model-value="getPrintParam(row, 'colorNo')" field="colorNo" width="130px" @update:model-value="(v: string) => setPrintParam(row, 'colorNo', v)" /></label>
+                          <label>油墨编号<PrintFieldAutocomplete :model-value="getPrintParam(row, 'inkNo')" field="inkNo" width="130px" @update:model-value="(v: string) => setPrintParam(row, 'inkNo', v)" /></label>
+                        </div>
+                      </template>
+                    </RoutePrintStyleFields>
                   </template>
                 </el-table-column>
                 <el-table-column label="关联资料" width="110" align="center">
                   <template #default="{ row }">
-                    <PrintPlateDetails :row="row" :read-only="false" @update:requirements="(value: string) => { row.printRequirements = value; syncToParent() }" />
+                    <PrintPlateDetails :row="row" :read-only="false" :show-styles="false" @update:requirements="(value: string) => { row.printRequirements = value; syncToParent() }" />
                   </template>
                 </el-table-column>
                 <el-table-column label="人工工时(h)" width="100" align="center">
@@ -439,6 +417,7 @@ import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import PrintResourceSelector from '@/components/Selector/PrintResourceSelector.vue'
 import PrintPlateDetails from '@/components/printing/PrintPlateDetails.vue'
+import RoutePrintStyleFields from '@/components/printing/RoutePrintStyleFields.vue'
 import { readSources, selectPlateStyles } from '@/components/printing/printStyles'
 import type { StandardProcessOption } from '@/types/product'
 import type { EngineeringRoutingItemVO } from '@/types/product/routing'
@@ -600,6 +579,7 @@ function onPickPlate(row: any, item: any) {
   row.defaultPlateId = Number(item.plateId)
   row.defaultPlateNo = item.plateNo || ''
   row.defaultFrameNo = item.frameNo || ''
+  row._printSourcesJson = item.sourcesJson ?? null
   row.printRequirements = selectPlateStyles(row.printRequirements, readSources(item.sourcesJson))
   clearLegacyResourceText(row)
   // 不从实测目数/张力推导固定工艺上下限，更换网版也保留已有要求。
@@ -621,6 +601,7 @@ function clearPlate(row: any) {
   row.defaultPlateId = null
   row.defaultPlateNo = ''
   row.defaultFrameNo = ''
+  row._printSourcesJson = null
   const requirements = JSON.parse(row.printRequirements || '{}')
   delete requirements.styles
   row.printRequirements = JSON.stringify(requirements)
@@ -1410,6 +1391,8 @@ defineExpose({
 </script>
 
 <style scoped>
+.legacy-print-fields { display: flex; gap: 12px; flex-wrap: wrap; }
+.legacy-print-fields > label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .route-item-icon-editor {
   margin-top: 10px;
 }

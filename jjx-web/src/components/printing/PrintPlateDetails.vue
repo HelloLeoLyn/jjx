@@ -24,9 +24,11 @@
         <el-descriptions-item label="实际制版排布">{{ source?.layout || (row.printingSnapshot as any)?.plateLayout || '未记录' }}</el-descriptions-item>
         <el-descriptions-item label="网版位置">{{ source?.position || '未记录' }}</el-descriptions-item>
       </el-descriptions>
+      <template v-if="showStyles">
       <el-divider content-position="left">工序样式</el-divider>
       <ProcessStylesPicker :sources="plateSources" :model-value="styleRequirements" :readonly="readOnly || !!row.printingSnapshot" @update:model-value="v => emit('update:requirements', v)" />
       <p v-if="!plateSources.length">未记录样式，不从当前资料补推历史。</p>
+      </template>
       <el-divider content-position="left">固定印刷要求（当前工序）</el-divider>
       <template v-if="readOnly || row.printingSnapshot"><p>{{ printingRequirements(row) }}</p></template>
       <el-form v-else label-width="110px" size="small">
@@ -47,7 +49,7 @@ import { readSources } from './printStyles'
 import { printingSearchApi, type PrintSearchRow } from '@/api/engineering/printingSearch'
 import { ScreenPlateStatusEnum } from '@/enums/engineering/resource'
 import { printingBinding, printingRequirements, type SpecProcessRow } from '@/views/engineering/product-spec/components/workSpecProcessRows'
-const props = withDefaults(defineProps<{ row: SpecProcessRow; readOnly?: boolean }>(), { readOnly: true })
+const props = withDefaults(defineProps<{ row: SpecProcessRow; readOnly?: boolean; showStyles?: boolean }>(), { readOnly: true, showStyles: true })
 const emit = defineEmits<{ 'update:requirements': [value: string] }>()
 const visible = ref(false)
 const loading = ref(false)

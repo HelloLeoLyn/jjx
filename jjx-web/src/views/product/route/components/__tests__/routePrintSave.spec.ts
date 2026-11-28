@@ -5,6 +5,8 @@ import RouteFormDialog from '../RouteFormDialog.vue'
 import { productRouteApi } from '@/api/product/routing'
 import PrintResourceSelector from '@/components/Selector/PrintResourceSelector.vue'
 import PrintPlateDetails from '@/components/printing/PrintPlateDetails.vue'
+import RoutePrintStyleFields from '@/components/printing/RoutePrintStyleFields.vue'
+import { printingSearchApi } from '@/api/engineering/printingSearch'
 
 vi.mock('@/api/engineering/printingSearch', () => ({ printingSearchApi: { search: vi.fn(), plate: vi.fn(async id => ({ data: { plateId: id, plateNo: `P${id}`, frameNo: 'F1', mesh: 200, tensionNCm: 22, availability: true } })) } }))
 
@@ -47,6 +49,7 @@ let stored: any
 const wrappers: ReturnType<typeof mount>[] = []
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(printingSearchApi.plate).mockImplementation(async id => ({ data: { plateId: id, plateNo: `P${id}`, frameNo: 'F1', mesh: 200, tensionNCm: 22, availability: true } }) as any)
   stored = null
   vi.mocked(productRouteApi.getEnabledProcesses).mockResolvedValue({ data: [] } as any)
   vi.mocked(productRouteApi.addProductRoute).mockImplementation(async (request) => {
@@ -112,6 +115,25 @@ async function save(wrapper: ReturnType<typeof mount>, close = false) {
 const printInput = (wrapper: ReturnType<typeof mount>) =>
   wrapper.find('input[placeholder="如：丝印/移印/网印"]')
 describe('新增工艺路线印刷名称保存', () => {
+  it('前端预览从样式带名称和色号，部分选择保存重开且不提交预览字段', async () => {
+    const sourcesJson = JSON.stringify([{ filmId: 21, filmNo: 'FL-A', artworkNo: 'F001', versionNo: 'V2', versionId: 3,
+      styles: [{ styleNo: 'A', name: '正面文字', inkColor: 'RED' }, { styleNo: 'B', name: '图标', inkColor: 'BLUE' }] }])
+    vi.mocked(printingSearchApi.plate).mockImplementation(async id => ({ data: { plateId: id, sourcesJson, availability: true } }) as any)
+    const wrapper = await open(); await addPrint(wrapper, '旧印刷名称'); await choosePlate(wrapper, { sourcesJson })
+    const fields = wrapper.findComponent(RoutePrintStyleFields)
+    expect(fields.text()).toContain('正面文字 / 图标'); expect(fields.text()).toContain('待关联')
+    await fields.findAll('input[type="checkbox"]')[1].setValue(false); await flushPromises()
+    await fields.find('input[placeholder="样式色号"]').setValue('LOCAL'); await flushPromises()
+    await save(wrapper)
+    expect(stored.items[0].processName).toBe('正面文字')
+    expect(JSON.parse(stored.items[0].printRequirements).styles).toEqual([{ versionId: 3, styleNo: 'A', inkColor: 'LOCAL' }])
+    expect(stored.items[0]).not.toHaveProperty('_printSourcesJson')
+    expect(JSON.parse(stored.items[0].printRequirements).styles[0]).not.toHaveProperty('inkNo')
+    await wrapper.setProps({ modelValue: false }); await wrapper.setProps({ routingId: 77, modelValue: true }); await flushPromises()
+    expect(wrapper.findComponent(RoutePrintStyleFields).text()).toContain('正面文字')
+    expect(wrapper.findComponent(RoutePrintStyleFields).find('input[placeholder="样式色号"]').element).toHaveProperty('value', 'LOCAL')
+    await save(wrapper); expect(stored.items[0].processName).toBe('正面文字')
+  })
   it('多菲林工序部分样式及覆盖色号通过新增和编辑接口保存重开，同身份换版保留覆盖', async () => {
     const wrapper = await open()
     await addPrint(wrapper, '多菲林印刷')
