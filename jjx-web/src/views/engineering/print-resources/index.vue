@@ -36,7 +36,7 @@
       <div class="tip">
         先新增网框，再登记绷网、制版并检验放行。网框可以洗版后重复使用。
       </div>
-      <el-alert v-if="carriedVersion" :title="`当前菲林：${carriedVersion.artworkNo} / ${carriedVersion.versionNo}，选择网框制版时将自动带入`" type="info" :closable="false" style="margin-top:12px" />
+      <el-alert v-if="carriedVersion" :title="`当前菲林：${carriedVersion.artworkNo} / ${carriedVersion.versionNo}，打开制版后可直接勾选实体片`" type="info" :closable="false" style="margin-top:12px" />
       <el-alert v-if="contextError" :title="contextError" type="error" :closable="false" style="margin-top:12px" />
     </el-card>
 
@@ -182,38 +182,21 @@
 
     <el-dialog v-model="plateVisible" title="制版" width="800px" append-to-body>
       <el-form label-width="110px">
-        <el-form-item label="菲林版本" required>
-          <PrintResourceSelector
-            :model-value="picked"
-            size="small"
-            placeholder="按菲林/菲林号搜索版本"
-            @select="onPickVersion"
-          />
+        <el-form-item label="选择菲林" required>
+          <PrintFilmMultiSelector v-if="plateVisible" v-model="plateSources" :initial-keyword="carriedVersion ? `${carriedVersion.artworkNo} ${carriedVersion.versionNo}` : ''" :disabled="submitting" @loading="selectionLoading = $event" />
         </el-form-item>
-        <el-form-item v-if="picked" label="已选版本"
-          >{{ picked.artworkNo }} {{ picked.name }} / {{ picked.versionNo }}</el-form-item
-        >
-        <el-form-item label="菲林片" required>
-          <el-select
-            v-model="plateForm.filmId"
-            placeholder="选择该版本可用菲林片"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="f in filmOptions"
-              :key="f.filmId"
-              :label="f.filmNo + '（' + (f.location || '无位置') + '）'"
-              :value="f.filmId"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item><el-button :disabled="!plateForm.filmId || versionLoading" @click="addPlateSource">加入本次制版（默认全选样式）</el-button></el-form-item>
-        <el-form-item label="制版来源">
-          <div v-for="(source, index) in plateSources" :key="source.filmId" style="width:100%;margin-bottom:10px">
-            <strong>{{ source.filmNo }} / 版本 #{{ source.versionId }}</strong>
-            <el-button link type="danger" @click="plateSources.splice(index, 1)">移除</el-button>
-            <el-checkbox-group v-model="source.styleNos"><el-checkbox v-for="style in source.styles" :key="style.styleNo" :value="style.styleNo">{{ style.styleNo }} {{ style.name }} · {{ style.inkColor }}</el-checkbox></el-checkbox-group>
-          </div>
+        <el-form-item :label="`已选菲林（${plateSources.length}）`">
+          <div v-if="!plateSources.length" class="tip">勾选上方搜索结果即可加入。</div>
+          <el-collapse v-else class="selected-films">
+            <el-collapse-item v-for="source in plateSources" :key="source.filmId" :name="source.filmId">
+              <template #title><div class="selected-film-heading">
+                <span>{{ source.artworkName || source.artworkNo }} · {{ source.versionNo }} · {{ source.filmNo }}</span>
+                <span class="tip">已选 {{ source.styleNos?.length || 0 }}/{{ source.styles.length }} 个样式</span>
+                <el-button link type="danger" :disabled="submitting" @click.stop="plateSources = plateSources.filter(item => item.filmId !== source.filmId)">移除</el-button>
+              </div></template>
+              <el-checkbox-group v-model="source.styleNos" :disabled="submitting"><el-checkbox v-for="style in source.styles" :key="style.styleNo" :value="style.styleNo">{{ style.styleNo }} {{ style.name }} · {{ style.inkColor }}</el-checkbox></el-checkbox-group>
+            </el-collapse-item>
+          </el-collapse>
         </el-form-item>
         <el-form-item label="实际制版排布"><el-input v-model="plateForm.layout" type="textarea" maxlength="2000" placeholder="记录实际排布，与菲林样式定义分开" /></el-form-item>
         <el-form-item label="版号" required
@@ -225,24 +208,24 @@
       </el-form>
       <template #footer>
         <el-button @click="plateVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" :disabled="versionLoading" @click="submitPlate">确认制版</el-button>
+        <el-button type="primary" :loading="submitting" :disabled="selectionLoading" @click="submitPlate">确认制版</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { readStyles, type FilmStyle, type PlateSource } from '@/components/printing/printStyles'
+import { type PlateSource } from '@/components/printing/printStyles'
 /** 网版作业列表页（dev-20261126-001）：网框分页 + 绷网/制版/洗版/维护。 */
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh } from '@element-plus/icons-vue'
 import { ScreenFrameStatusEnum, ScreenPlateStatusEnum } from '@/enums/engineering/resource'
-import { ArtworkVersionStatusEnum, FilmCopyStatusEnum } from '@/enums/product/film'
+import { ArtworkVersionStatusEnum } from '@/enums/product/film'
 import { engineeringResourceApi } from '@/api/engineering/resource'
 import { printingArtworkApi } from '@/api/product/film'
-import PrintResourceSelector from '@/components/Selector/PrintResourceSelector.vue'
+import PrintFilmMultiSelector from '@/components/printing/PrintFilmMultiSelector.vue'
 import type { PrintSearchRow } from '@/api/engineering/printingSearch'
 import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
@@ -361,21 +344,10 @@ const stretchForm = reactive<any>({
 })
 
 const plateVisible = ref(false)
-const plateForm = reactive<any>({ plateNo: '', position: '', filmId: undefined, layout: '' })
+const plateForm = reactive({ plateNo: '', position: '', layout: '' })
 const plateSources = ref<PlateSource[]>([])
-const pickedStyles = ref<FilmStyle[]>([])
-function addPlateSource() {
-  if (!picked.value?.versionId || !plateForm.filmId) return
-  if (!pickedStyles.value.length) return ElMessage.warning('该版本没有已定义样式，请先新建含样式的版本')
-  if (plateSources.value.some(source => source.filmId === plateForm.filmId)) return ElMessage.warning('该实体菲林已加入')
-  const film = filmOptions.value.find(row => row.filmId === plateForm.filmId)
-  if (!film) return
-  plateSources.value.push({ filmId: film.filmId, filmNo: film.filmNo, versionId: Number(picked.value.versionId), styles: pickedStyles.value.map(style => ({ ...style })), styleNos: pickedStyles.value.map(style => style.styleNo!) })
-}
-const picked = ref<PrintSearchRow | null>(null)
-const filmOptions = ref<any[]>([])
-const versionLoading = ref(false)
-let versionGeneration = 0, stretchRequestId = '', plateRequestId = ''
+const selectionLoading = ref(false)
+let stretchRequestId = '', plateRequestId = ''
 
 const remarkVisible = ref(false)
 const remarkForm = reactive({ frameId: 0, frameNo: '', revision: 0, remark: '' })
@@ -531,43 +503,17 @@ async function openPlate(row: any) {
     ElMessage.warning('该网框已有在用网版，请先洗版')
     return
   }
-  picked.value = null
-  plateSources.value = []; pickedStyles.value = []; plateForm.layout = ''
-  filmOptions.value = []
-  plateForm.filmId = undefined
+  plateSources.value = []; selectionLoading.value = false; plateForm.layout = ''
   plateForm.plateNo = row.frameNo + '-' + new Date().toISOString().slice(5, 10).replace('-', '')
   plateForm.position = '居中'
   plateVisible.value = true
   plateRequestId = newRequestId()
-  if (carriedVersion.value) await onPickVersion(carriedVersion.value)
-}
-
-async function onPickVersion(item: PrintSearchRow) {
-  if (!item?.versionId || !item?.artworkId) {
-    ElMessage.warning('请选择菲林版本候选（网框候选不能制版）')
-    return
-  }
-  const generation = ++versionGeneration
-  picked.value = null; filmOptions.value = []; plateForm.filmId = undefined; versionLoading.value = true
-  try {
-    const res: any = await printingArtworkApi.detail(Number(item.artworkId))
-    if (generation !== versionGeneration) return
-    const version = res.data?.versions?.find((v: any) => v.versionId === Number(item.versionId))
-    if (!version || version.status !== ArtworkVersionStatusEnum.RELEASED.value) return ElMessage.warning('请选择已发布且未停用的菲林版本')
-    picked.value = { ...item, versionNo: version.versionNo, artworkNo: res.data.artworkNo, name: res.data.name }
-    const films = (res.data.films || []).filter((f: any) => f.versionId === version.versionId && f.status === FilmCopyStatusEnum.AVAILABLE.value)
-    pickedStyles.value = readStyles(version.stylesJson)
-    filmOptions.value = films
-    plateForm.filmId = films.length === 1 ? films[0].filmId : undefined
-  } catch (error: any) {
-    if (generation === versionGeneration) ElMessage.error(error.message || '菲林版本加载失败，请重试')
-  } finally { if (generation === versionGeneration) versionLoading.value = false }
 }
 
 async function submitPlate() {
-  if (submitting.value || versionLoading.value) return
+  if (submitting.value || selectionLoading.value) return
   if (!currentFrame || !plateSources.value.length) {
-    ElMessage.warning('请先选择菲林版本')
+    ElMessage.warning('请至少勾选一张实体菲林')
     return
   }
   if (plateSources.value.some(source => !source.styleNos?.length)) {
@@ -670,6 +616,8 @@ onMounted(() => load(1))
 </script>
 
 <style scoped>
+.selected-films { width: 100%; }
+.selected-film-heading { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .search-card {
   margin-bottom: 16px;
 }

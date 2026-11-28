@@ -43,6 +43,9 @@ export function usePrintResourceSearch(options?: { debounceMs?: number; pageSize
   }
 
   function search(kw: string) {
+    seq++ // 输入变化即失效旧请求，不能等防抖结束才拦截晚到响应。
+    items.value = []; total.value = 0; searched.value = false; failed.value = false
+    loadingMore.value = false
     keyword.value = kw
     if (timer) clearTimeout(timer)
     const trimmed = (kw || '').trim()
@@ -55,6 +58,7 @@ export function usePrintResourceSearch(options?: { debounceMs?: number; pageSize
       loadingMore.value = false
       return
     }
+    loading.value = true
     timer = setTimeout(() => { void fetchPage(trimmed, 1, false) }, debounceMs)
   }
 

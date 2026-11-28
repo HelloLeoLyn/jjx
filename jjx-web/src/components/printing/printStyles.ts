@@ -1,5 +1,5 @@
 export interface FilmStyle { styleNo?: string; name: string; inkColor: string }
-export interface PlateSource { filmId: number; filmNo: string; versionId: number; styleNos?: string[]; styles: FilmStyle[] }
+export interface PlateSource { artworkNo?: string; artworkName?: string; versionNo?: string; filmId: number; filmNo: string; versionId: number; styleNos?: string[]; styles: FilmStyle[] }
 export interface ProcessStyle { versionId: number; styleNo: string; inkColor?: string }
 export function readStyles(raw?: string | null): FilmStyle[] {
   if (!raw) return []
