@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""清理脚本边界测试：mysql 始终替换为本地模拟客户端，绝不连接真实数据库。"""
+"""清理脚本边界测试：mysql 始终替换为本地模拟客户端，绝不连接真实数据库。
+危险等级：🟡 仅写临时夹具；不连接真实库、不执行真实清理。
+前置：支持forkpty的Python 3、bash；--help由unittest提供。
+"""
 import json
 import os
 from pathlib import Path
 import pty
 import re
 import sqlite3
+import select
+import time
+import errno
 import subprocess
 import tempfile
 import unittest
@@ -69,6 +75,9 @@ class CleanProductsTest(unittest.TestCase):
         client = self.dir / 'mysql'
         client.write_text(MOCK)
         client.chmod(0o755)
+        # Windows/MSYS环境也固定使用模拟客户端，不让宿主MySQL路径探测覆盖测试PATH。
+        uname=self.dir / 'uname'
+        uname.write_text('#!/bin/sh\necho Linux\n');uname.chmod(0o755)
         sql = (ROOT / 'jjx-docs/sql/00_clean_test_data.sql').read_text()
         shell = SCRIPT.read_text()
         retained = re.search(r'RETAINED_TABLES=\((.*?)\n\)', shell, re.S).group(1)
@@ -81,6 +90,8 @@ class CleanProductsTest(unittest.TestCase):
     def run_script(self, args=(), terminal=False, **fixture):
         env = os.environ.copy()
         env.update(PATH=str(self.dir) + ':' + env['PATH'],
+                   DB_HOST='fixture-only.invalid',DB_PORT='1',DB_PASS='fixture-only',
+                   MYSQL_BIN_DIR=str(self.dir),
                    JJX_BACKUP_DIR=str(self.dir),
                    CLEAN_TEST_CAPTURE=str(self.capture),
                    CLEAN_TEST_FIXTURE=json.dumps(dict(tables=self.tables, **fixture)))
@@ -88,58 +99,84 @@ class CleanProductsTest(unittest.TestCase):
         if not terminal:
             return subprocess.run(cmd, cwd=ROOT, env=env, input='', text=True,
                                   capture_output=True, timeout=30)
-        master, slave = pty.openpty()
+        # forkpty给bash完整的控制终端；MSYS的Popen(stdin=slave)会让read提前遇到EOF。
+        pid, master=pty.fork()
+        if pid==0:
+            os.chdir(ROOT)
+            os.execvpe(cmd[0],cmd,env)
+        output=b''; answered=False; deadline=time.monotonic()+30
         try:
-            proc = subprocess.Popen(cmd, cwd=ROOT, env=env, stdin=slave,
-                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            os.close(slave)
-            slave = None
-            os.write(master, b'jjx_erp_db\n')
-            out, err = proc.communicate(timeout=30)
-            return subprocess.CompletedProcess(cmd, proc.returncode, out, err)
+            while True:
+                remaining=deadline-time.monotonic()
+                if remaining<=0: raise subprocess.TimeoutExpired(cmd,30)
+                if not select.select([master],[],[],remaining)[0]: raise subprocess.TimeoutExpired(cmd,30)
+                try: chunk=os.read(master,65536)
+                except OSError as exc:
+                    if exc.errno==errno.EIO: break
+                    raise
+                if not chunk: break
+                output+=chunk
+                if not answered and b'[jjx_erp_db]' in output:
+                    os.write(master,b'jjx_erp_db\n');answered=True
+            _,status=os.waitpid(pid,0)
+            text=output.decode().replace('\r\n','\n')
+            return subprocess.CompletedProcess(cmd,os.waitstatus_to_exitcode(status),text,text)
         finally:
-            if slave is not None:
-                os.close(slave)
             os.close(master)
 
-    def test_printing_retention_and_runtime_cleanup_plan(self):
+    def test_printing_resources_and_runtime_are_in_full_cleanup_in_dependency_order(self):
         r = self.run_script(('--execute', '--backup', str(self.backup)), terminal=True)
         self.assertEqual(0, r.returncode, r.stdout + r.stderr)
         plan = self.capture.read_text()
-        for table in ('print_artwork', 'print_artwork_version', 'print_film_copy',
-                      'print_frame_stretch', 'print_film_request'):
-            self.assertNotIn('TRUNCATE ' + table + ';', plan)
-            self.assertIn(table, self.tables)
-        for table in ('print_use_segment', 'print_kit_shortage'):
-            self.assertIn('TRUNCATE ' + table + ';', plan)
-        self.assertNotIn('TRUNCATE engineering_resource_maintenance;', plan)
+        tables=('print_use_segment','engineering_screen_plate','print_film_copy','print_film_request',
+                'print_artwork_version','print_artwork','print_frame_stretch','engineering_screen_frame')
+        positions=[plan.index('TRUNCATE '+table+';') for table in tables]
+        self.assertEqual(sorted(positions),positions)
+        self.assertIn('TRUNCATE engineering_resource_maintenance;',plan)
+        self.assertNotIn('TRUNCATE engineering_die;',plan)
+        self.assertLess(plan.index("DELETE FROM sys_attachment_ref WHERE source_type = 'print_artwork_version';"),
+                        plan.index('TRUNCATE print_artwork_version;'))
+        self.assertIn('TRUNCATE print_kit_shortage;',plan)
 
-    def test_retained_printing_drawings_and_audit_survive_cleanup_predicates(self):
-        # 在内存库实际执行生成计划中的DELETE，覆盖产品/业务来源图纸及其引用。
+    def test_domains_do_not_clear_printing_or_its_attachment_references(self):
+        for domain in ('purchase','inventory','quality','purchase,inventory,quality'):
+            if self.capture.exists(): self.capture.unlink()
+            r=self.run_script(('--execute','--backup',str(self.backup),'--domains',domain),terminal=True)
+            self.assertEqual(0,r.returncode,r.stdout+r.stderr)
+            plan=self.capture.read_text()
+            self.assertNotRegex(plan,r'(?m)^TRUNCATE (?:print_|engineering_screen_|engineering_resource_maintenance)')
+            self.assertNotIn('DELETE FROM sys_attachment_ref',plan)
+
+    def test_printing_cleanup_removes_owned_files_and_refs_but_keeps_shared_assets(self):
+        # 只在内存库执行生成计划中的DELETE；不连接真实数据库。
         r = self.run_script(('--execute', '--backup', str(self.backup)), terminal=True)
         self.assertEqual(0, r.returncode, r.stdout + r.stderr)
         with sqlite3.connect(':memory:') as db:
             db.executescript("""
-                CREATE TABLE print_artwork_version(drawing_file_id INTEGER);
-                INSERT INTO print_artwork_version VALUES(1),(2),(NULL);
-                CREATE TABLE sys_attachment(id INTEGER, biz_type TEXT);
-                INSERT INTO sys_attachment VALUES(1,'product'),(2,'inquiry'),
-                    (3,'product'),(4,'bom'),(5,'engineering_jjx_icon');
-                CREATE TABLE sys_attachment_ref(attachment_id INTEGER);
-                INSERT INTO sys_attachment_ref VALUES(1),(2),(3),(4),(5);
+                CREATE TABLE sys_attachment(id INTEGER,biz_type TEXT);
+                INSERT INTO sys_attachment VALUES(1,'product'),(2,'inquiry'),(3,'product'),
+                    (4,'bom'),(5,'engineering_jjx_icon'),(6,'print_artwork_version'),
+                    (7,'print_artwork_version'),(8,'print_artwork_version'),(9,'print_artwork_version'),(10,'print_artwork_version');
+                CREATE TABLE quality_template_registry(file_id INTEGER);
+                INSERT INTO quality_template_registry VALUES(10);
+                CREATE TABLE sys_attachment_ref(attachment_id INTEGER,source_type TEXT,deleted INTEGER,ref_state TEXT);
+                INSERT INTO sys_attachment_ref VALUES(1,'print_artwork_version',0,'active'),(1,'inventory_material',0,'active'),
+                    (2,'print_artwork_version',0,'active'),(3,'product',0,'active'),(4,'bom',0,'active'),
+                    (5,'engineering_jjx_icon',0,'active'),(6,'print_artwork_version',0,'active'),
+                    (7,'print_artwork_version',0,'active'),(7,'inventory_material',0,'active'),
+                    (8,'print_artwork_version',0,'active'),(8,'unknown_retained',0,'active'),
+                    (9,'print_artwork_version',0,'active'),(9,'unknown_retained',1,'inactive'),(10,'print_artwork_version',0,'active');
                 CREATE TABLE engineering_resource_maintenance(resource_type TEXT);
                 INSERT INTO engineering_resource_maintenance VALUES('ARTWORK'),('ARTWORK_VERSION'),
                     ('FILM_COPY'),('FILM_REQUEST'),('SCREEN_FRAME'),('SCREEN_PLATE'),('BOM');
             """)
-            targets = ('sys_attachment', 'sys_attachment_ref', 'engineering_resource_maintenance')
             for line in self.capture.read_text().splitlines():
-                match = re.match(r'^DELETE FROM (\w+) WHERE ', line)
-                if match and match[1] in targets:
-                    db.execute(line)
-            self.assertEqual([(1,), (2,), (5,)], db.execute('SELECT id FROM sys_attachment ORDER BY id').fetchall())
-            self.assertEqual([(1,), (2,), (5,)], db.execute('SELECT attachment_id FROM sys_attachment_ref ORDER BY attachment_id').fetchall())
-            self.assertEqual(6, db.execute('SELECT COUNT(*) FROM engineering_resource_maintenance').fetchone()[0])
-            self.assertEqual(0, db.execute("SELECT COUNT(*) FROM engineering_resource_maintenance WHERE resource_type='BOM'").fetchone()[0])
+                if re.match(r'^DELETE FROM (sys_attachment|sys_attachment_ref) WHERE ',line): db.execute(line)
+                if line=='TRUNCATE engineering_resource_maintenance;': db.execute('DELETE FROM engineering_resource_maintenance')
+            self.assertEqual([(1,),(5,),(7,),(8,),(10,)],db.execute('SELECT id FROM sys_attachment ORDER BY id').fetchall())
+            self.assertEqual([(1,),(5,),(7,),(8,)],db.execute('SELECT attachment_id FROM sys_attachment_ref ORDER BY attachment_id').fetchall())
+            self.assertEqual(0,db.execute("SELECT COUNT(*) FROM sys_attachment_ref WHERE source_type='print_artwork_version'").fetchone()[0])
+            self.assertEqual(0,db.execute('SELECT COUNT(*) FROM engineering_resource_maintenance').fetchone()[0])
 
     def test_default_includes_products(self):
         # 2026-10-13 口径：全量清理默认包含产品（不再需要 --include-products）。
@@ -247,10 +284,11 @@ class CleanProductsTest(unittest.TestCase):
         # Every business TRUNCATE must precede product deletion.
         before_products = sql[:positions[0]]
         for table in ('sales_sample_order', 'sales_order_product', 'engineering_bom',
-                      'engineering_routing', 'inventory_stock', 'inventory_transaction'):
+                      'engineering_routing', 'inventory_stock', 'inventory_transaction',
+                      'engineering_screen_frame', 'engineering_screen_plate', 'print_artwork_version'):
             self.assertIn('TRUNCATE ' + table + ';', before_products)
         self.assertGreater(sql.index('DELETE FROM inventory_item'), positions[-1])
-        for table in ('inventory_material', 'engineering_die', 'engineering_screen_frame', 'sys_tag'):
+        for table in ('inventory_material', 'engineering_die', 'sys_tag'):
             self.assertNotRegex(sql, r'(?m)^TRUNCATE ' + table + ';')
         self.assertIn('产品清理核验通过', r.stdout)
         self.assertIn('include_products=1 domains=all', (self.dir / 'clean-test-data-log.txt').read_text())

@@ -64,6 +64,7 @@ usage() {
 危险等级: 🟢 无参数/--domains=只读体检（不写库）／🔴 --execute 真清理（体检 → 校验手工备份 → 人工确认 → 执行）
 前置: --execute 必须在终端手工执行（agent/管道一律拒绝）；确认方式=手工输入库名 jjx_erp_db；BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/）里要有今天的全库备份（或用 --backup 指定）；备份必须排除 hr_employee
 域参数: --domains <逗号分隔>，可选 purchase / inventory / quality；可组合，域模式不清理 sys_task
+印刷口径: 全量清理包含菲林主档/版本/实体片/申请、网框/绷网/网版及关联履历和附件引用；刀模保留；域模式不清印刷
 保留口径: 库位、生产设备、门户语言配置在全量/域模式都保留，执行前后校验三表行数一致
 产品口径: 全量清理一律包含全部产品资料（分类/配置模型/选项 + 产品附件）及无业务引用的 PRODUCT 库存身份；不能区分正式与测试产品。--include-products 保留兼容、等价默认；域模式不含产品。
 用法:
@@ -322,9 +323,8 @@ RETAINED_TABLES=(
   inventory_material_classify_rule
   product product_category product_config_model product_config_option
   sys_tag sys_tag_rel hr_employee hr_dept_mapping
-  engineering_die engineering_screen_frame engineering_screen_plate
-  # 印刷主档、实物和绷网随网版保留，申请随来源保留（dev-20261127-002）；与SQL第12节同步。
-  print_artwork print_artwork_version print_film_copy print_frame_stretch print_film_request
+  # dev-20261128-009：菲林/网版/网框已纳入全量清理；刀模继续保留。
+  engineering_die
   # Legacy tables still present in this database; preserve their rows/schema until separately retired.
   archive_production_quality_inspection archive_production_quality_inspection_item
   quality_sampling_plan sales_order_review

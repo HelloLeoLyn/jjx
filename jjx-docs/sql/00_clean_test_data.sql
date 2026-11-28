@@ -12,9 +12,14 @@ DROP PROCEDURE assert_clean_test_target//
 DELIMITER ;
 
 -- =====================================================
--- 清理测试数据脚本（v27）
+-- 清理测试数据脚本（v28）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
+-- v28 变更（2026-11-28，dev-20261128-009，用户明确要求纳入清理）：
+--   菲林/版本/实体片/申请、网框/绷网/网版及其履历改为全量清理，覆盖v27印刷台账保留口径。
+--   先清用版和网版，再清实体片/申请/版本/主档、绷网/网框；版本样式和制版来源随所属行清理。
+--   删除已清印刷来源的附件引用，业务/产品附件删除时保护仍被保留来源共用的文件。
+--   刀模及其他基础资料仍保留，purchase/inventory/quality域不扩大到印刷；本卡仅改脚本，不执行清库。
 -- v27 变更（2026-11-27，dev-20261127-002）：印刷主档/版本/实物/绷网/申请随网版保留；
 --   用版分段/齐套缺口随业务清理；保护台账维护履历和版本图纸，产品关联仍按既定规则清。
 -- v26 变更（2026-11-25，任务 dev-20261125-005，用户确认）：
@@ -251,8 +256,25 @@ TRUNCATE bom_change_request_item;
 
 TRUNCATE bom_change_request;
 
--- 印刷/工装台账保留，其版本发布摘要、申请幂等及维护履历也必须保留。
-DELETE FROM engineering_resource_maintenance WHERE resource_type NOT IN ('ARTWORK','ARTWORK_VERSION','FILM_COPY','FILM_REQUEST','SCREEN_FRAME','SCREEN_PLATE');
+-- dev-20261128-009：清理印刷资源及履历；不清刀模实体。外键循环由本脚本统一FOREIGN_KEY_CHECKS窗口处理。
+-- 先去掉指向将清版本的引用，避免版本ID重用后旧附件错挂；共用文件由后面的保留引用保护。
+DELETE FROM sys_attachment_ref WHERE source_type = 'print_artwork_version';
+-- INCLUDE_PRODUCTS: DELETE FROM sys_attachment_ref WHERE source_type IN ('product','work_spec');
+TRUNCATE engineering_resource_maintenance;
+
+TRUNCATE engineering_screen_plate;
+
+TRUNCATE print_film_copy;
+
+TRUNCATE print_film_request;
+
+TRUNCATE print_artwork_version;
+
+TRUNCATE print_artwork;
+
+TRUNCATE print_frame_stretch;
+
+TRUNCATE engineering_screen_frame;
 
 -- 产品关联随既有产品清理策略清空，避免产品ID重用后错挂旧资源。
 TRUNCATE engineering_resource_product_rel;
@@ -424,6 +446,7 @@ TRUNCATE quality_lot_item;
 TRUNCATE quality_lot;
 
 -- 【v22 修正】附件表：默认保留「配置/基础档案类上传资产」，只清业务单据/测试附件（dev-20261010-004）。
+--   保留来源仍有效的共用附件不删除；已清版本不再作为保留理由。
 --   保留（不清）：engineering_jjx_icon（工序图标）、system_config（公司 logo）、quality_template（质量模板）、
 --     inventory_material（物料附件）、purchase_supplier（供应商附件）
 --     —— 这些挂在清库后仍保留的主数据/配置上，清了会断链。
@@ -434,8 +457,8 @@ TRUNCATE quality_lot;
 --   （2026-10-13 实测清库执行 ERROR 1644）；故清库时先摘掉该守卫、删完立即按原样恢复。
 --   同时清掉被删附件的引用行（sys_attachment_ref），否则 FK/悬空引用会留下孤儿引用。
 DROP TRIGGER IF EXISTS trg_attachment_v1_no_delete;
-DELETE FROM sys_attachment_ref WHERE attachment_id IN (SELECT id FROM sys_attachment WHERE biz_type IN ('inquiry','quotation','sales_order','sales_order_confirmation','sample','order','sales_delivery','purchase_payment','requirement','task','bom','routing') AND id NOT IN (SELECT drawing_file_id FROM print_artwork_version WHERE drawing_file_id IS NOT NULL));
-DELETE FROM sys_attachment WHERE biz_type IN ('inquiry','quotation','sales_order','sales_order_confirmation','sample','order','sales_delivery','purchase_payment','requirement','task','bom','routing') AND id NOT IN (SELECT drawing_file_id FROM print_artwork_version WHERE drawing_file_id IS NOT NULL);
+DELETE FROM sys_attachment_ref WHERE attachment_id IN (SELECT id FROM sys_attachment WHERE biz_type IN ('inquiry','quotation','sales_order','sales_order_confirmation','sample','order','sales_delivery','purchase_payment','requirement','task','bom','routing','print_artwork_version','engineering_film','engineering_screen_plate','engineering_screen_frame') AND id NOT IN (SELECT file_id FROM quality_template_registry WHERE file_id IS NOT NULL) AND id NOT IN (SELECT attachment_id FROM (SELECT DISTINCT attachment_id FROM sys_attachment_ref WHERE deleted=0 AND ref_state='active' AND source_type NOT IN ('inquiry','quotation','sales_order','sales_order_confirmation','sample','order','sales_delivery','purchase_payment','requirement','task','bom','routing','print_artwork_version')) AS retained_attachment_refs));
+DELETE FROM sys_attachment WHERE biz_type IN ('inquiry','quotation','sales_order','sales_order_confirmation','sample','order','sales_delivery','purchase_payment','requirement','task','bom','routing','print_artwork_version','engineering_film','engineering_screen_plate','engineering_screen_frame') AND id NOT IN (SELECT file_id FROM quality_template_registry WHERE file_id IS NOT NULL) AND id NOT IN (SELECT attachment_id FROM (SELECT DISTINCT attachment_id FROM sys_attachment_ref WHERE deleted=0 AND ref_state='active' AND source_type NOT IN ('inquiry','quotation','sales_order','sales_order_confirmation','sample','order','sales_delivery','purchase_payment','requirement','task','bom','routing','print_artwork_version')) AS retained_attachment_refs);
 CREATE TRIGGER trg_attachment_v1_no_delete BEFORE DELETE ON sys_attachment
 FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='V1-A: physical attachment deletion disabled; preview only';
 
@@ -454,13 +477,13 @@ TRUNCATE sales_sample_order;
 
 -- 产品清理：v14 起产品档案默认保留；2026-10-13（v25）起 db-clean-test-data.sh 全量清理默认包含产品
 -- （域模式不含产品）。以下语句由脚本解析后激活，直接运行本 SQL 不会清产品。
--- 关联业务表清理完成后，先选项、模型，再产品和分类；物料与工装继续保留。
+-- 关联业务表清理完成后，先选项、模型，再产品和分类；物料与刀模继续保留。
 -- 【v24】产品档案附件随产品一并清理（biz_type='product'，含工程上传客供稿/结构图等）：
 --   否则 product 被 TRUNCATE 后自增 ID 归零，新产品复用同一 ID → 遗留附件错挂到新产品的客供资料。
 -- 【v25 清库窗口】同第 11 节：删前先摘触发器、清引用行，删完按原样恢复。
 -- INCLUDE_PRODUCTS: DROP TRIGGER IF EXISTS trg_attachment_v1_no_delete;
--- INCLUDE_PRODUCTS: DELETE FROM sys_attachment_ref WHERE attachment_id IN (SELECT id FROM sys_attachment WHERE biz_type = 'product' AND id NOT IN (SELECT drawing_file_id FROM print_artwork_version WHERE drawing_file_id IS NOT NULL));
--- INCLUDE_PRODUCTS: DELETE FROM sys_attachment WHERE biz_type = 'product' AND id NOT IN (SELECT drawing_file_id FROM print_artwork_version WHERE drawing_file_id IS NOT NULL);
+-- INCLUDE_PRODUCTS: DELETE FROM sys_attachment_ref WHERE attachment_id IN (SELECT id FROM sys_attachment WHERE biz_type = 'product' AND id NOT IN (SELECT file_id FROM quality_template_registry WHERE file_id IS NOT NULL) AND id NOT IN (SELECT attachment_id FROM (SELECT DISTINCT attachment_id FROM sys_attachment_ref WHERE deleted=0 AND ref_state='active' AND source_type NOT IN ('inquiry','quotation','sales_order','sales_order_confirmation','sample','order','sales_delivery','purchase_payment','requirement','task','bom','routing','print_artwork_version')) AS retained_attachment_refs));
+-- INCLUDE_PRODUCTS: DELETE FROM sys_attachment WHERE biz_type = 'product' AND id NOT IN (SELECT file_id FROM quality_template_registry WHERE file_id IS NOT NULL) AND id NOT IN (SELECT attachment_id FROM (SELECT DISTINCT attachment_id FROM sys_attachment_ref WHERE deleted=0 AND ref_state='active' AND source_type NOT IN ('inquiry','quotation','sales_order','sales_order_confirmation','sample','order','sales_delivery','purchase_payment','requirement','task','bom','routing','print_artwork_version')) AS retained_attachment_refs);
 -- INCLUDE_PRODUCTS: CREATE TRIGGER trg_attachment_v1_no_delete BEFORE DELETE ON sys_attachment
 -- INCLUDE_PRODUCTS: FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='V1-A: physical attachment deletion disabled; preview only';
 -- INCLUDE_PRODUCTS: TRUNCATE product_config_option;
@@ -496,13 +519,10 @@ DELETE FROM inventory_item WHERE item_type = 'PRODUCT' AND NOT EXISTS (SELECT 1 
 -- 标签：sys_tag / sys_tag_rel（v14 起保留）
 -- 人事基础档案：hr_employee（员工档案）/ hr_dept_mapping（导入部门映射）
 -- 历史配置备份：sys_event_config_bak_20260814（迁移 241 退役，当前 0 行）
--- 工装台账（v16 起保留，非测试数据）：
---   engineering_die（刀模实体，老台账 12,134 条）/ engineering_screen_frame（网框 7,291 条）
---   engineering_screen_plate（网版当前版面 4,503 条；v15 曾误列清理清单，清理会清掉网版内容）
--- （engineering_bom_backup_20260809 当前 0 行且无代码/外键依赖，迁移 241 退役）
--- 印刷工装台账：print_artwork / print_artwork_version / print_film_copy / print_frame_stretch。
--- 网版引用版本、实物与绷网段，整体保留；发布/维护履历按resource_type保留，图纸按版本引用保护。
--- print_film_request：保留，来源申请随实际菲林片追溯，不能清成悬空来源（dev-20261127-002）。
+-- 工装台账：engineering_die（刀模实体）仍保留。
+-- 印刷资源已按dev-20261128-009改入第4节清理：engineering_screen_frame / engineering_screen_plate /
+-- print_artwork / print_artwork_version / print_film_copy / print_film_request / print_frame_stretch。
+-- 样式、制版来源与实际排布随版本/网版行清理，维护/发布/幂等履历随engineering_resource_maintenance清理。
 -- 以上保留
 
 -- Legacy-table coverage decision (2026-09-30): archive_production_quality_inspection(_item)
@@ -510,7 +530,7 @@ DELETE FROM inventory_item WHERE item_type = 'PRODUCT' AND NOT EXISTS (SELECT 1 
 -- quality_sampling_plan remains until its 8 legacy rows are compared with sys_config.
 -- engineering_bom_backup_20260809 and sys_event_config_bak_20260814 are retired by migration 241.
 -- Keep synchronized with scripts/db-clean-test-data.sh RETAINED_TABLES.
--- sys_attachment_ref：保留业务引用及解绑审计（本表不 TRUNCATE）；但随附件一起被删的引用行，会在第 11 节/产品块内先行清掉，避免悬空引用。
+-- sys_attachment_ref 不整表清空：先清已删除印刷/产品来源引用，其余随被删附件清理；保留来源的有效共用引用及质量模板硬引用继续保护。
 SET FOREIGN_KEY_CHECKS = @OLD_FOREIGN_KEY_CHECKS;
 
 -- ==================== 13. 执行结果核验 ====================
@@ -538,6 +558,14 @@ UNION ALL SELECT 'quality_ncr_piece_defect', COUNT(*) FROM quality_ncr_piece_def
 UNION ALL SELECT 'quality_scrap_order', COUNT(*) FROM quality_scrap_order
 UNION ALL SELECT 'print_use_segment', COUNT(*) FROM print_use_segment
 UNION ALL SELECT 'print_kit_shortage', COUNT(*) FROM print_kit_shortage
+UNION ALL SELECT 'engineering_screen_plate', COUNT(*) FROM engineering_screen_plate
+UNION ALL SELECT 'print_film_copy', COUNT(*) FROM print_film_copy
+UNION ALL SELECT 'print_film_request', COUNT(*) FROM print_film_request
+UNION ALL SELECT 'print_artwork_version', COUNT(*) FROM print_artwork_version
+UNION ALL SELECT 'print_artwork', COUNT(*) FROM print_artwork
+UNION ALL SELECT 'print_frame_stretch', COUNT(*) FROM print_frame_stretch
+UNION ALL SELECT 'engineering_screen_frame', COUNT(*) FROM engineering_screen_frame
+UNION ALL SELECT 'engineering_resource_maintenance', COUNT(*) FROM engineering_resource_maintenance
 UNION ALL SELECT 'engineering_archive_import', COUNT(*) FROM engineering_archive_import
 UNION ALL SELECT 'bom_change_request_item', COUNT(*) FROM bom_change_request_item
 UNION ALL SELECT 'bom_change_request', COUNT(*) FROM bom_change_request

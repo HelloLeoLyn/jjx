@@ -105,8 +105,9 @@
 
 ## 4. scripts/db-clean-test-data.sh —— 清理测试数据入口
 
-印刷台账 `print_artwork`、`print_artwork_version`、`print_film_copy`、`print_frame_stretch`、`print_film_request` 保留，SQL 第12节与 RETAINED_TABLES 同步（dev-20261127-002）。印刷/网框网版维护履历按资源类型保留，被菲林版本引用的图纸及附件引用不删除（即使原上传类型为产品或业务单据）。`print_use_segment`、`print_kit_shortage` 随业务清理并核验归零。全量包含产品的规则不变，产品关联仍清空以避免ID重用错挂。
+印刷资源自 dev-20261128-009 起按用户新要求纳入**全量清理**，覆盖 dev-20261127-002 的保留口径：`print_artwork`、`print_artwork_version`（含样式）、`print_film_copy`、`print_film_request`、`engineering_screen_frame`、`print_frame_stretch`、`engineering_screen_plate`（含多菲林来源与排布）及维护/发布/幂等履历。先清用版、网版，再清来源实体/申请/版本/主档、绷网/网框，执行后核验归零。印刷版本附件引用随之删除；图纸附件纳入业务附件清理，仍被保留来源共用的有效附件继续保护。刀模、库位、生产设备、门户语言配置等其他基础资料保留；`--domains purchase/inventory/quality` 不清印刷资源。本次只更新脚本，未执行真实清库。
 
+- 回归：`python3 scripts/tests/test_clean_products.py`（🟡 仅临时夹具；需支持 forkpty 的 Python 3 和 bash，`--help` 可查看用法）。MySQL 固定替换为模拟客户端，另设无效地址及口令防止误连，覆盖印刷清理顺序、共享附件、域边界及备份/终端守卫。
 - 用途：`jjx-docs/sql/00_clean_test_data.sql`（整表 TRUNCATE + 条件 DELETE，表清单以脚本实际解析为准）的**唯一**入口。
 - 危险等级：🟢 无参数/`--domains`=只读体检（不写库）／🔴 `--execute` 真清理（固定顺序：体检 → 校验手工备份 → 人工确认 → 执行）。
 - 前置：`--execute` 必须**在终端手工执行**（agent/管道一律拒绝）；确认方式=手工输入库名 `jjx_erp_db`；**已有今天的全库备份**（默认 `JJX_BACKUP_DIR`＝仓库内 `jjx-docs/sql/backups/`，或 `--backup`/`JJX_CLEAN_BACKUP` 指定）——2026-09-28 起脚本**不再自动备份**、只校验手工备份存在才放行；备份必须排除 `hr_employee`。
