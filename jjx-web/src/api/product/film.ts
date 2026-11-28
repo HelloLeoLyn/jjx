@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 import type { AxiosPromise } from 'axios'
-import type { FilmRequestCommand } from '@/types/engineering/printingArtwork'
+import type { ArtworkCommand, FilmRequestCommand } from '@/types/engineering/printingArtwork'
 
 // 菲林/薄膜管理API（对接 /engineering/films）
 export interface EngineeringFilm {
@@ -118,6 +118,8 @@ export const printingArtworkApi = {
     request.get('/engineering/printing/artworks', { params }),
   detail: (id: number) => request.get(`/engineering/printing/artworks/${id}`),
   create: (data: any) => request.post('/engineering/printing/artworks', data),
+  createWithInitialVersion: (data: ArtworkCommand) =>
+    request.post('/engineering/printing/artworks/with-initial-version', data),
   edit: (id: number, data: any) => request.put(`/engineering/printing/artworks/${id}`, data),
   createVersion: (id: number, data: any) => request.post(`/engineering/printing/artworks/${id}/versions`, data),
   editVersion: (id: number, data: any) => request.put(`/engineering/printing/versions/${id}`, data),

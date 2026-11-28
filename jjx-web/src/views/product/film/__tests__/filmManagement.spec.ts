@@ -3,7 +3,7 @@ import { flushPromises, shallowMount } from '@vue/test-utils'
 import { ArtworkVersionStatusEnum, FilmRequestProgressEnum } from '@/enums/product/film'
 import FilmManagement from '../components/FilmManagement.vue'
 import { newFilmRequestId, useFilmManagement } from '../composables/useFilmManagement'
-const api=vi.hoisted(()=>({list:vi.fn(),detail:vi.fn(),listRequests:vi.fn(),applyFilmRequest:vi.fn(),receiveFilmRequest:vi.fn(),create:vi.fn(),edit:vi.fn(),createVersion:vi.fn(),editVersion:vi.fn(),submit:vi.fn(),approve:vi.fn(),reject:vi.fn(),release:vi.fn(),activate:vi.fn(),disable:vi.fn(),impact:vi.fn(),archiveFilm:vi.fn(),destroyFilm:vi.fn()}))
+const api=vi.hoisted(()=>({list:vi.fn(),detail:vi.fn(),listRequests:vi.fn(),applyFilmRequest:vi.fn(),receiveFilmRequest:vi.fn(),create:vi.fn(),createWithInitialVersion:vi.fn(),edit:vi.fn(),createVersion:vi.fn(),editVersion:vi.fn(),submit:vi.fn(),approve:vi.fn(),reject:vi.fn(),release:vi.fn(),activate:vi.fn(),disable:vi.fn(),impact:vi.fn(),archiveFilm:vi.fn(),destroyFilm:vi.fn()}))
 vi.mock('@/api/product/film',()=>({printingArtworkApi:api}))
 vi.mock('@/api/product',()=>({listProductPage:vi.fn().mockResolvedValue({data:{records:[]}}),searchProduct:vi.fn().mockResolvedValue({data:[]}),getProductInfo:vi.fn()}))
 vi.mock('@/api/sales/sampleOrder',()=>({sampleOrderApi:{page:vi.fn().mockResolvedValue({data:{records:[]}})}}))
@@ -16,10 +16,10 @@ vi.mock('element-plus',async original=>({...await original<typeof import('elemen
 const master={artworkId:1,artworkNo:'PW-001',name:'主数据',family:'面板',versionCount:1,defaultVersionId:12,defaultVersionNo:'V2',copyCount:0,pendingFilmCount:2}
 const detail=(id=1)=>({artworkId:id,artworkNo:`PW-00${id}`,name:`菲林${id}`,family:'面板',revision:3,productIds:[10],productsText:'P-10 产品10',defaultVersionId:id===1?12:21,versions:[{versionId:id===1?12:21,versionNo:'V2',status:ArtworkVersionStatusEnum.RELEASED.value,revision:4}],films:[]})
 const request={requestId:7,requestNo:'CP-007',versionId:12,requestedQuantity:2,receivedQuantity:0,remainingQuantity:2,progress:FilmRequestProgressEnum.PENDING.value,material:'PET',thicknessMm:0.125,size:'A4',dueDate:'2026-12-01',revision:0}
-function render() {return shallowMount(FilmManagement,{global:{renderStubDefaultSlot:true,directives:{hasPermi:()=>{},loading:()=>{}},stubs:{ElCard:{template:'<section><slot/></section>'},ElTable:{template:'<table/>',props:['data']},ElDrawer:{template:'<aside/>'},ElDialog:{template:'<aside/>'},ElButton:{template:'<button @click="$emit(\'click\')"><slot/></button>'}}}})}
+function render(showForm=false) {return shallowMount(FilmManagement,{global:{renderStubDefaultSlot:true,directives:{hasPermi:()=>{},loading:()=>{}},stubs:{ElCard:{template:'<section><slot/></section>'},ElTable:{template:'<table/>',props:['data']},ElDrawer:{template:'<aside/>'},ElDialog:{template:showForm ? '<aside><slot/><slot name="footer"/></aside>' : '<aside/>'},ElButton:{template:'<button @click="$emit(\'click\')"><slot/></button>'}}}})}
 beforeEach(()=>{
  vi.clearAllMocks();api.list.mockResolvedValue({data:{records:[master,{...master,artworkId:5,artworkNo:'PW-005',versionCount:0,defaultVersionId:null,defaultVersionNo:null,copyCount:0}],total:2}})
- api.detail.mockImplementation(async(id:number)=>({data:detail(id)}));api.listRequests.mockResolvedValue({data:[{...request}]});api.applyFilmRequest.mockResolvedValue({data:{requestId:7}});api.receiveFilmRequest.mockResolvedValue({data:{requestId:7}});api.create.mockResolvedValue({data:{artworkId:8}})
+ api.detail.mockImplementation(async(id:number)=>({data:detail(id)}));api.listRequests.mockResolvedValue({data:[{...request}]});api.applyFilmRequest.mockResolvedValue({data:{requestId:7}});api.receiveFilmRequest.mockResolvedValue({data:{requestId:7}});api.createWithInitialVersion.mockResolvedValue({data:{artworkId:8,versionId:81}})
 })
 afterEach(()=>vi.unstubAllGlobals())
 describe('正式菲林主数据加载与归属',()=>{
@@ -44,7 +44,7 @@ describe('正式页面写入真实API载荷',()=>{
   const s=(w.vm as any).$.setupState
   expect(s.masterVisible).toBe(true);expect(api.create).not.toHaveBeenCalled()
   Object.assign(s.masterDraft,{no:'PW-HTTP',name:'HTTP主档',productIds:[10]});await s.saveMaster()
-  expect(api.create).toHaveBeenCalledWith(expect.objectContaining({artworkNo:'PW-HTTP',requestId:expect.stringMatching(/^[0-9a-f-]{36}$/)}))
+  expect(api.createWithInitialVersion).toHaveBeenCalledWith(expect.objectContaining({artworkNo:'PW-HTTP',requestId:expect.stringMatching(/^[0-9a-f-]{36}$/)}))
   w.unmount()
  })
  it('申请只提交申请接口，版本与revision来自该菲林详情',async()=>{
@@ -60,7 +60,54 @@ describe('正式页面写入真实API载荷',()=>{
   await s.saveReceipt();expect(api.receiveFilmRequest).toHaveBeenCalledWith(7,expect.objectContaining({expectedRevision:4,copies:[{filmNo:'FL-009',location:'A架'}]}));expect(api.receiveFilmRequest.mock.calls[0][1]).not.toHaveProperty('versionId');expect(s.receiptVisible).toBe(true);expect(s.receiptRows[0].filmNo).toBe(' FL-009 ');w.unmount()
  })
  it('新增菲林保留产品归属，成功后刷新主档列表',async()=>{
-  const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openMaster();Object.assign(s.masterDraft,{no:'PW-NEW',name:'新增主档',productIds:[10]});await s.saveMaster();expect(api.create).toHaveBeenCalledWith(expect.objectContaining({artworkNo:'PW-NEW',name:'新增主档',productIds:[10],expectedRevision:0}));expect(s.masterVisible).toBe(false);w.unmount()
+  const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openMaster();Object.assign(s.masterDraft,{no:'PW-NEW',name:'新增主档',productIds:[10]});await s.saveMaster();expect(api.createWithInitialVersion).toHaveBeenCalledWith(expect.objectContaining({artworkNo:'PW-NEW',name:'新增主档',productIds:[10],expectedRevision:0}));expect(s.masterVisible).toBe(false);w.unmount()
+ })
+ it('首次弹窗直接提供上传入口，使用独立草稿且不提前绑定',async()=>{
+  const w=render(true);await flushPromises();const s=(w.vm as any).$.setupState;await s.openMaster();await flushPromises()
+  const uploader=w.findComponent({name:'AttachmentCenter'})
+  expect(uploader.exists()).toBe(true)
+  expect(uploader.attributes('source-type')).toBe('print_artwork_version')
+  expect(uploader.attributes('auto-bind')).toBe('false')
+  const key=s.masterDraftKey;expect(key).toMatch(/^film-initial-/)
+  expect(w.text()).toContain('保存时自动建立初始草稿版本')
+  await s.openMaster();expect(s.masterDraftKey).not.toBe(key);w.unmount()
+ })
+ it('一次提交档案与上传图纸，失败保留输入和文件，重试成功后才清理草稿',async()=>{
+  const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openMaster()
+  Object.assign(s.masterDraft,{no:'PW-ONE',name:'一次录入',productIds:[10],technicalSpec:' 对位要求 '})
+  const clearPending=vi.fn();const files=[{attachmentId:99}]
+  s.masterDrawingCenter={uploading:false,getPendingEntries:()=>files,clearPending}
+  api.createWithInitialVersion.mockRejectedValueOnce(new Error('图纸绑定失败'))
+  await s.saveMaster()
+  expect(s.masterVisible).toBe(true);expect(s.masterDraft.name).toBe('一次录入');expect(clearPending).not.toHaveBeenCalled()
+  const first=api.createWithInitialVersion.mock.calls[0][0]
+  expect(first).toEqual(expect.objectContaining({artworkNo:'PW-ONE',drawingFileId:99,technicalSpec:'对位要求',expectedRevision:0}))
+  await s.saveMaster()
+  expect(api.createWithInitialVersion.mock.calls[1][0]).toEqual(first)
+  expect(clearPending).toHaveBeenCalledOnce();expect(s.masterVisible).toBe(false)
+  expect(api.create).not.toHaveBeenCalled();expect(api.createVersion).not.toHaveBeenCalled();w.unmount()
+ })
+ it('上传中禁止保存，多份图纸不能静默丢弃，移除图纸后不发送旧附件ID',async()=>{
+  const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openMaster()
+  Object.assign(s.masterDraft,{name:'上传检查',productIds:[10]})
+  const uploader={uploading:true,getPendingEntries:()=>[{attachmentId:91},{attachmentId:92}],clearPending:vi.fn()}
+  s.masterDrawingCenter=uploader;await s.saveMaster();expect(api.createWithInitialVersion).not.toHaveBeenCalled()
+  s.masterDrawingCenter.uploading=false;await s.saveMaster();expect(api.createWithInitialVersion).not.toHaveBeenCalled()
+  expect(messages.warning).toHaveBeenCalledWith(expect.stringContaining('只保存一份图纸'))
+  s.masterDrawingCenter.getPendingEntries=()=>[];await s.saveMaster()
+  expect(api.createWithInitialVersion).toHaveBeenCalledWith(expect.objectContaining({drawingFileId:undefined}));w.unmount()
+ })
+ it('首次保存中重复点击不重复发送，编辑已有菲林不生成新版本',async()=>{
+  const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openMaster()
+  Object.assign(s.masterDraft,{name:'重复提交',productIds:[10]})
+  let resolve!:(value:any)=>void;api.createWithInitialVersion.mockReturnValueOnce(new Promise(done=>{resolve=done}))
+  const first=s.saveMaster();await s.saveMaster();expect(api.createWithInitialVersion).toHaveBeenCalledOnce()
+  resolve({data:{artworkId:8,versionId:81}});await first
+  api.edit.mockResolvedValueOnce({data:{artworkId:1}})
+  await s.openMaster(master);await s.saveMaster()
+  expect(api.edit).toHaveBeenCalledWith(1,expect.objectContaining({expectedRevision:3}))
+  expect(api.edit.mock.calls[0][1]).not.toHaveProperty('drawingFileId')
+  expect(api.createWithInitialVersion).toHaveBeenCalledOnce();expect(api.createVersion).not.toHaveBeenCalled();w.unmount()
  })
  it('版本图纸保存与封存继续使用原有受控接口',async()=>{
   const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openVersions(master);s.openVersionForm({versionId:12,versionNo:'V2',status:ArtworkVersionStatusEnum.DRAFT.value,revision:6,drawingFileId:100});s.drawingUploaded({attachmentId:101});api.editVersion.mockResolvedValueOnce({data:{versionId:12}});await s.saveVersion()

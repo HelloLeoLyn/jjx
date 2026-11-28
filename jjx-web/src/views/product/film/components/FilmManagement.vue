@@ -21,8 +21,8 @@
       </section>
     </main>
 
-    <el-dialog v-model="masterVisible" :title="masterDraft.id ? '编辑菲林' : '新增菲林'" width="640px" destroy-on-close>
-      <el-form :model="masterDraft" v-loading="masterLoading" label-width="90px" @submit.prevent="saveMaster">
+    <el-dialog v-model="masterVisible" :title="masterDraft.id ? '编辑菲林' : '新增菲林'" width="640px" destroy-on-close :show-close="!masterBusy" :close-on-click-modal="!masterBusy" :close-on-press-escape="!masterBusy">
+      <el-form :model="masterDraft" v-loading="masterLoading" :disabled="saving" label-width="90px" @submit.prevent="saveMaster">
         <el-form-item label="菲林编号" required><el-input v-model="masterDraft.no" aria-label="菲林编号" maxlength="64" /></el-form-item>
         <el-form-item label="菲林名称" required><el-input v-model="masterDraft.name" aria-label="菲林名称" maxlength="100" /></el-form-item>
         <el-form-item label="类别" required><el-select v-model="masterDraft.family" aria-label="菲林类别"><el-option v-for="item in families" :key="item" :value="item" :label="item" /></el-select></el-form-item>
@@ -30,8 +30,15 @@
         <el-form-item label="来源打样单"><el-select v-model="masterDraft.sampleOrderId" clearable filterable remote @visible-change="visible => visible && searchSamples()" :remote-method="searchSamples" :loading="samplesLoading" style="width:100%" placeholder="无关联产品时，选择来源打样单"><el-option v-for="sample in samples" :key="sample.orderId" :value="sample.orderId" :label="`${sample.orderNo} ${sample.sampleProductName || ''}`" /></el-select></el-form-item>
         <el-form-item label="整套分组"><el-input v-model="masterDraft.setCode" maxlength="64" placeholder="可选，同套菲林共用的分组编码" /></el-form-item>
         <el-form-item label="用途"><el-input v-model="masterDraft.purpose" aria-label="用途" type="textarea" :rows="3" /></el-form-item>
+        <template v-if="!masterDraft.id && !masterLoading">
+          <el-form-item label="图纸">
+            <AttachmentCenter :key="masterDraftKey" ref="masterDrawingCenter" variant="upload-only" title="上传图纸" source-type="print_artwork_version" :draft-id="masterDraftKey" :auto-bind="false" :locked="saving" :actions="['remove']" />
+          </el-form-item>
+          <el-form-item label="技术要求"><el-input v-model="masterDraft.technicalSpec" aria-label="初始版本技术要求" type="textarea" :rows="3" maxlength="2000" /></el-form-item>
+          <p class="form-note">保存时自动建立初始草稿版本，图纸一并保存；也可先建档，稍后补充图纸。</p>
+        </template>
       </el-form>
-      <template #footer><el-button @click="masterVisible = false">取消</el-button><el-button type="primary" :loading="saving" :disabled="masterLoading" @click="saveMaster">保存菲林</el-button></template>
+      <template #footer><el-button :disabled="masterBusy" @click="masterVisible = false">取消</el-button><el-button type="primary" :loading="saving" :disabled="masterLoading || masterBusy" @click="saveMaster">保存菲林</el-button></template>
     </el-dialog>
 
     <el-drawer v-model="versionsVisible" size="min(1120px, 96vw)" :title="`版本与图纸 · ${detail?.artworkNo || ''}`">
@@ -158,7 +165,10 @@ async function reloadSelected() { await refreshDetails() }
 function resetFilters() { filters.keyword=''; filters.family=''; loadRows(1) }
 
 const masterVisible=ref(false), masterLoading=ref(false)
-const masterDraft=reactive({ id:undefined as number|undefined,no:'',name:'',family:'面板',purpose:'',setCode:'',productIds:[] as number[],sampleOrderId:undefined as number|undefined,revision:0 })
+const masterDraft=reactive({ id:undefined as number|undefined,no:'',name:'',family:'面板',purpose:'',setCode:'',productIds:[] as number[],sampleOrderId:undefined as number|undefined,revision:0,technicalSpec:'' })
+const masterDrawingCenter=ref<InstanceType<typeof AttachmentCenter>>()
+const masterDraftKey=ref('')
+const masterBusy=computed(()=>saving.value || !!masterDrawingCenter.value?.uploading)
 const products=ref<ProductItem[]>([]), productsLoading=ref(false)
 const samples=ref<SampleOrder[]>([]), samplesLoading=ref(false)
 let masterRequestId='', masterGeneration=0, productGeneration=0, sampleGeneration=0
@@ -185,8 +195,10 @@ async function searchSamples(orderNo='') {
   finally { if(generation===sampleGeneration) samplesLoading.value=false }
 }
 async function openMaster(row?:ArtworkListRow) {
+  if(masterBusy.value) return
   const generation=++masterGeneration;masterRequestId=newFilmRequestId();masterVisible.value=true;masterLoading.value=!!row
-  Object.assign(masterDraft,{id:undefined,no:`PW-${new Date().toISOString().slice(2,7).replace('-','')}-${String(Date.now()%1000).padStart(3,'0')}`,name:'',family:filters.family || '面板',purpose:'',setCode:'',productIds:[],sampleOrderId:undefined,revision:0})
+  masterDraftKey.value=`film-initial-${masterRequestId}`
+  Object.assign(masterDraft,{id:undefined,no:`PW-${new Date().toISOString().slice(2,7).replace('-','')}-${String(Date.now()%1000).padStart(3,'0')}`,name:'',family:filters.family || '面板',purpose:'',setCode:'',productIds:[],sampleOrderId:undefined,revision:0,technicalSpec:''})
   try {
     if(row) {
       const result:any=await api.detail(row.artworkId)
@@ -203,13 +215,23 @@ async function openMaster(row?:ArtworkListRow) {
   finally { if(generation===masterGeneration) masterLoading.value=false }
 }
 async function saveMaster() {
-  if(saving.value || masterLoading.value) return
+  if(masterBusy.value || masterLoading.value) return
   if(!masterDraft.no.trim() || !masterDraft.name.trim()) return ElMessage.warning('请填写菲林编号和名称')
   if(!masterDraft.productIds.length && !masterDraft.sampleOrderId) return ElMessage.warning('请关联至少一个产品或选择来源打样单')
+  const drawings=masterDraft.id ? [] : masterDrawingCenter.value?.getPendingEntries() || []
+  if(drawings.length>1) return ElMessage.warning('初始版本只保存一份图纸，请移除多余文件后再保存')
   saving.value=true
   const command:ArtworkCommand={requestId:masterRequestId,expectedRevision:masterDraft.revision,artworkNo:masterDraft.no.trim(),name:masterDraft.name.trim(),family:masterDraft.family,purpose:masterDraft.purpose.trim()||undefined,setCode:masterDraft.setCode.trim()||undefined,productIds:[...masterDraft.productIds],sampleOrderId:masterDraft.sampleOrderId}
+  if(!masterDraft.id) {
+    command.drawingFileId=drawings[0]?.attachmentId
+    command.technicalSpec=masterDraft.technicalSpec.trim()||undefined
+  }
   try {
-    if(masterDraft.id) await api.edit(masterDraft.id,command);else await api.create(command)
+    if(masterDraft.id) await api.edit(masterDraft.id,command)
+    else {
+      await api.createWithInitialVersion(command)
+      masterDrawingCenter.value?.clearPending()
+    }
     masterVisible.value=false;ElMessage.success('菲林已保存');await loadRows()
     if(masterDraft.id===selectedArtworkId.value) await refreshDetails()
   } catch(error) { ElMessage.error(filmError(error,'菲林保存失败，输入已保留')) }
