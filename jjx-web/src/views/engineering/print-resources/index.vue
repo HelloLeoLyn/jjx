@@ -11,7 +11,7 @@
             @keyup.enter="load(1)"
           />
         </el-form-item>
-        <el-form-item label="状态">
+        <el-form-item label="框体状态">
           <el-select
             v-model="query.status"
             clearable
@@ -22,7 +22,7 @@
             <el-option
               v-for="s in statusOptions"
               :key="s.value"
-              :label="s.label"
+              :label="statusLabel(s.value)"
               :value="s.value"
             />
           </el-select>
@@ -34,7 +34,7 @@
         </el-form-item>
       </el-form>
       <div class="tip">
-        先新增网框，再登记绷网、制版并检验放行。网框可以洗版后重复使用。
+        一行一个网框，展示框上当前网版。框体正常不代表网版已放行；洗版后可在同一网框重新制版。
       </div>
       <el-alert v-if="carriedVersion" :title="`当前菲林：${carriedVersion.artworkNo} / ${carriedVersion.versionNo}，打开制版后可直接勾选实体片`" type="info" :closable="false" style="margin-top:12px" />
       <el-alert v-if="contextError" :title="contextError" type="error" :closable="false" style="margin-top:12px" />
@@ -42,27 +42,53 @@
 
     <el-card shadow="never">
       <el-table :data="rows" v-loading="loading" border stripe>
-        <el-table-column prop="frameNo" label="网框编号" width="150">
+        <el-table-column prop="frameNo" label="网框" width="160">
           <template #default="{ row }">
             <el-link type="primary" @click="openDetail(row)">{{ row.frameNo }}</el-link>
+            <div class="muted">{{ row.frameType || '型号未记录' }}</div>
           </template>
         </el-table-column>
-        <el-table-column prop="frameType" label="型号" width="110" />
-        <el-table-column prop="mesh" label="目数" width="90" align="center" />
-        <el-table-column label="状态" width="110" align="center">
+        <el-table-column label="框体状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="statusTag(row.status)" size="small">{{
               statusLabel(row.status)
             }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="plateNo" label="当前版面" width="150" />
-        <el-table-column prop="location" label="位置" min-width="130" />
-        <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip />
+        <el-table-column label="当前网版" width="180">
+          <template #default="{ row }">
+            <el-link v-if="row.plateId" type="primary" @click="openDetail(row)">{{ row.plateNo || `网版 #${row.plateId}` }}</el-link>
+            <span v-else class="muted">无当前网版</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="网版状态" width="110" align="center">
+          <template #default="{ row }">
+            <span v-if="!row.plateId" class="muted">未制版</span>
+            <span v-else-if="!currentPlates.states.value[row.plateId] || currentPlates.states.value[row.plateId]?.loading" class="muted">读取中</span>
+            <el-button v-else-if="currentPlates.states.value[row.plateId]?.error" link type="danger" @click="currentPlates.retry(row)">读取失败，重试</el-button>
+            <el-tag v-else :type="ScreenPlateStatusEnum.getTagProps(currentPlates.states.value[row.plateId]?.plate?.status).type" size="small">{{ ScreenPlateStatusEnum.getLabel(currentPlates.states.value[row.plateId]?.plate?.status) || '未知' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="菲林 / 样式" min-width="220">
+          <template #default="{ row }">
+            <CurrentPlateInfo v-if="currentPlates.states.value[row.plateId]?.plate" :plate="currentPlates.states.value[row.plateId].plate" compact />
+            <span v-else class="muted">{{ row.plateId ? '网版资料待读取' : '—' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="mesh" label="目数" width="80" align="center" />
+        <el-table-column label="张力(N/cm)" width="110" align="center">
+          <template #default="{ row }">
+            <span v-if="!row.stretchId">—</span>
+            <span v-else-if="!currentPlates.stretches.value[row.frameId] || currentPlates.stretches.value[row.frameId]?.loading" class="muted">读取中</span>
+            <el-button v-else-if="currentPlates.stretches.value[row.frameId]?.error" link type="danger" @click="currentPlates.retryStretch(row)">读取失败，重试</el-button>
+            <span v-else>{{ currentPlates.stretches.value[row.frameId]?.stretch?.tensionNcm ?? '未记录' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="location" label="存放位置" min-width="110" />
         <TableActionColumn
           :actions="frameActions"
-          :max-visible="4"
-          width="350"
+          :max-visible="3"
+          width="270"
           fixed="right"
           align="center"
           display="text"
@@ -102,20 +128,34 @@
       <template #footer><el-button :disabled="submitting" @click="inspectionVisible=false">关闭</el-button><el-button type="primary" :disabled="!canInspect" :loading="submitting" @click="submitInspection">确认检验结果</el-button></template>
     </el-dialog>
 
-    <el-drawer v-model="detailVisible" size="760px" title="网框详情" destroy-on-close>
+    <el-drawer v-model="detailVisible" size="min(940px, 96vw)" title="网框与当前网版" destroy-on-close>
       <div v-loading="detailLoading">
+        <el-alert v-if="detailError" :title="detailError" type="error" :closable="false"><el-button link type="primary" @click="openDetail(detailTarget)">重新读取</el-button></el-alert>
         <template v-if="detail">
+          <div class="detail-heading"><strong>{{ detail.frameNo }}</strong><span>框体：{{ statusLabel(detail.status) }}</span><span class="muted">{{ detail.location || '存放位置未记录' }}</span></div>
+          <div class="section-head">当前网版</div>
+          <div v-if="detailPlateLoading" class="muted">正在读取当前网版…</div>
+          <el-alert v-else-if="detailPlateError" :title="detailPlateError" type="error" :closable="false"><el-button link type="primary" @click="openDetail(detailTarget)">重新读取</el-button></el-alert>
+          <CurrentPlateInfo v-else-if="detailPlate" :plate="detailPlate" />
+          <el-empty v-else description="该网框当前没有网版，绷网合格后可制版" :image-size="56" />
+          <div class="section-head">网框与当前绷网</div>
           <el-descriptions :column="2" border size="small">
             <el-descriptions-item label="框号">{{ detail.frameNo }}</el-descriptions-item>
             <el-descriptions-item label="型号">{{ detail.frameType || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="状态">{{
+            <el-descriptions-item label="框体状态">{{
               statusLabel(detail.status)
             }}</el-descriptions-item>
-            <el-descriptions-item label="位置">{{ detail.location || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="存放位置">{{ detail.location || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="目数">{{ currentStretch?.mesh ?? '-' }}</el-descriptions-item>
+            <el-descriptions-item label="张力">{{ currentStretch?.tensionNcm != null ? `${currentStretch.tensionNcm} N/cm` : '-' }}</el-descriptions-item>
+            <el-descriptions-item label="网纱">{{ currentStretch?.material || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="绷网检验">{{ currentStretch ? (currentStretch.qualified ? '合格' : '不合格') : '未绷网' }}</el-descriptions-item>
             <el-descriptions-item label="备注" :span="2">{{
               detail.remark || '-'
             }}</el-descriptions-item>
           </el-descriptions>
+          <el-collapse class="history-collapse">
+          <el-collapse-item title="绷网与框体维护历史" name="frame-history">
           <div class="section-head">绷网记录</div>
           <el-table :data="detail.stretches || []" size="small" border>
             <el-table-column prop="mesh" label="目数" width="90" />
@@ -131,12 +171,14 @@
           <div class="section-head">维护历史</div>
           <el-table :data="detail.history || []" size="small" border>
             <el-table-column prop="actionType" label="动作" width="110" />
-            <el-table-column prop="beforeStatus" label="原状态" width="100" />
-            <el-table-column prop="afterStatus" label="新状态" width="100" />
+            <el-table-column label="原状态" width="100"><template #default="{ row }">{{ statusLabel(row.beforeStatus) }}</template></el-table-column>
+            <el-table-column label="新状态" width="100"><template #default="{ row }">{{ statusLabel(row.afterStatus) }}</template></el-table-column>
             <el-table-column prop="description" label="说明" min-width="160" />
             <el-table-column prop="operator" label="操作人" width="100" />
             <el-table-column prop="operateTime" label="时间" width="160" />
           </el-table>
+          </el-collapse-item>
+          </el-collapse>
         </template>
       </div>
     </el-drawer>
@@ -217,7 +259,7 @@
 <script setup lang="ts">
 import { type PlateSource } from '@/components/printing/printStyles'
 /** 网版作业列表页（dev-20261126-001）：网框分页 + 绷网/制版/洗版/维护。 */
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh } from '@element-plus/icons-vue'
@@ -226,6 +268,8 @@ import { ArtworkVersionStatusEnum } from '@/enums/product/film'
 import { engineeringResourceApi } from '@/api/engineering/resource'
 import { printingArtworkApi } from '@/api/product/film'
 import PrintFilmMultiSelector from '@/components/printing/PrintFilmMultiSelector.vue'
+import CurrentPlateInfo from './CurrentPlateInfo.vue'
+import { useCurrentPlates } from './useCurrentPlates'
 import type { PrintSearchRow } from '@/api/engineering/printingSearch'
 import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
@@ -251,14 +295,14 @@ watch(() => [route.query.artworkId, route.query.versionId], async () => {
 }, { immediate: true })
 
 const frameActions: TableAction<any>[] = [
+  { key: 'inspect', label: '检验 / 放行', type: 'success', permission: 'engineering:screen-resource:release', visible: ({ row }) => !!row.plateId && (!currentPlates.states.value[row.plateId]?.plate || [ScreenPlateStatusEnum.PENDING.value, ScreenPlateStatusEnum.FAILED.value].some(status => status === currentPlates.states.value[row.plateId]?.plate.status)) },
+  { key: 'plate', label: '制版', type: 'success', permission: 'engineering:resource:edit', visible: ({ row }) => !row.plateId && !!row.stretchId && row.status === ScreenFrameStatusEnum.READY.value },
+  { key: 'stretch', label: '绷网', type: 'primary', permission: 'engineering:resource:maintain', visible: ({ row }) => !row.plateId && row.status === ScreenFrameStatusEnum.READY.value },
+  { key: 'wash', label: '洗版', type: 'warning', permission: 'engineering:screen-resource:wash', visible: ({ row }) => !!row.plateId },
   { key: 'remark', label: '编辑备注', type: 'primary', permission: 'engineering:resource:edit' },
-  { key: 'stretch', label: '绷网', type: 'primary', permission: 'engineering:resource:maintain' },
-  { key: 'plate', label: '制版', type: 'success', permission: 'engineering:resource:edit' },
-  { key: 'inspect', label: '检验 / 放行', type: 'success', permission: 'engineering:screen-resource:release', visible: ({ row }) => !!row.plateId },
-  { key: 'wash', label: '洗版', type: 'warning', permission: 'engineering:screen-resource:wash' },
-  { key: 'maintain', label: '送修', type: 'info', permission: 'engineering:resource:maintain' },
-  { key: 'resume', label: '恢复使用', type: 'info', permission: 'engineering:resource:maintain' },
-  { key: 'scrap', label: '报废', type: 'info', permission: 'engineering:resource:maintain' },
+  { key: 'maintain', label: '送修', type: 'info', permission: 'engineering:resource:maintain', visible: ({ row }) => !row.plateId && row.status === ScreenFrameStatusEnum.READY.value },
+  { key: 'resume', label: '恢复使用', type: 'info', permission: 'engineering:resource:maintain', visible: ({ row }) => row.status === ScreenFrameStatusEnum.MAINTENANCE.value },
+  { key: 'scrap', label: '报废', type: 'info', permission: 'engineering:resource:maintain', visible: ({ row }) => !row.plateId && row.status !== ScreenFrameStatusEnum.SCRAPPED.value },
 ]
 
 function handleFrameAction(key: string, row: any) {
@@ -284,6 +328,8 @@ const query = reactive({ keyword: '', status: '' })
 const rows = ref<any[]>([])
 const page = reactive({ pageNum: 1, pageSize: 20, total: 0 })
 const loading = ref(false)
+const currentPlates = useCurrentPlates()
+let listGeneration = 0
 const submitting = ref(false)
 const frameCreateVisible = ref(false), frameCreateError = ref('')
 const frameForm = reactive({ frameNo: '', frameType: '', location: '', frameSeries: '' })
@@ -334,6 +380,13 @@ async function submitInspection() {
 const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detail = ref<any>(null)
+const detailPlate = ref<any>(null)
+const detailError = ref(''), detailPlateError = ref(''), detailPlateLoading = ref(false)
+const detailTarget = ref<any>(null)
+let detailGeneration = 0
+const currentStretch = computed(() => detail.value?.stretches?.find((item: any) => Number(item.stretchId) === Number(detail.value?.stretchId)))
+watch(detailVisible, visible => { if (!visible) detailGeneration++ })
+onBeforeUnmount(() => { detailGeneration++; listGeneration++ })
 
 const stretchVisible = ref(false)
 const stretchForm = reactive<any>({
@@ -392,6 +445,7 @@ async function saveRemark() {
 let currentFrame: any = null
 
 function statusLabel(status?: string) {
+  if (status === ScreenFrameStatusEnum.READY.value) return '正常'
   return ScreenFrameStatusEnum.getLabel(status || '') || status || '-'
 }
 function statusTag(status?: string) {
@@ -402,6 +456,8 @@ function newRequestId() {
 }
 
 async function load(pageNo = page.pageNum) {
+  const generation = ++listGeneration
+  currentPlates.invalidate()
   page.pageNum = pageNo
   loading.value = true
   try {
@@ -411,13 +467,16 @@ async function load(pageNo = page.pageNum) {
       pageNum: page.pageNum,
       pageSize: page.pageSize,
     })
+    if (generation !== listGeneration) return
     rows.value = res?.data?.records || []
     page.total = res?.data?.total || 0
+    void currentPlates.load(rows.value)
   } catch {
+    if (generation !== listGeneration) return
     rows.value = []
     page.total = 0
   } finally {
-    loading.value = false
+    if (generation === listGeneration) loading.value = false
   }
 }
 
@@ -434,15 +493,34 @@ async function loadFrame(row: any) {
 }
 
 async function openDetail(row: any) {
+  if (!row?.frameId) return
+  const generation = ++detailGeneration
+  detailTarget.value = row
   detailVisible.value = true
   detailLoading.value = true
+  detail.value = null; detailPlate.value = null
+  detailError.value = ''; detailPlateError.value = ''; detailPlateLoading.value = false
   try {
     const res: any = await engineeringResourceApi.getPrintFrame(row.frameId)
-    detail.value = res?.data || null
-  } catch {
-    detail.value = null
-  } finally {
+    if (generation !== detailGeneration) return
+    if (!res.data || Number(res.data.frameId) !== Number(row.frameId)) throw new Error('网框资料不一致，请重新读取')
+    detail.value = res.data
     detailLoading.value = false
+    if (detail.value.plateId) {
+      detailPlateLoading.value = true
+      try {
+        const result: any = await engineeringResourceApi.getPrintPlate(Number(detail.value.plateId))
+        if (generation !== detailGeneration) return
+        if (!result.data || Number(result.data.frameId) !== Number(row.frameId) || Number(result.data.plateId) !== Number(detail.value.plateId)) throw new Error('当前网版关联资料不一致')
+        detailPlate.value = result.data
+      } catch (error: any) {
+        if (generation === detailGeneration) detailPlateError.value = error.message || '当前网版读取失败'
+      } finally { if (generation === detailGeneration) detailPlateLoading.value = false }
+    }
+  } catch (error: any) {
+    if (generation === detailGeneration) detailError.value = error.message || '网框详情读取失败'
+  } finally {
+    if (generation === detailGeneration) detailLoading.value = false
   }
 }
 
@@ -617,6 +695,10 @@ onMounted(() => load(1))
 
 <style scoped>
 .selected-films { width: 100%; }
+.muted { color: var(--el-text-color-secondary); font-size: 12px; }
+.detail-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
+.detail-heading strong { font-size: 18px; }
+.history-collapse { margin-top: 16px; }
 .selected-film-heading { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .search-card {
   margin-bottom: 16px;

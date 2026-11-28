@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, shallowMount } from '@vue/test-utils'
+import { flushPromises, mount, shallowMount } from '@vue/test-utils'
 import { reactive } from 'vue'
 import PrintResources from '../index.vue'
 import PrintFilmMultiSelector from '@/components/printing/PrintFilmMultiSelector.vue'
@@ -39,6 +39,59 @@ beforeEach(()=>{
  artworks.detail.mockImplementation(async()=>({data:artwork}))
 })
 describe('网版作业完整录入入口',()=>{
+ it('真实表格和详情DOM同时呈现框体正常、网版待检验、多菲林及实测张力',async()=>{
+  api.listPrintFrames.mockResolvedValueOnce({data:{records:[{...frame,plateId:41,plateNo:'PL-001',mesh:300}],total:1}})
+  api.getPrintFrame.mockResolvedValue({data:{...frame,plateId:41,stretches:[{stretchId:7,mesh:300,tensionNcm:20,qualified:true}]}})
+  api.getPrintPlate.mockResolvedValue({data:{plateId:41,frameId:5,plateNo:'PL-001',status:ScreenPlateStatusEnum.PENDING.value,sourcesJson:JSON.stringify([
+   {filmId:31,filmNo:'FL-001',versionId:21,styles:[{styleNo:'A',name:'正面',inkColor:'RED'}]},
+   {filmId:32,filmNo:'FL-002',versionId:22,styles:[{styleNo:'B',name:'背面',inkColor:'BLUE'}]},
+  ]),history:[]}})
+  const w=mount(PrintResources,{global:{directives:{hasPermi:()=>{},loading:()=>{}},stubs:{PrintFilmMultiSelector:true,ElDialog:{template:'<aside/>'},ElDrawer:{props:['modelValue'],template:'<aside v-if="modelValue"><slot/></aside>'}}}})
+  await flushPromises()
+  const table=w.find('.el-table').text()
+  for(const value of ['框体状态','网版状态','正常','待检验','PL-001','FL-001','FL-002','正面','背面','20'])expect(table).toContain(value)
+  await w.findAll('a').find(link=>link.text()==='PL-001')!.trigger('click');await flushPromises()
+  expect(w.text()).toContain('框体正常不代表网版已放行')
+  expect(w.text()).toContain('RED');expect(w.text()).toContain('BLUE');expect(w.text()).toContain('20 N/cm');w.unmount()
+ })
+ it('列表按网框分页，补读真实网版及张力，框体正常与网版待检验分开',async()=>{
+  api.listPrintFrames.mockResolvedValueOnce({data:{records:[{...frame,plateId:41,plateNo:'PL-001'}],total:1}})
+  api.getPrintFrame.mockResolvedValue({data:{...frame,stretches:[{stretchId:7,tensionNcm:20}]}})
+  api.getPrintPlate.mockResolvedValue({data:{plateId:41,frameId:5,status:ScreenPlateStatusEnum.PENDING.value}})
+  const w=render();await flushPromises();const s=(w.vm as any).$.setupState
+  expect(s.statusLabel(ScreenFrameStatusEnum.READY.value)).toBe('正常')
+  expect(s.currentPlates.states.value[41].plate.status).toBe(ScreenPlateStatusEnum.PENDING.value)
+  expect(s.currentPlates.stretches.value[5].stretch.tensionNcm).toBe(20)
+  const visible=(key:string,row:any)=>s.frameActions.find((a:any)=>a.key===key).visible({row})
+  expect(visible('inspect',{plateId:41})).toBe(true)
+  expect(visible('plate',{...frame,plateId:41})).toBe(false)
+  expect(visible('stretch',{...frame,plateId:41})).toBe(false)
+  s.currentPlates.states.value[41].plate.status=ScreenPlateStatusEnum.RELEASED.value
+  expect(visible('inspect',{plateId:41})).toBe(false)
+  expect(visible('wash',{plateId:41})).toBe(true);w.unmount()
+ })
+ it('详情优先当前版，失败保留框体且可重试；切换网框忽略旧网版响应',async()=>{
+  const w=render();await flushPromises();const s=(w.vm as any).$.setupState
+  api.getPrintFrame.mockResolvedValue({data:{...frame,plateId:41,stretches:[{stretchId:7,tensionNcm:20}]}})
+  api.getPrintPlate.mockRejectedValueOnce(new Error('plate offline'))
+  await s.openDetail(frame);expect(s.detail.frameNo).toBe('WK-001');expect(s.detailPlateError).toBe('plate offline')
+  expect(s.detailPlate).toBe(null);expect(s.currentStretch.tensionNcm).toBe(20)
+  let finish!:(value:any)=>void;api.getPrintPlate.mockReturnValueOnce(new Promise(resolve=>{finish=resolve}))
+  const first=s.openDetail(frame);await flushPromises()
+  api.getPrintFrame.mockResolvedValueOnce({data:{frameId:6,frameNo:'WK-002',plateId:null,stretches:[]}})
+  await s.openDetail({frameId:6});finish({data:{plateId:41,frameId:5}});await first
+  expect(s.detail.frameNo).toBe('WK-002');expect(s.detailPlate).toBe(null);w.unmount()
+ })
+ it('详情读取新鲜网版与放行记录，关闭抽屉不写入迟到资料',async()=>{
+  const w=render();await flushPromises();const s=(w.vm as any).$.setupState
+  api.getPrintFrame.mockResolvedValue({data:{...frame,plateId:41}})
+  api.getPrintPlate.mockResolvedValue({data:{plateId:41,frameId:5,status:ScreenPlateStatusEnum.RELEASED.value,history:[{description:'检验合格'}]}})
+  await s.openDetail(frame);expect(s.detailPlate.status).toBe(ScreenPlateStatusEnum.RELEASED.value)
+  expect(s.detailPlate.history[0].description).toBe('检验合格')
+  let finish!:(value:any)=>void;api.getPrintFrame.mockReturnValueOnce(new Promise(resolve=>{finish=resolve}))
+  const pending=s.openDetail(frame);s.detailVisible=false;await flushPromises()
+  finish({data:{...frame,plateId:41}});await pending;expect(s.detail).toBe(null);expect(s.detailPlate).toBe(null);w.unmount()
+ })
  it('空列表也能新增真实网框；失败保留输入及请求号，成功刷新定位新框',async()=>{
   const w=render();await flushPromises();await w.findAll('button').find(b=>b.text()==='新增网框')!.trigger('click')
   const s=(w.vm as any).$.setupState;expect(s.frameCreateVisible).toBe(true)
