@@ -8,6 +8,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.jjx.system.utils.SecurityUtils;
 import com.jjx.system.service.AttachmentRefService;
 import com.jjx.system.domain.dto.AttachmentRefDTO;
+import com.jjx.system.domain.dto.AttachmentRefBatchDTO;
+import com.jjx.system.domain.dto.AttachmentRefBatchItem;
 import cn.dev33.satoken.stp.StpUtil;
 import org.springframework.dao.DuplicateKeyException;
 import java.util.*;
@@ -52,6 +54,7 @@ public class ArtworkService {
         // 新增可选字段为空时保持旧命令摘要，部署后重试旧requestId仍可重放。
         if(c.quantity()==null) payload.remove("quantity");
         if(c.dueDate()==null) payload.remove("dueDate");
+        if(c.drawingDocumentType()==null) payload.remove("drawingDocumentType");
         String hash = hash(List.of(type,action,target,user,payload));
         try {
             jdbc.update("""
@@ -196,7 +199,24 @@ public class ArtworkService {
                 ref.setAttachmentId(c.drawingFileId());
                 ref.setSourceType("print_artwork_version");
                 ref.setSourceId(id);
+                ref.setDocumentType(c.drawingDocumentType());
                 attachments.create(ref);
+            }
+        } else if(c.drawingFileId()!=null && c.drawingDocumentType()!=null) {
+            // 同内容上传可能复用原附件ID；只改类型时仍需通过原附件服务校验、审计。
+            var refs=jdbc.queryForList("""
+                select id from sys_attachment_ref where source_type='print_artwork_version' and source_id=?
+                and attachment_id=? and deleted=0 and ref_state='active'
+                """,Long.class,id,c.drawingFileId());
+            if(!refs.isEmpty()) {
+                var batch=new AttachmentRefBatchDTO();
+                batch.setItems(refs.stream().map(refId -> {
+                    var item=new AttachmentRefBatchItem();
+                    item.setRefId(refId);
+                    item.setDocumentType(c.drawingDocumentType());
+                    return item;
+                }).toList());
+                attachments.batchUpdate(batch);
             }
         }
         return Map.of("versionId",id,"status","DRAFT","revision",rev);

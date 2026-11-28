@@ -43,10 +43,10 @@ class FilmCreationServiceTest {
         var db = new JdbcTemplate(source);
         db.execute("CREATE TABLE product(product_id BIGINT PRIMARY KEY)");
         db.execute("CREATE TABLE print_artwork(artwork_id BIGINT AUTO_INCREMENT PRIMARY KEY, artwork_no VARCHAR(64) UNIQUE, name VARCHAR(200), purpose VARCHAR(200), family VARCHAR(20), set_code VARCHAR(64), sample_order_id BIGINT, create_by VARCHAR(64), create_time TIMESTAMP, lock_version INT DEFAULT 0)");
-        db.execute("CREATE TABLE print_artwork_version(version_id BIGINT AUTO_INCREMENT PRIMARY KEY, artwork_id BIGINT, version_no VARCHAR(32), status VARCHAR(20), drawing_file_id BIGINT, technical_spec VARCHAR(2000), designer_id VARCHAR(64), create_by VARCHAR(64), create_time TIMESTAMP, lock_version INT DEFAULT 0, UNIQUE(artwork_id,version_no))");
+        db.execute("CREATE TABLE print_artwork_version(version_id BIGINT AUTO_INCREMENT PRIMARY KEY, artwork_id BIGINT, version_no VARCHAR(32), status VARCHAR(20), drawing_file_id BIGINT, technical_spec VARCHAR(2000), designer_id VARCHAR(64), create_by VARCHAR(64), create_time TIMESTAMP, lock_version INT DEFAULT 0,update_by VARCHAR(64),update_time TIMESTAMP, UNIQUE(artwork_id,version_no))");
         db.execute("CREATE TABLE engineering_resource_product_rel(resource_type VARCHAR(32), resource_id BIGINT, product_id BIGINT, create_by VARCHAR(64), update_by VARCHAR(64), is_active INT DEFAULT 1, UNIQUE(resource_type,resource_id,product_id))");
         db.execute("CREATE TABLE engineering_resource_maintenance(maintenance_id BIGINT AUTO_INCREMENT PRIMARY KEY, resource_type VARCHAR(32),resource_id BIGINT,action_type VARCHAR(32),operator VARCHAR(64),request_id VARCHAR(64) UNIQUE,request_hash VARCHAR(64),result_snapshot VARCHAR(8000),after_status VARCHAR(32),description VARCHAR(500))");
-        db.execute("CREATE TABLE sys_attachment_ref(id BIGINT AUTO_INCREMENT PRIMARY KEY,attachment_id BIGINT,source_type VARCHAR(64),source_id BIGINT)");
+        db.execute("CREATE TABLE sys_attachment_ref(id BIGINT AUTO_INCREMENT PRIMARY KEY,attachment_id BIGINT,source_type VARCHAR(64),source_id BIGINT,document_type VARCHAR(100),deleted INT DEFAULT 0,ref_state VARCHAR(20) DEFAULT 'active')");
         db.update("INSERT INTO product VALUES (10)");
         return source;
     }
@@ -75,17 +75,18 @@ class FilmCreationServiceTest {
         var attachments = mock(AttachmentRefService.class);
         when(attachments.create(any())).thenAnswer(call -> {
             AttachmentRefDTO ref = call.getArgument(0);
-            db.update("INSERT INTO sys_attachment_ref(attachment_id,source_type,source_id) VALUES (?,?,?)",
-                    ref.getAttachmentId(), ref.getSourceType(), ref.getSourceId());
+            db.update("INSERT INTO sys_attachment_ref(attachment_id,source_type,source_id,document_type) VALUES (?,?,?,?)",
+                    ref.getAttachmentId(), ref.getSourceType(), ref.getSourceId(), ref.getDocumentType());
             return 1L;
         });
         var service = service(source, attachments);
-        var command = command(Map.of("drawingFileId", 55, "technicalSpec", "定位要求"));
+        var command = command(Map.of("drawingFileId", 55, "drawingDocumentType", "FILM", "technicalSpec", "定位要求"));
         try (var user = mockStatic(SecurityUtils.class)) {
             user.when(SecurityUtils::getUsername).thenReturn("designer");
             var result = service.create(command);
             assertEquals(result, service.create(command));
             var draft = db.queryForMap("SELECT * FROM print_artwork_version");
+            assertEquals("FILM", db.queryForObject("SELECT document_type FROM sys_attachment_ref", String.class));
             assertEquals("V1", draft.get("version_no"));
             assertEquals("DRAFT", draft.get("status"));
             assertEquals(55L, draft.get("drawing_file_id"));
@@ -101,6 +102,73 @@ class FilmCreationServiceTest {
             var changed = command(Map.of("requestId", command.requestId(), "drawingFileId", 56));
             assertEquals(409, assertThrows(BusinessException.class, () -> service.create(changed)).getCode());
             assertEquals(1, db.queryForObject("SELECT COUNT(*) FROM print_artwork_version", Integer.class));
+        }
+    }
+
+    @Test
+    void editVersionPassesSelectedTypeToReplacementDrawingReference() {
+        var source = database();
+        var db = new JdbcTemplate(source);
+        var attachments = mock(AttachmentRefService.class);
+        when(attachments.create(any())).thenAnswer(call -> {
+            AttachmentRefDTO ref = call.getArgument(0);
+            db.update("INSERT INTO sys_attachment_ref(attachment_id,source_type,source_id,document_type) VALUES (?,?,?,?)",
+                    ref.getAttachmentId(), ref.getSourceType(), ref.getSourceId(), ref.getDocumentType());
+            return db.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+        });
+        var domain = transactional(new ArtworkService(db, json, attachments), source);
+        var service = transactional(new FilmCreationService(domain, json), source);
+        try (var user = mockStatic(SecurityUtils.class)) {
+            user.when(SecurityUtils::getUsername).thenReturn("designer");
+            var created = service.create(command(Map.of("drawingFileId", 55, "drawingDocumentType", "FILM")));
+            long versionId = ((Number) created.get("versionId")).longValue();
+            var edit = command(Map.of("versionNo", "V1", "drawingFileId", 56, "drawingDocumentType", "FILM"));
+            domain.execute("editVersion", versionId, edit);
+            assertEquals("FILM", db.queryForObject("SELECT document_type FROM sys_attachment_ref WHERE attachment_id=56", String.class));
+            assertEquals(56L, db.queryForObject("SELECT drawing_file_id FROM print_artwork_version WHERE version_id=?", Long.class, versionId));
+            assertEquals(1, db.queryForObject("SELECT COUNT(*) FROM print_artwork_version", Integer.class));
+            verify(attachments).unlink(anyLong());
+        }
+    }
+
+    @Test
+    void sameDrawingCanSaveTypeWithoutCreatingOrUnlinkingReference() {
+        var source = database();
+        var db = new JdbcTemplate(source);
+        db.update("INSERT INTO print_artwork(artwork_no,name,family) VALUES ('SAME','同图纸','面板')");
+        db.update("INSERT INTO print_artwork_version(artwork_id,version_no,status,drawing_file_id) VALUES (1,'V1','DRAFT',55)");
+        db.update("INSERT INTO sys_attachment_ref(attachment_id,source_type,source_id) VALUES (55,'print_artwork_version',1)");
+        var attachments = mock(AttachmentRefService.class);
+        when(attachments.batchUpdate(any())).thenAnswer(call -> {
+            com.jjx.system.domain.dto.AttachmentRefBatchDTO batch = call.getArgument(0);
+            var item = batch.getItems().getFirst();
+            return db.update("UPDATE sys_attachment_ref SET document_type=? WHERE id=?", item.getDocumentType(), item.getRefId());
+        });
+        var domain = transactional(new ArtworkService(db, json, attachments), source);
+        try (var user = mockStatic(SecurityUtils.class)) {
+            user.when(SecurityUtils::getUsername).thenReturn("designer");
+            domain.execute("editVersion", 1, command(Map.of("versionNo", "V1", "drawingFileId", 55, "drawingDocumentType", "FILM")));
+            assertEquals("FILM", db.queryForObject("SELECT document_type FROM sys_attachment_ref WHERE attachment_id=55", String.class));
+            assertEquals(1, db.queryForObject("SELECT COUNT(*) FROM sys_attachment_ref", Integer.class));
+            verify(attachments, never()).create(any());
+            verify(attachments, never()).unlink(anyLong());
+        }
+    }
+
+    @Test
+    void optionalTypeFieldDoesNotChangeHistoricalRequestDigest() throws Exception {
+        var source = database();
+        var db = new JdbcTemplate(source);
+        var service = service(source, mock(AttachmentRefService.class));
+        var command = command(Map.of());
+        try (var user = mockStatic(SecurityUtils.class)) {
+            user.when(SecurityUtils::getUsername).thenReturn("designer");
+            service.create(command);
+            com.fasterxml.jackson.databind.node.ObjectNode legacy = json.valueToTree(command);
+            legacy.remove(java.util.List.of("quantity", "dueDate", "drawingDocumentType"));
+            var hash = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(json.writeValueAsBytes(java.util.List.of("ARTWORK", "createArtwork", 0, "designer", legacy))));
+            assertEquals(hash, db.queryForObject("SELECT request_hash FROM engineering_resource_maintenance WHERE request_id=?", String.class, command.requestId()));
         }
     }
 

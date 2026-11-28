@@ -8,7 +8,7 @@ import java.util.List;
 public record ArtworkCommands(String requestId, Integer expectedRevision, String artworkNo, String name,
         String purpose, String family, String setCode, List<Long> productIds, Long sampleOrderId,
         String versionNo, Long drawingFileId, String technicalSpec, String reason, Boolean disablePrevious,
-        String impactToken, String filmNo, String location, String material, BigDecimal thicknessMm, String size, Integer quantity, java.time.LocalDate dueDate) {
+        String impactToken, String filmNo, String location, String material, BigDecimal thicknessMm, String size, Integer quantity, java.time.LocalDate dueDate, String drawingDocumentType) {
     @JsonAnySetter
     public void unknown(String field,Object value) {
         throw new IllegalArgumentException("未知字段 " + field);
@@ -26,5 +26,6 @@ public record ArtworkCommands(String requestId, Integer expectedRevision, String
         required(requestId,64,"requestId");
         check(expectedRevision!=null && expectedRevision>=0,"需要非负 expectedRevision");
         check(reason==null || reason.length()<=500,"原因超长");
+        check(drawingDocumentType==null || drawingDocumentType.length()<=100,"图纸资料类型超长");
     }
 }

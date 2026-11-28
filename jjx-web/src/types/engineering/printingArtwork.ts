@@ -63,6 +63,7 @@ export interface ArtworkCommand {
   sampleOrderId?: number
   versionNo?: string
   drawingFileId?: number
+  drawingDocumentType?: string
   technicalSpec?: string
   reason?: string
   disablePrevious?: boolean

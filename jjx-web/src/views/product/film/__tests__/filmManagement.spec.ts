@@ -75,13 +75,13 @@ describe('正式页面写入真实API载荷',()=>{
  it('一次提交档案与上传图纸，失败保留输入和文件，重试成功后才清理草稿',async()=>{
   const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openMaster()
   Object.assign(s.masterDraft,{no:'PW-ONE',name:'一次录入',productIds:[10],technicalSpec:' 对位要求 '})
-  const clearPending=vi.fn();const files=[{attachmentId:99}]
+  const clearPending=vi.fn();const files=[{attachmentId:99,documentType:'FILM'}]
   s.masterDrawingCenter={uploading:false,getPendingEntries:()=>files,clearPending}
   api.createWithInitialVersion.mockRejectedValueOnce(new Error('图纸绑定失败'))
   await s.saveMaster()
   expect(s.masterVisible).toBe(true);expect(s.masterDraft.name).toBe('一次录入');expect(clearPending).not.toHaveBeenCalled()
   const first=api.createWithInitialVersion.mock.calls[0][0]
-  expect(first).toEqual(expect.objectContaining({artworkNo:'PW-ONE',drawingFileId:99,technicalSpec:'对位要求',expectedRevision:0}))
+  expect(first).toEqual(expect.objectContaining({artworkNo:'PW-ONE',drawingFileId:99,drawingDocumentType:'FILM',technicalSpec:'对位要求',expectedRevision:0}))
   await s.saveMaster()
   expect(api.createWithInitialVersion.mock.calls[1][0]).toEqual(first)
   expect(clearPending).toHaveBeenCalledOnce();expect(s.masterVisible).toBe(false)
@@ -110,7 +110,37 @@ describe('正式页面写入真实API载荷',()=>{
   expect(api.createWithInitialVersion).toHaveBeenCalledOnce();expect(api.createVersion).not.toHaveBeenCalled();w.unmount()
  })
  it('版本图纸保存与封存继续使用原有受控接口',async()=>{
-  const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openVersions(master);s.openVersionForm({versionId:12,versionNo:'V2',status:ArtworkVersionStatusEnum.DRAFT.value,revision:6,drawingFileId:100});s.drawingUploaded({attachmentId:101});api.editVersion.mockResolvedValueOnce({data:{versionId:12}});await s.saveVersion()
-  expect(api.editVersion).toHaveBeenCalledWith(12,expect.objectContaining({expectedRevision:6,drawingFileId:101}));api.archiveFilm.mockResolvedValueOnce({data:{}});await s.disposeCopy({filmId:9,filmNo:'FL-9',versionId:12,revision:3},'archive');expect(api.archiveFilm).toHaveBeenCalledWith(9,expect.objectContaining({expectedRevision:3,reason:'核对后处置'}));w.unmount()
+  const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openVersions(master);s.openVersionForm({versionId:12,versionNo:'V2',status:ArtworkVersionStatusEnum.DRAFT.value,revision:6,drawingFileId:100});s.drawingUploaded({attachmentId:101});s.versionDrawingCenter={uploading:false,getPendingEntries:()=>[{attachmentId:101,documentType:'FILM'}],clearPending:vi.fn()};api.editVersion.mockResolvedValueOnce({data:{versionId:12}});await s.saveVersion()
+  expect(api.editVersion).toHaveBeenCalledWith(12,expect.objectContaining({expectedRevision:6,drawingFileId:101,drawingDocumentType:'FILM'}));api.archiveFilm.mockResolvedValueOnce({data:{}});await s.disposeCopy({filmId:9,filmNo:'FL-9',versionId:12,revision:3},'archive');expect(api.archiveFilm).toHaveBeenCalledWith(9,expect.objectContaining({expectedRevision:3,reason:'核对后处置'}));w.unmount()
+ })
+ it('新增图纸未选类型时拦截，选好后才传递二级类型',async()=>{
+  const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openMaster()
+  Object.assign(s.masterDraft,{name:'类型必选',productIds:[10]})
+  const files:any[]=[{attachmentId:99,documentType:null}]
+  s.masterDrawingCenter={uploading:false,getPendingEntries:()=>files,clearPending:vi.fn()}
+  await s.saveMaster();expect(api.createWithInitialVersion).not.toHaveBeenCalled()
+  expect(messages.warning).toHaveBeenCalledWith('请选择图纸资料类型（二级）')
+  files[0].documentType='FILM';await s.saveMaster()
+  expect(api.createWithInitialVersion).toHaveBeenCalledWith(expect.objectContaining({drawingFileId:99,drawingDocumentType:'FILM'}));w.unmount()
+ })
+ it('修改版本图纸类型失败保留待绑定队列，成功后才清理',async()=>{
+  const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openVersions(master)
+  s.openVersionForm({versionId:12,versionNo:'V2',status:ArtworkVersionStatusEnum.DRAFT.value,revision:6,drawingFileId:100})
+  const files:any[]=[{attachmentId:101,documentType:null}];const clearPending=vi.fn()
+  s.versionDrawingCenter={uploading:false,getPendingEntries:()=>files,clearPending}
+  s.drawingUploaded({attachmentId:101});await s.saveVersion();expect(api.editVersion).not.toHaveBeenCalled()
+  files[0].documentType='FILM';api.editVersion.mockRejectedValueOnce(new Error('保存失败'));await s.saveVersion()
+  expect(s.versionFormVisible).toBe(true);expect(clearPending).not.toHaveBeenCalled()
+  expect(api.editVersion).toHaveBeenCalledWith(12,expect.objectContaining({drawingFileId:101,drawingDocumentType:'FILM'}))
+  api.editVersion.mockResolvedValueOnce({data:{versionId:12}});await s.saveVersion();expect(clearPending).toHaveBeenCalledOnce();w.unmount()
+ })
+ it('修改版本上传中不保存，移除待绑定图纸恢复原图纸，不发送旧的临时ID',async()=>{
+  const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openVersions(master)
+  s.openVersionForm({versionId:12,versionNo:'V2',status:ArtworkVersionStatusEnum.DRAFT.value,revision:6,drawingFileId:100})
+  s.drawingUploaded({attachmentId:101})
+  s.versionDrawingCenter={uploading:true,getPendingEntries:()=>[],clearPending:vi.fn()}
+  await s.saveVersion();expect(api.editVersion).not.toHaveBeenCalled()
+  s.versionDrawingCenter.uploading=false;api.editVersion.mockResolvedValueOnce({data:{versionId:12}});await s.saveVersion()
+  expect(api.editVersion).toHaveBeenCalledWith(12,expect.objectContaining({drawingFileId:100,drawingDocumentType:undefined}));w.unmount()
  })
 })

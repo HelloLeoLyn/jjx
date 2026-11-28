@@ -116,7 +116,7 @@
       <template #footer><el-button @click="receiptVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="saveReceipt">确认本次回片</el-button></template>
     </el-dialog>
     <el-dialog v-model="versionFormVisible" :title="versionDraft.versionId ? '编辑版本 / 图纸' : '新增版本'" width="700px" append-to-body destroy-on-close>
-      <el-form label-width="90px"><el-form-item label="所属菲林">{{ detail?.artworkNo }} {{ detail?.name }}</el-form-item><el-form-item label="版本号" required><el-input v-model="versionDraft.versionNo" maxlength="32" /></el-form-item><el-form-item label="技术要求"><el-input v-model="versionDraft.technicalSpec" type="textarea" :rows="4" maxlength="2000" /></el-form-item><el-form-item label="图纸"><template v-if="versionDraft.versionId"><AttachmentCenter variant="upload-only" source-type="print_artwork_version" :source-id="versionDraft.versionId" :draft-id="`print-version-${versionDraft.versionId}`" @uploaded="drawingUploaded" /><span v-if="versionDraft.drawingFileId">图纸已选择，保存版本后绑定</span><el-button v-if="versionDraft.drawingFileId" link type="danger" @click="versionDraft.drawingFileId = undefined">移除图纸</el-button></template><span v-else class="muted">先保存版本，再编辑版本上传图纸。</span></el-form-item></el-form>
+      <el-form label-width="90px"><el-form-item label="所属菲林">{{ detail?.artworkNo }} {{ detail?.name }}</el-form-item><el-form-item label="版本号" required><el-input v-model="versionDraft.versionNo" maxlength="32" /></el-form-item><el-form-item label="技术要求"><el-input v-model="versionDraft.technicalSpec" type="textarea" :rows="4" maxlength="2000" /></el-form-item><el-form-item label="图纸"><template v-if="versionDraft.versionId"><AttachmentCenter ref="versionDrawingCenter" variant="upload-only" :auto-bind="false" :locked="saving" :actions="['remove']" source-type="print_artwork_version" :source-id="versionDraft.versionId" :draft-id="`print-version-${versionDraft.versionId}`" @uploaded="drawingUploaded" /><span v-if="versionDraft.drawingFileId">图纸已选择，保存版本后绑定</span><el-button v-if="versionDraft.drawingFileId" link type="danger" @click="removeVersionDrawing">移除图纸</el-button></template><span v-else class="muted">先保存版本，再编辑版本上传图纸。</span></el-form-item></el-form>
       <template #footer><el-button @click="versionFormVisible=false">取消</el-button><el-button type="primary" :loading="saving" @click="saveVersion">保存版本</el-button></template>
     </el-dialog>
     <el-dialog v-model="impactVisible" title="版本影响范围" width="700px" append-to-body><pre class="impact-text">{{ impactText }}</pre></el-dialog>
@@ -220,10 +220,12 @@ async function saveMaster() {
   if(!masterDraft.productIds.length && !masterDraft.sampleOrderId) return ElMessage.warning('请关联至少一个产品或选择来源打样单')
   const drawings=masterDraft.id ? [] : masterDrawingCenter.value?.getPendingEntries() || []
   if(drawings.length>1) return ElMessage.warning('初始版本只保存一份图纸，请移除多余文件后再保存')
+  if(drawings.length && !drawings[0].documentType) return ElMessage.warning('请选择图纸资料类型（二级）')
   saving.value=true
   const command:ArtworkCommand={requestId:masterRequestId,expectedRevision:masterDraft.revision,artworkNo:masterDraft.no.trim(),name:masterDraft.name.trim(),family:masterDraft.family,purpose:masterDraft.purpose.trim()||undefined,setCode:masterDraft.setCode.trim()||undefined,productIds:[...masterDraft.productIds],sampleOrderId:masterDraft.sampleOrderId}
   if(!masterDraft.id) {
     command.drawingFileId=drawings[0]?.attachmentId
+    command.drawingDocumentType=drawings[0]?.documentType||undefined
     command.technicalSpec=masterDraft.technicalSpec.trim()||undefined
   }
   try {
@@ -289,22 +291,30 @@ async function saveReceipt() {
 
 const versionFormVisible=ref(false)
 const versionDraft=reactive({versionId:undefined as number|undefined,versionNo:'',technicalSpec:'',drawingFileId:undefined as number|undefined,revision:0,artworkRevision:0})
+const versionDrawingCenter=ref<InstanceType<typeof AttachmentCenter>>()
+let originalVersionDrawingFileId:number|undefined
 let versionCommandId=''
 function openVersionForm(version?:ArtworkVersion) {
   if(!detail.value) return
   versionCommandId=newFilmRequestId()
+  originalVersionDrawingFileId=version?.drawingFileId||undefined
   Object.assign(versionDraft,{versionId:version?.versionId,versionNo:version?.versionNo||`V${(detail.value.versions?.length||0)+1}`,technicalSpec:version?.technicalSpec||'',drawingFileId:version?.drawingFileId||undefined,revision:version?.revision||0,artworkRevision:detail.value.revision||0})
   versionFormVisible.value=true
 }
 function drawingUploaded(payload:{attachmentId:number}) {versionDraft.drawingFileId=payload.attachmentId}
+function removeVersionDrawing() {versionDraft.drawingFileId=undefined;versionDrawingCenter.value?.clearPending()}
 async function saveVersion() {
-  if(saving.value || !detail.value) return
+  if(saving.value || versionDrawingCenter.value?.uploading || !detail.value) return
+  const drawings=versionDrawingCenter.value?.getPendingEntries()||[]
+  if(drawings.length>1) return ElMessage.warning('一个版本只保存一份图纸，请移除多余文件')
+  if(drawings.length && !drawings[0].documentType) return ElMessage.warning('请选择图纸资料类型（二级）')
   if(!versionDraft.versionNo.trim()) return ElMessage.warning('请填写版本号')
   saving.value=true
   try {
-    const command:ArtworkCommand={requestId:versionCommandId,expectedRevision:versionDraft.versionId ? versionDraft.revision : versionDraft.artworkRevision,versionNo:versionDraft.versionNo.trim(),technicalSpec:versionDraft.technicalSpec||undefined,drawingFileId:versionDraft.drawingFileId}
+    const command:ArtworkCommand={requestId:versionCommandId,expectedRevision:versionDraft.versionId ? versionDraft.revision : versionDraft.artworkRevision,versionNo:versionDraft.versionNo.trim(),technicalSpec:versionDraft.technicalSpec||undefined,drawingFileId:drawings[0]?.attachmentId??(versionDraft.drawingFileId?originalVersionDrawingFileId:undefined),drawingDocumentType:drawings[0]?.documentType||undefined}
     const result:any=versionDraft.versionId ? await api.editVersion(versionDraft.versionId,command) : await api.createVersion(detail.value.artworkId,command)
     const id=versionDraft.versionId || result.data?.versionId
+    versionDrawingCenter.value?.clearPending()
     versionFormVisible.value=false;await Promise.all([refreshDetails(),loadRows()]);if(id) selectedVersionId.value=id
     ElMessage.success('版本已保存')
   } catch(error) {ElMessage.error(filmError(error,'版本保存失败，输入已保留'))}
