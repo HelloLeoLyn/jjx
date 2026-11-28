@@ -28,6 +28,7 @@ public class ArtworkService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
     private final AttachmentRefService attachments;
+    @org.springframework.beans.factory.annotation.Autowired private PrintStyleService styles;
     @org.springframework.beans.factory.annotation.Value("${file.upload.path:./upload}")
     private String uploadBasePath = "./upload";
 
@@ -52,6 +53,7 @@ public class ArtworkService {
             StpUtil.checkPermission("engineering:film:disable");
         var payload=(com.fasterxml.jackson.databind.node.ObjectNode)json.valueToTree(c);
         // 新增可选字段为空时保持旧命令摘要，部署后重试旧requestId仍可重放。
+        if(c.stylesJson()==null) payload.remove("stylesJson");
         if(c.quantity()==null) payload.remove("quantity");
         if(c.dueDate()==null) payload.remove("dueDate");
         if(c.drawingDocumentType()==null) payload.remove("drawingDocumentType");
@@ -166,8 +168,10 @@ public class ArtworkService {
         required(c.versionNo(),32,"版本号");
         int rev=0;
         Long oldFile=null;
+        long artworkId; String previousStyles=null;
         if(action.equals("createVersion")) {
             var a=lockArtwork(id);
+            artworkId=id;
             revision(c,(int)a.get("lock_version"));
             jdbc.update("update print_artwork set lock_version=lock_version+1 where artwork_id=?",id);
             jdbc.update("""
@@ -176,7 +180,11 @@ public class ArtworkService {
                 """,id,c.versionNo(),c.drawingFileId(),c.technicalSpec(),user,user);
             id=inserted();
         } else {
+            long parent=((Number)one("SELECT artwork_id FROM print_artwork_version WHERE version_id=?",id).get("artwork_id")).longValue();
+            lockArtwork(parent);
             var v=lockVersion(id);
+            artworkId=((Number)v.get("artwork_id")).longValue();
+            previousStyles=Objects.toString(v.get("styles_json"),null);
             rev=(int)v.get("lock_version");
             revision(c,rev++);
             check("DRAFT".equals(v.get("status")),"仅草稿可编辑");
@@ -186,6 +194,8 @@ public class ArtworkService {
                 update_by=?,update_time=now(3),lock_version=lock_version+1 where version_id=?
                 """,c.versionNo(),c.drawingFileId(),c.technicalSpec(),user,user,id);
         }
+        if (c.stylesJson()!=null) jdbc.update("UPDATE print_artwork_version SET styles_json=? WHERE version_id=?",
+            styles.saveStyles(artworkId,c.stylesJson(),previousStyles).toString(),id);
         if(!Objects.equals(oldFile,c.drawingFileId())) {
             if(oldFile!=null) {
                 var refs=jdbc.queryForList("""
@@ -249,6 +259,7 @@ public class ArtworkService {
         }
         if(action.equals("reject") || action.equals("disable")) required(c.reason(),500,"原因");
         if(action.equals("submit") || action.equals("release")) {
+            if(v.get("styles_json")!=null) check(!styles.read(v.get("styles_json").toString()).isEmpty(),"请先定义版本样式再提交或发布");
             check(v.get("drawing_file_id")!=null && !jdbc.queryForList("""
                 select id from sys_attachment_ref where source_type='print_artwork_version' and source_id=?
                 and attachment_id=? and deleted=0 and ref_state='active' for update
@@ -332,7 +343,7 @@ public class ArtworkService {
         var v=one("select lock_version from print_artwork_version where version_id=?",id);
         var bindings=specBindings.orElseThrow(() -> new BusinessException(409,"规范印刷绑定尚未接入，无法确认停用影响"));
         List<Long> specs=bindings.referencing(id).stream().distinct().sorted().toList();
-        var routes=jdbc.queryForList("select distinct routing_id from engineering_routing_item where artwork_version_id=? order by routing_id",Long.class,id);
+        var routes=jdbc.queryForList("select distinct routing_id from engineering_routing_item where artwork_version_id=? OR JSON_CONTAINS(print_requirements,JSON_OBJECT('versionId',?),'$.styles') order by routing_id",Long.class,id,id);
         List<Long> published=List.of(), orders=List.of();
         if(!specs.isEmpty()) {
             String args=String.join(",",Collections.nCopies(specs.size(),"?"));
@@ -343,7 +354,7 @@ public class ArtworkService {
                 params.add(terminal.getValue());
             orders=jdbc.queryForList("select order_id from production_order where work_spec_version_id in ("+args+") and order_status not in (?,?,?) order by order_id",Long.class,params.toArray());
         }
-        var executions=jdbc.queryForList("select distinct execution_id from print_use_segment where version_id=? and end_time is null order by execution_id",Long.class,id);
+        var executions=jdbc.queryForList("select distinct execution_id from print_use_segment where (version_id=? OR JSON_CONTAINS(snapshot,JSON_OBJECT('versionId',?),'$.requirements.styles')) and end_time is null order by execution_id",Long.class,id,id);
         return Map.of("routingIds",routes,"specVersionIds",published,"orderIds",orders,"executionIds",executions,
             "impactToken",hash(List.of(id,v.get("lock_version"),routes,published,orders,executions)));
     }

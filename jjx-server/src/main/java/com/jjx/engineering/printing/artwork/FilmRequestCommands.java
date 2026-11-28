@@ -27,7 +27,7 @@ public record FilmRequestCommands(String requestId,Integer expectedRevision,BigD
     void validateReceipt() {
         check(copies!=null && !copies.isEmpty() && copies.size()<=500,"请填写本次逐张回片信息");
         for (Copy copy:copies) {
-            check(copy!=null,"回片信息不能为空");required(copy.filmNo(),64,"菲林片编号");required(copy.location(),200,"存放位置");
+            check(copy!=null,"回片信息不能为空");check(copy.filmNo()==null || copy.filmNo().length()<=64,"菲林片编号超长");required(copy.location(),200,"存放位置");
         }
     }
 }

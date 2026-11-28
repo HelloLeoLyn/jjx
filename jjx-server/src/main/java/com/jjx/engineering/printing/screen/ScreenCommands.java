@@ -7,7 +7,13 @@ import java.math.BigDecimal;
 public record ScreenCommands(String requestId, Integer expectedRevision, String frameNo, String frameType,
         String location, Integer mesh, BigDecimal tensionNcm, String material, Boolean qualified,
         Long frameId, Long stretchId, Long filmId, Long versionId, String plateNo, String position,
+        String inspection, String reason, String remark, String sourcesJson, String frameSeries, String layout) {
+    public ScreenCommands(String requestId, Integer expectedRevision, String frameNo, String frameType,
+        String location, Integer mesh, BigDecimal tensionNcm, String material, Boolean qualified,
+        Long frameId, Long stretchId, Long filmId, Long versionId, String plateNo, String position,
         String inspection, String reason, String remark) {
+        this(requestId,expectedRevision,frameNo,frameType,location,mesh,tensionNcm,material,qualified,frameId,stretchId,filmId,versionId,plateNo,position,inspection,reason,remark,null,null,null);
+    }
     @JsonAnySetter
     public void rejectUnknown(String name, Object value) {
         throw new IllegalArgumentException("未知命令字段 " + name);
@@ -23,6 +29,7 @@ public record ScreenCommands(String requestId, Integer expectedRevision, String 
 
     void validate() {
         required(requestId, 64, "requestId");
+        require(layout==null || layout.length()<=2000,"制版排布不能超过2000字");
         require(expectedRevision != null && expectedRevision >= 0, "需要非负 expectedRevision");
         require(location == null || location.length() <= 200, "位置超长");
         require(frameType == null || frameType.length() <= 30, "型号超长");

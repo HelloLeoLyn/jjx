@@ -57,4 +57,18 @@ class ArtworkContentSnapshotTest {
         assertEquals("UNVERIFIED",ArtworkContentSnapshot.released(db,json,2).path("verification").asText());
         verify(db,never()).queryForList(contains("FROM sys_attachment"),any(Object.class));
     }
+
+    @Test void styleContentIsFrozenButGeneratedIdentityDoesNotChangeContentDigest() {
+        file(fileHash,null);
+        var first=version(1,"");var second=version(2,"");
+        first.put("styles_json","[{\"styleNo\":\"A\",\"name\":\"正面\",\"inkColor\":\"RED\"}]");
+        second.put("styles_json","[{\"styleNo\":\"B\",\"name\":\"正面\",\"inkColor\":\"RED\"}]");
+        var a=ArtworkContentSnapshot.capture(db,json,"/missing",first);
+        var b=ArtworkContentSnapshot.capture(db,json,"/missing",second);
+        assertEquals("film-content-v2",a.path("algorithm").asText());
+        assertEquals(a.path("contentDigest"),b.path("contentDigest"));
+        assertEquals("A",a.path("styles").get(0).path("styleNo").asText());
+        second.put("styles_json",second.get("styles_json").toString().replace("RED","BLUE"));
+        assertNotEquals(a.path("contentDigest"),ArtworkContentSnapshot.capture(db,json,"/missing",second).path("contentDigest"));
+    }
 }

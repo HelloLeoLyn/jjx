@@ -35,9 +35,21 @@ public final class ArtworkContentSnapshot {
         controlled.put("algorithm",ALGORITHM);
         controlled.put("drawingSha256",fileHash);
         controlled.put("technicalSpec",technical);
+        if (version.get("styles_json")!=null) {
+            try {
+                var contentStyles=controlled.putArray("styles");
+                for (var style:json.readTree(version.get("styles_json").toString()))
+                    contentStyles.addObject().put("name",style.path("name").asText()).put("inkColor",style.path("inkColor").asText());
+                controlled.put("algorithm","film-content-v2");
+            } catch (JsonProcessingException e) { throw new IllegalStateException("版本样式格式异常",e); }
+        }
         ObjectNode result=controlled.deepCopy();
         result.put("contentDigest",fileHash==null ? null : Sha256Utils.ofText(controlled.toString()));
         result.put("verification",fileHash==null ? "UNVERIFIED" : "VERIFIED");
+        if (version.get("styles_json")!=null) {
+            try { result.set("styles",json.readTree(version.get("styles_json").toString())); }
+            catch (JsonProcessingException e) { throw new IllegalStateException("版本样式格式异常",e); }
+        }
         return result;
     }
 

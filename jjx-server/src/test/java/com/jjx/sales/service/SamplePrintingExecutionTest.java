@@ -75,7 +75,7 @@ class SamplePrintingExecutionTest {
     @Test void occupiedPlateCannotStartAnotherSample() {
         var row=process(SampleProcessStatusEnum.PENDING);selected(row);
         when(sampleProcessMapper.planningVersion(200L,10L)).thenReturn(Map.of("artworkId",7L));
-        when(sampleProcessMapper.otherSampleUses(4L,100L,SampleProcessStatusEnum.IN_PROGRESS.getValue())).thenReturn(List.of(999L));
+        doThrow(new BusinessException("该实体网版正在使用")).when(screenService).requireAvailableForUse(4L,null,100L);
         var dto=new SampleProcessItemStatusDTO();dto.setActualPlateId(4L);dto.setStatus(SampleProcessStatusEnum.IN_PROGRESS.getValue());
         assertThrows(BusinessException.class,()->service.updateProcessItemStatus(10L,100L,dto));
         verify(sampleProcessMapper,never()).updateById(any(SalesSampleProcess.class));

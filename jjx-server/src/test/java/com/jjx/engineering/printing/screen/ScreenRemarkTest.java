@@ -33,6 +33,8 @@ class ScreenRemarkTest {
         db.execute("CREATE TABLE engineering_screen_plate(plate_id BIGINT,occupied_frame_id BIGINT,frame_id BIGINT,version_id BIGINT,stretch_id BIGINT,v2_registered INT,status VARCHAR(20),washed_time TIMESTAMP,position VARCHAR(64))");
         db.execute("CREATE TABLE print_artwork_version(version_id BIGINT,status VARCHAR(20))");
         db.update("INSERT INTO engineering_screen_frame VALUES(1,'K1','原型号','A架','READY',0,'旧备注',1,'0',NULL)");
+        db.execute("ALTER TABLE engineering_screen_frame ADD frame_series VARCHAR(64)");
+        db.execute("ALTER TABLE print_frame_stretch ADD stretch_no VARCHAR(100)");
     }
 
     ScreenCommands command(String request, int revision, String remark) {
@@ -83,7 +85,7 @@ class ScreenRemarkTest {
 
     @Test void historicalRequestWithoutRemarkFieldStillReplays() throws Exception {
         var command=json.convertValue(java.util.Map.of("requestId","old-clean","expectedRevision",0,"reason","清洁"),ScreenCommands.class);
-        var old=(com.fasterxml.jackson.databind.node.ObjectNode)json.valueToTree(command);old.remove("remark");
+        var old=(com.fasterxml.jackson.databind.node.ObjectNode)json.valueToTree(command);old.remove(java.util.List.of("remark","sourcesJson","frameSeries","layout"));
         var hash=com.jjx.common.utils.Sha256Utils.ofText(json.writeValueAsString(java.util.List.of("SCREEN_FRAME",1L,"clean","remark-test",old)));
         db.update("INSERT INTO engineering_resource_maintenance(resource_type,resource_id,action_type,operator,request_id,request_hash,result_snapshot) VALUES('SCREEN_FRAME',1,'clean','remark-test','old-clean',?,?)",
                 hash,"{\"frameId\":1,\"status\":\"READY\",\"revision\":1}");
@@ -100,17 +102,5 @@ class ScreenRemarkTest {
         assertArrayEquals(new String[]{"engineering:resource:edit"},permission.value());
     }
 
-    @Test void usableCountExcludesWrongParametersMaintenanceAndDisabledVersion() {
-        db.update("INSERT INTO print_artwork_version VALUES(3,'RELEASED')");
-        db.update("INSERT INTO print_frame_stretch VALUES(2,1,1,120,20,1,NULL,NULL,NULL)");
-        db.update("INSERT INTO engineering_screen_plate VALUES(4,1,1,3,2,1,'RELEASED',NULL,'面板')");
-        assertEquals(1,service.countUsablePlate(3,"{\"meshMin\":100,\"position\":\"面板\"}"));
-        assertEquals(0,service.countUsablePlate(3,"{\"meshMin\":121}"));
-        assertEquals(0,service.countUsablePlate(3,"{\"position\":\"下线\"}"));
-        db.update("UPDATE engineering_screen_frame SET status='MAINTENANCE'");
-        assertEquals(0,service.countUsablePlate(3));
-        db.update("UPDATE engineering_screen_frame SET status='READY'");
-        db.update("UPDATE print_artwork_version SET status='DISABLED'");
-        assertEquals(0,service.countUsablePlate(3));
-    }
+    // 资源计数现使用MySQL JSON_TABLE，原有参数/维护/停用反例移至PrintStyleMysqlTest验证。
 }

@@ -64,36 +64,36 @@ describe('正式页面写入真实API载荷',()=>{
   const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openCopies(master);s.openReceipt({...request,revision:4});Object.assign(s.receiptRows[0],{filmNo:' FL-009 ',location:' A架 '});api.receiveFilmRequest.mockRejectedValueOnce(new Error('申请已有新回片'))
   await s.saveReceipt();expect(api.receiveFilmRequest).toHaveBeenCalledWith(7,expect.objectContaining({expectedRevision:4,copies:[{filmNo:'FL-009',location:'A架'}]}));expect(api.receiveFilmRequest.mock.calls[0][1]).not.toHaveProperty('versionId');expect(s.receiptVisible).toBe(true);expect(s.receiptRows[0].filmNo).toBe(' FL-009 ');w.unmount()
  })
- it('打开回片登记即预填逐张默认编号，分次回片续号，不预建实物',async()=>{
+ it('回片编号留空交后端分次连续分配，不预建实物',async()=>{
   const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openCopies(master)
-  s.openReceipt(request);expect(s.receiptRows).toEqual([{filmNo:'CP-007-001',location:''}])
-  s.resizeReceipt(2);expect(s.receiptRows.map((row:any)=>row.filmNo)).toEqual(['CP-007-001','CP-007-002'])
+  s.openReceipt(request);expect(s.receiptRows).toEqual([{filmNo:'',location:''}])
+  s.resizeReceipt(2);expect(s.receiptRows.map((row:any)=>row.filmNo)).toEqual(['',''])
   expect(api.receiveFilmRequest).not.toHaveBeenCalled()
   s.openReceipt({...request,receivedQuantity:1,remainingQuantity:1,revision:1})
-  expect(s.receiptRows).toEqual([{filmNo:'CP-007-002',location:''}]);w.unmount()
+  expect(s.receiptRows).toEqual([{filmNo:'',location:''}]);w.unmount()
  })
- it('增减张数保留手改编号和位置，默认编号跳过已有与本次输入的编号',async()=>{
+ it('增减张数保留手改编号和位置，新行编号留给后端分配',async()=>{
   const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openCopies(master)
   s.detail.films=[{filmId:90,filmNo:'cp-007-002',versionId:12}]
   s.openReceipt(request);Object.assign(s.receiptRows[0],{filmNo:'CP-007-003',location:'A架'})
   s.resizeReceipt(2)
-  expect(s.receiptRows).toEqual([{filmNo:'CP-007-003',location:'A架'},{filmNo:'CP-007-004',location:''}])
+  expect(s.receiptRows).toEqual([{filmNo:'CP-007-003',location:'A架'},{filmNo:'',location:''}])
   s.resizeReceipt(1);expect(s.receiptRows).toEqual([{filmNo:'CP-007-003',location:'A架'}])
-  s.resizeReceipt(2);expect(s.receiptRows[0].filmNo).toBe('CP-007-003');expect(s.receiptRows[1].filmNo).toBe('CP-007-004');w.unmount()
+  s.resizeReceipt(2);expect(s.receiptRows[0].filmNo).toBe('CP-007-003');expect(s.receiptRows[1].filmNo).toBe('');w.unmount()
  })
- it('不同申请使用不同默认前缀，超长申请号生成不超64字的建议',async()=>{
+ it('切换申请重置未保存编号，不从申请号派生实体菲林编号',async()=>{
   const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openCopies(master)
-  s.openReceipt(request);const first=s.receiptRows[0].filmNo
-  s.openReceipt({...request,requestId:8,requestNo:'CP-008'});expect(s.receiptRows[0].filmNo).toBe('CP-008-001');expect(s.receiptRows[0].filmNo).not.toBe(first)
-  s.openReceipt({...request,requestId:9,requestNo:'X'.repeat(64)});expect(s.receiptRows[0].filmNo).toBe('CP-9-001');expect(s.receiptRows[0].filmNo.length).toBeLessThanOrEqual(64);w.unmount()
+  s.openReceipt(request);s.receiptRows[0].filmNo='MANUAL-001';s.receiptRows[0].location='A架'
+  s.openReceipt({...request,requestId:8,requestNo:'CP-008'});expect(s.receiptRows).toEqual([{filmNo:'',location:''}])
+  expect(api.receiveFilmRequest).not.toHaveBeenCalled();w.unmount()
  })
- it('默认编号失败保留，重复点击只提交一次，手改后照实提交',async()=>{
+ it('自动编号请求失败保留输入及幂等请求号，手改编号仍照实提交',async()=>{
   const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openCopies(master)
   s.openReceipt(request);s.receiptRows[0].location='A架'
   let reject!:(value:any)=>void;api.receiveFilmRequest.mockReturnValueOnce(new Promise((_,failed)=>{reject=failed}))
   const first=s.saveReceipt();await s.saveReceipt();expect(api.receiveFilmRequest).toHaveBeenCalledOnce()
   reject(new Error('编号已存在'));await first
-  expect(s.receiptVisible).toBe(true);expect(s.receiptRows[0]).toEqual({filmNo:'CP-007-001',location:'A架'})
+  expect(s.receiptVisible).toBe(true);expect(s.receiptRows[0]).toEqual({filmNo:'',location:'A架'})
   s.receiptRows[0].filmNo='供应商-009';await s.saveReceipt()
   expect(api.receiveFilmRequest).toHaveBeenLastCalledWith(7,expect.objectContaining({copies:[{filmNo:'供应商-009',location:'A架'}]}));w.unmount()
  })

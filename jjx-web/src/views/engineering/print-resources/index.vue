@@ -85,7 +85,7 @@
       <el-alert v-if="frameCreateError" :title="frameCreateError" type="error" :closable="false" />
       <el-form label-width="90px" :disabled="submitting" @submit.prevent="submitFrameCreate">
         <el-form-item label="网框编号" required><el-input v-model="frameForm.frameNo" maxlength="50" aria-label="网框编号" placeholder="填写实物网框编号" /></el-form-item>
-        <el-form-item label="型号"><el-input v-model="frameForm.frameType" maxlength="30" /></el-form-item>
+        <el-form-item label="编码系列"><el-input v-model="frameForm.frameSeries" maxlength="64" placeholder="如 YL1025 或 GY，实物框号保持原号" /></el-form-item><el-form-item label="型号"><el-input v-model="frameForm.frameType" maxlength="30" /></el-form-item>
         <el-form-item label="存放位置"><el-input v-model="frameForm.location" maxlength="200" /></el-form-item>
       </el-form>
       <template #footer><el-button :disabled="submitting" @click="frameCreateVisible=false">取消</el-button><el-button type="primary" :loading="submitting" @click="submitFrameCreate">保存网框</el-button></template>
@@ -124,6 +124,7 @@
             <el-table-column label="合格" width="80">
               <template #default="{ row }">{{ row.qualified ? '是' : '否' }}</template>
             </el-table-column>
+            <el-table-column prop="stretchNo" label="绷网编号" min-width="150" />
             <el-table-column prop="stretchTime" label="绷网时间" width="160" />
             <el-table-column prop="endTime" label="结束时间" width="160" />
           </el-table>
@@ -206,6 +207,15 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item><el-button :disabled="!plateForm.filmId || versionLoading" @click="addPlateSource">加入本次制版（默认全选样式）</el-button></el-form-item>
+        <el-form-item label="制版来源">
+          <div v-for="(source, index) in plateSources" :key="source.filmId" style="width:100%;margin-bottom:10px">
+            <strong>{{ source.filmNo }} / 版本 #{{ source.versionId }}</strong>
+            <el-button link type="danger" @click="plateSources.splice(index, 1)">移除</el-button>
+            <el-checkbox-group v-model="source.styleNos"><el-checkbox v-for="style in source.styles" :key="style.styleNo" :value="style.styleNo">{{ style.styleNo }} {{ style.name }} · {{ style.inkColor }}</el-checkbox></el-checkbox-group>
+          </div>
+        </el-form-item>
+        <el-form-item label="实际制版排布"><el-input v-model="plateForm.layout" type="textarea" maxlength="2000" placeholder="记录实际排布，与菲林样式定义分开" /></el-form-item>
         <el-form-item label="版号" required
           ><el-input v-model="plateForm.plateNo" maxlength="80"
         /></el-form-item>
@@ -222,6 +232,7 @@
 </template>
 
 <script setup lang="ts">
+import { readStyles, type FilmStyle, type PlateSource } from '@/components/printing/printStyles'
 /** 网版作业列表页（dev-20261126-001）：网框分页 + 绷网/制版/洗版/维护。 */
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -292,11 +303,11 @@ const page = reactive({ pageNum: 1, pageSize: 20, total: 0 })
 const loading = ref(false)
 const submitting = ref(false)
 const frameCreateVisible = ref(false), frameCreateError = ref('')
-const frameForm = reactive({ frameNo: '', frameType: '', location: '' })
+const frameForm = reactive({ frameNo: '', frameType: '', location: '', frameSeries: '' })
 let frameCreateRequestId = ''
 function openFrameCreate() {
   if (submitting.value) return
-  Object.assign(frameForm, { frameNo: '', frameType: '', location: '' })
+  Object.assign(frameForm, { frameNo: '', frameType: '', location: '', frameSeries: '' })
   frameCreateError.value = ''; frameCreateRequestId = newRequestId(); frameCreateVisible.value = true
 }
 async function submitFrameCreate() {
@@ -304,7 +315,7 @@ async function submitFrameCreate() {
   if (!frameForm.frameNo.trim()) return ElMessage.warning('请填写实物网框编号')
   submitting.value = true; frameCreateError.value = ''
   try {
-    await engineeringResourceApi.createPrintFrame({ requestId: frameCreateRequestId, expectedRevision: 0, frameNo: frameForm.frameNo.trim(), frameType: frameForm.frameType.trim() || undefined, location: frameForm.location.trim() || undefined })
+    await engineeringResourceApi.createPrintFrame({ requestId: frameCreateRequestId, expectedRevision: 0, frameNo: frameForm.frameNo.trim(), frameSeries: frameForm.frameSeries.trim() || undefined, frameType: frameForm.frameType.trim() || undefined, location: frameForm.location.trim() || undefined })
     frameCreateVisible.value = false; query.keyword = frameForm.frameNo.trim(); query.status = ''
     ElMessage.success('网框已新增，请在该网框行登记绷网'); await load(1)
   } catch (error: any) { frameCreateError.value = error.response?.data?.message || error.message || '网框新增失败，输入已保留' }
@@ -350,7 +361,17 @@ const stretchForm = reactive<any>({
 })
 
 const plateVisible = ref(false)
-const plateForm = reactive<any>({ plateNo: '', position: '', filmId: undefined })
+const plateForm = reactive<any>({ plateNo: '', position: '', filmId: undefined, layout: '' })
+const plateSources = ref<PlateSource[]>([])
+const pickedStyles = ref<FilmStyle[]>([])
+function addPlateSource() {
+  if (!picked.value?.versionId || !plateForm.filmId) return
+  if (!pickedStyles.value.length) return ElMessage.warning('该版本没有已定义样式，请先新建含样式的版本')
+  if (plateSources.value.some(source => source.filmId === plateForm.filmId)) return ElMessage.warning('该实体菲林已加入')
+  const film = filmOptions.value.find(row => row.filmId === plateForm.filmId)
+  if (!film) return
+  plateSources.value.push({ filmId: film.filmId, filmNo: film.filmNo, versionId: Number(picked.value.versionId), styles: pickedStyles.value.map(style => ({ ...style })), styleNos: pickedStyles.value.map(style => style.styleNo!) })
+}
 const picked = ref<PrintSearchRow | null>(null)
 const filmOptions = ref<any[]>([])
 const versionLoading = ref(false)
@@ -511,6 +532,7 @@ async function openPlate(row: any) {
     return
   }
   picked.value = null
+  plateSources.value = []; pickedStyles.value = []; plateForm.layout = ''
   filmOptions.value = []
   plateForm.filmId = undefined
   plateForm.plateNo = row.frameNo + '-' + new Date().toISOString().slice(5, 10).replace('-', '')
@@ -534,6 +556,7 @@ async function onPickVersion(item: PrintSearchRow) {
     if (!version || version.status !== ArtworkVersionStatusEnum.RELEASED.value) return ElMessage.warning('请选择已发布且未停用的菲林版本')
     picked.value = { ...item, versionNo: version.versionNo, artworkNo: res.data.artworkNo, name: res.data.name }
     const films = (res.data.films || []).filter((f: any) => f.versionId === version.versionId && f.status === FilmCopyStatusEnum.AVAILABLE.value)
+    pickedStyles.value = readStyles(version.stylesJson)
     filmOptions.value = films
     plateForm.filmId = films.length === 1 ? films[0].filmId : undefined
   } catch (error: any) {
@@ -543,12 +566,12 @@ async function onPickVersion(item: PrintSearchRow) {
 
 async function submitPlate() {
   if (submitting.value || versionLoading.value) return
-  if (!currentFrame || !picked.value?.versionId) {
+  if (!currentFrame || !plateSources.value.length) {
     ElMessage.warning('请先选择菲林版本')
     return
   }
-  if (!plateForm.filmId) {
-    ElMessage.warning('请选择菲林片')
+  if (plateSources.value.some(source => !source.styleNos?.length)) {
+    ElMessage.warning('每张实体菲林至少选择一个样式')
     return
   }
   if (!plateForm.plateNo || !plateForm.position) {
@@ -562,8 +585,8 @@ async function submitPlate() {
       expectedRevision: Number(currentFrame.revision ?? 0),
       frameId: Number(currentFrame.frameId),
       stretchId: Number(currentFrame.stretchId),
-      versionId: Number(picked.value.versionId),
-      filmId: Number(plateForm.filmId),
+      sourcesJson: JSON.stringify(plateSources.value.map(({ filmId, versionId, styleNos }) => ({ filmId, versionId, styleNos }))),
+      layout: plateForm.layout || undefined,
       plateNo: plateForm.plateNo,
       position: plateForm.position,
     })

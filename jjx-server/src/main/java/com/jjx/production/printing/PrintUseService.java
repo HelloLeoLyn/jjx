@@ -89,6 +89,7 @@ public class PrintUseService {
         // 版本→框→版→执行；参数复核在写用版段之前，备用版不修改已发布规范。
         artworkService.requireUsableVersion(plateVersion);
         screenService.requireUsablePlate(plateVersion, c.plateId(), plan.requirements());
+        screenService.requireAvailableForUse(c.plateId(),c.executionId(),null);
         if (!identity.equals(executionIdentity(c.executionId(), true)))
             throw new BusinessException(409, "工单印刷要求已变化，请刷新");
 
@@ -106,6 +107,7 @@ public class PrintUseService {
         snapshot.put("versionId", plateVersion);
         snapshot.put("plateId", c.plateId());
         snapshot.put("operator", operator);
+        snapshot.put("requirements",screenService.validateRequirements(plan.requirements()));
 
         try {
             jdbc.update("""

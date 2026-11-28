@@ -26,8 +26,11 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mockStatic;
 
-/** 实际Spring仓储异常转换代理与事务，SQL只在独立H2内执行，不连接业务库。 */
+/** 实际Spring代理与事务，SQL仅在随机MySQL夹具库内执行，开发库业务行不写入。 */
+@org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named="JJX_PRINT_STYLE_MYSQL",matches="1")
 class ScreenProxyRegressionTest {
+    static String schema;
+    static JdbcTemplate admin;
     @Configuration(proxyBeanMethods = false)
     @EnableTransactionManagement(proxyTargetClass = true)
     static class Config {
@@ -38,13 +41,15 @@ class ScreenProxyRegressionTest {
         }
         @Bean DataSource source() {
             // 保留MySQL返回的驼峰列别名，重放JSON不能依赖H2的大小写不敏感Map。
-            return new DriverManagerDataSource("jdbc:h2:mem:" + UUID.randomUUID()
-                    + ";MODE=MySQL;DATABASE_TO_UPPER=FALSE;DB_CLOSE_DELAY=-1", "sa", "");
+            schema="jjx_print008_test_"+UUID.randomUUID().toString().replace("-","");
+            admin=new JdbcTemplate(new DriverManagerDataSource("jdbc:mysql://127.0.0.1:3306/?useSSL=false&allowPublicKeyRetrieval=true","root",System.getenv("DB_PASS")));
+            admin.execute("CREATE DATABASE "+schema+" CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            return new DriverManagerDataSource("jdbc:mysql://127.0.0.1:3306/"+schema+"?useSSL=false&allowPublicKeyRetrieval=true","root",System.getenv("DB_PASS"));
         }
         @Bean JdbcTemplate jdbc(DataSource source) {
             return new JdbcTemplate(source) {
                 @Override public int update(String sql, Object... args) {
-                    // H2不支持MySQL IF表达式，仅在测试适配成等价CASE；仍执行真实SQL与事务。
+                    // 与前期H2夹具保持同一等价CASE表达式，本轮在MySQL执行真实事务。
                     return super.update(sql.replace("washed_time=if(?='wash',now(),null)",
                             "washed_time=CASE WHEN ?='wash' THEN now() ELSE NULL END"), args);
                 }
@@ -54,6 +59,7 @@ class ScreenProxyRegressionTest {
         @Bean ObjectMapper json() { return new ObjectMapper().findAndRegisterModules(); }
         @Bean ScreenRepository repository(JdbcTemplate jdbc) { return new ScreenRepository(jdbc); }
         @Bean ScreenService service(ScreenRepository repository, ObjectMapper json) { return new ScreenService(repository, json); }
+        @Bean com.jjx.engineering.printing.artwork.PrintStyleService styles(JdbcTemplate jdbc,ObjectMapper json) { return new com.jjx.engineering.printing.artwork.PrintStyleService(jdbc,json); }
         @Bean ScreenView view(ScreenRepository repository) { return new ScreenView(repository); }
     }
 
@@ -70,7 +76,7 @@ class ScreenProxyRegressionTest {
         service = context.getBean(ScreenService.class);
         view = context.getBean(ScreenView.class);
         db.execute("CREATE TABLE engineering_screen_frame(frame_id BIGINT AUTO_INCREMENT PRIMARY KEY,frame_no VARCHAR(50) UNIQUE,frame_type VARCHAR(30),location VARCHAR(200),status VARCHAR(20),revision INT DEFAULT 0,remark VARCHAR(500),v2_registered INT,del_flag CHAR DEFAULT '0',create_by VARCHAR(64),update_by VARCHAR(64))");
-        db.execute("CREATE TABLE engineering_resource_maintenance(maintenance_id BIGINT AUTO_INCREMENT PRIMARY KEY,resource_type VARCHAR(30),resource_id BIGINT,action_type VARCHAR(30),operator VARCHAR(64),request_id VARCHAR(64) UNIQUE,request_hash VARCHAR(64),result_snapshot VARCHAR(16000),before_status VARCHAR(20),after_status VARCHAR(20),description VARCHAR(500),operate_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+        db.execute("CREATE TABLE engineering_resource_maintenance(maintenance_id BIGINT AUTO_INCREMENT PRIMARY KEY,resource_type VARCHAR(30),resource_id BIGINT,action_type VARCHAR(30),operator VARCHAR(64),request_id VARCHAR(64) UNIQUE,request_hash VARCHAR(64),result_snapshot JSON,before_status VARCHAR(20),after_status VARCHAR(20),description VARCHAR(500),operate_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
         db.execute("CREATE TABLE print_frame_stretch(stretch_id BIGINT AUTO_INCREMENT PRIMARY KEY,frame_id BIGINT,mesh INT,tension_n_cm DECIMAL(10,2),qualified INT,end_time TIMESTAMP,material VARCHAR(200),stretch_time TIMESTAMP,create_by VARCHAR(64),open_frame_id BIGINT GENERATED ALWAYS AS (CASE WHEN end_time IS NULL THEN frame_id ELSE NULL END),UNIQUE(open_frame_id))");
         db.execute("CREATE TABLE engineering_screen_plate(plate_id BIGINT AUTO_INCREMENT PRIMARY KEY,frame_id BIGINT,plate_no VARCHAR(80) UNIQUE,version_id BIGINT,film_copy_id BIGINT,stretch_id BIGINT,position VARCHAR(100),status VARCHAR(20),v2_registered INT,revision INT DEFAULT 0,create_by VARCHAR(64),update_by VARCHAR(64),released_by VARCHAR(64),released_time TIMESTAMP,washed_time TIMESTAMP,end_reason VARCHAR(500),occupied_frame_id BIGINT GENERATED ALWAYS AS (CASE WHEN status IN ('PENDING','FAILED','RELEASED') THEN frame_id ELSE NULL END),UNIQUE(occupied_frame_id))");
         db.execute("CREATE TABLE print_artwork_version(version_id BIGINT PRIMARY KEY,status VARCHAR(20))");
@@ -79,9 +85,18 @@ class ScreenProxyRegressionTest {
         db.execute("CREATE TABLE sales_sample_process(process_id BIGINT PRIMARY KEY,actual_plate_id BIGINT,status INT)");
         db.update("INSERT INTO print_artwork_version VALUES (11,'RELEASED'),(12,'DRAFT')");
         db.update("INSERT INTO print_film_copy VALUES (21,11,'AVAILABLE'),(22,12,'AVAILABLE')");
+        db.execute("ALTER TABLE engineering_screen_frame ADD frame_series VARCHAR(64)");
+        db.execute("ALTER TABLE engineering_screen_plate ADD sources_json JSON");
+        db.execute("ALTER TABLE engineering_screen_plate ADD layout VARCHAR(2000)");
+        db.execute("ALTER TABLE print_frame_stretch ADD stretch_no VARCHAR(100)");
+        db.execute("ALTER TABLE print_artwork_version ADD styles_json JSON");
+        db.execute("CREATE TABLE sys_number_sequence(sequence_key VARCHAR(100),period_key VARCHAR(64),current_value BIGINT,create_time TIMESTAMP,update_time TIMESTAMP,UNIQUE(sequence_key,period_key))");
     }
 
-    @AfterEach void close() { if (context != null) context.close(); }
+    @AfterEach void close() {
+        if (context != null) context.close();
+        if (admin!=null && schema!=null && schema.matches("jjx_print008_test_[0-9a-f]{32}")) admin.execute("DROP DATABASE "+schema);
+    }
 
     ScreenCommands command(int revision, Map<String, Object> fields) {
         var values = new HashMap<>(fields);

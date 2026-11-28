@@ -18,7 +18,8 @@ public interface ProductWorkSpecVersionMapper extends BaseMapper<ProductWorkSpec
             + "WHERE i.resource_type=#{resourceType} "
             + "AND JSON_CONTAINS(JSON_EXTRACT(CASE WHEN JSON_VALID(i.snapshot_json) "
             + "THEN i.snapshot_json ELSE '{}' END, '$.routing**.artworkVersionId'), "
-            + "CAST(#{artworkVersionId} AS JSON)) = 1 ORDER BY v.id")
+            + "CAST(#{artworkVersionId} AS JSON)) = 1 OR (i.resource_type=#{resourceType} "
+            + "AND JSON_CONTAINS(JSON_EXTRACT(CASE WHEN JSON_VALID(i.snapshot_json) THEN i.snapshot_json ELSE '{}' END, '$.printingItems[*].plateSources[*].versionId'),CAST(#{artworkVersionId} AS JSON))=1) ORDER BY v.id")
     List<Long> selectReferencingArtworkVersion(@Param("artworkVersionId") Long artworkVersionId,
                                                @Param("resourceType") String resourceType);
 

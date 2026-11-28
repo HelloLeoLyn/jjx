@@ -56,4 +56,26 @@ class PrintingSpecSnapshotTest {
         assertThrows(BusinessException.class,()->service.freezePrinting(route));
         verifyNoInteractions(db,artwork);
     }
+
+    @Test void multiFilmSourcesSelectedStylesAndOverrideAreFrozenTogether() throws Exception {
+        var validation=mock(ScreenService.class);
+        when(validation.validateRequirements(anyString())).thenAnswer(call->screen.validateRequirements(call.getArgument(0)));
+        ReflectionTestUtils.setField(service,"screenService",validation);
+        var route=(com.fasterxml.jackson.databind.node.ObjectNode)json.readTree("""
+            {"items":[{"itemId":1,"majorCategory":"PRINT","artworkVersionId":3,"defaultPlateId":9,
+            "printRequirements":{"styles":[{"versionId":4,"styleNo":"B","inkColor":"OVERRIDE"}]}}]}
+            """);
+        route.put("approveStatus",ApproveStatusEnum.APPROVED.getValue());
+        when(db.queryForMap(anyString(),eq(3L))).thenReturn(Map.of("artwork_id",1L,"artwork_no","A","name","图案","version_no","V1"));
+        var plate=new java.util.HashMap<String,Object>(Map.of("plate_no","P9","frame_no","F1","layout","A左B右",
+            "sources_json","[{\"versionId\":3,\"filmId\":21,\"styles\":[{\"styleNo\":\"A\",\"inkColor\":\"RED\"}]},{\"versionId\":4,\"filmId\":22,\"styles\":[{\"styleNo\":\"B\",\"inkColor\":\"BLACK\"}]}]"));
+        when(db.queryForMap(contains("SELECT p.plate_no"),eq(9L))).thenReturn(plate);
+        var frozen=service.freezePrinting(route);
+        assertEquals(2,frozen.get(0).path("plateSources").size());
+        assertEquals("OVERRIDE",frozen.get(0).path("requirements").path("styles").get(0).path("inkColor").asText());
+        assertEquals("A左B右",frozen.get(0).path("plateLayout").asText());
+        String historical=frozen.toString();plate.put("sources_json","[]");plate.put("layout","changed");
+        assertEquals(historical,frozen.toString());
+        verify(validation).requireUsablePlate(3L,9L,route.path("items").get(0).path("printRequirements").toString());
+    }
 }

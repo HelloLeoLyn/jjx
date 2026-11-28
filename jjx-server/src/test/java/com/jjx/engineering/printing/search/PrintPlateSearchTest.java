@@ -15,13 +15,24 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** H2 执行真实 MyBatis SQL/分页，不修改业务库，不代替 MySQL 运行验证。 */
+/** 独立随机MySQL夹具库执行真实MyBatis分页，覆盖JSON_TABLE来源查询；不写业务库。 */
+@org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named="JJX_PRINT_STYLE_MYSQL",matches="1")
 class PrintPlateSearchTest {
     JdbcTemplate db;
+    JdbcTemplate admin;
+    String schema;
+    @org.junit.jupiter.api.AfterEach void cleanup() {
+        if(admin!=null && schema!=null && schema.matches("jjx_print008_test_[0-9a-f]{32}")) admin.execute("DROP DATABASE "+schema);
+    }
     PrintSearchService service;
     @BeforeEach void setup() throws Exception {
-        var ds = new DriverManagerDataSource("jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "");
-        db = new JdbcTemplate(ds);
+        schema="jjx_print008_test_"+UUID.randomUUID().toString().replace("-","");
+        admin=new JdbcTemplate(new DriverManagerDataSource("jdbc:mysql://127.0.0.1:3306/?useSSL=false&allowPublicKeyRetrieval=true","root",System.getenv("DB_PASS")));
+        admin.execute("CREATE DATABASE "+schema+" CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+        var ds=new DriverManagerDataSource("jdbc:mysql://127.0.0.1:3306/"+schema+"?useSSL=false&allowPublicKeyRetrieval=true","root",System.getenv("DB_PASS"));
+        db=new JdbcTemplate(ds) {
+            @Override public void execute(String sql) { super.execute(sql.replaceAll("VARCHAR(?=[,)])","VARCHAR(200)")); }
+        };
         db.execute("CREATE TABLE print_artwork(artwork_id BIGINT,artwork_no VARCHAR,name VARCHAR,purpose VARCHAR)");
         db.execute("CREATE TABLE print_artwork_version(version_id BIGINT,artwork_id BIGINT,version_no VARCHAR,status VARCHAR)");
         db.execute("CREATE TABLE print_film_copy(film_id BIGINT,version_id BIGINT,film_no VARCHAR,status VARCHAR)");
@@ -38,13 +49,31 @@ class PrintPlateSearchTest {
         db.update("INSERT INTO engineering_screen_plate VALUES(9,'PLATE-A','RELEASED','面板',2,5,7,3,1,NULL,5),(10,'PLATE-B','RELEASED','面板',2,6,8,4,1,NULL,6)");
         db.update("INSERT INTO product VALUES(11,'PRODUCT-A','面板产品'),(12,'PRODUCT-B','面板产品')");
         db.update("INSERT INTO engineering_resource_product_rel VALUES('ARTWORK',1,1,11),('ARTWORK',1,1,12)");
+        db.execute("ALTER TABLE engineering_screen_plate ADD sources_json JSON NULL, ADD layout TEXT NULL");
         var config = new MybatisConfiguration(); config.setMapUnderscoreToCamelCase(true); config.addMapper(PrintSearchRepository.class);
-        var pagination = new MybatisPlusInterceptor(); pagination.addInnerInterceptor(new PaginationInnerInterceptor(DbType.H2));
+        var pagination = new MybatisPlusInterceptor(); pagination.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
         var factory = new MybatisSqlSessionFactoryBean(); factory.setDataSource(ds); factory.setConfiguration(config);
         factory.setPlugins(pagination); factory.setGlobalConfig(new GlobalConfig().setBanner(false));
         service = new PrintSearchService(new SqlSessionTemplate(factory.getObject()).getMapper(PrintSearchRepository.class));
     }
     PrintSearchOption option(String q) { var o = new PrintSearchOption(); o.setQ(q); o.setScene("PLATE"); return o; }
+
+    @Test void secondaryFilmAndProductSearchKeepPhysicalPlateUniqueAndCheckAllVersions() {
+        db.update("INSERT INTO print_artwork VALUES(30,'SECOND','第二菲林','印刷')");
+        db.update("INSERT INTO print_artwork_version VALUES(31,30,'V2','RELEASED')");
+        db.update("INSERT INTO print_film_copy VALUES(32,31,'SECOND-FILM','AVAILABLE')");
+        db.update("INSERT INTO product VALUES(33,'SECOND-PRODUCT','第二产品')");
+        db.update("INSERT INTO engineering_resource_product_rel VALUES('ARTWORK',30,1,33)");
+        db.update("UPDATE engineering_screen_plate SET sources_json=? WHERE plate_id=9",
+            "[{\"versionId\":2,\"filmId\":3,\"styles\":[{\"styleNo\":\"A\"}]},{\"versionId\":31,\"filmId\":32,\"styles\":[{\"styleNo\":\"B\"}]}]");
+        var result=service.search(option("SECOND-FILM FRAME-01"));
+        assertEquals(1,result.getTotal());assertEquals(9L,result.getRecords().getFirst().getPlateId());
+        assertTrue(result.getRecords().getFirst().getSourcesJson().contains("32"));
+        var byProduct=option("SECOND-PRODUCT");byProduct.setProductId(33L);
+        assertEquals(1,service.search(byProduct).getTotal());
+        db.update("UPDATE print_artwork_version SET status='DISABLED' WHERE version_id=31");
+        assertFalse(service.plate(9).getAvailability());
+    }
     @Test void searchesExactFilmCopyAndMultipleTermsWithoutCrossProduct() {
         var result = service.search(option("FILM-A FRAME-01"));
         assertEquals(1,result.getTotal());

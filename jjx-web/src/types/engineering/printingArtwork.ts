@@ -10,6 +10,7 @@ export interface ArtworkVersion {
   contentDigest?: string | null
   contentAlgorithm?: string | null
   drawingSha256?: string | null
+  stylesJson?: string | null
   technicalSpec?: string | null
   designerId?: string | null
   approvedBy?: string | null
@@ -64,6 +65,7 @@ export interface ArtworkCommand {
   versionNo?: string
   drawingFileId?: number
   drawingDocumentType?: string
+  stylesJson?: string
   technicalSpec?: string
   reason?: string
   disablePrevious?: boolean

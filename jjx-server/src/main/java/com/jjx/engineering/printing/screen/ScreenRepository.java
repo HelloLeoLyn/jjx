@@ -43,7 +43,7 @@ class ScreenRepository {
 
     Map<String,Object> frame(long id, boolean lock) {
         return one("""
-            select frame_id frameId,frame_no frameNo,frame_type frameType,location,status,revision,remark
+            select frame_id frameId,frame_no frameNo,frame_type frameType,location,status,revision,remark,frame_series frameSeries
             from engineering_screen_frame where frame_id=? and v2_registered=1 and del_flag='0'
             """ + (lock ? " for update" : ""), id);
     }
@@ -52,7 +52,7 @@ class ScreenRepository {
         return one("""
             select plate_id plateId,frame_id frameId,stretch_id stretchId,version_id versionId,
             film_copy_id filmId,plate_no plateNo,position,status,revision,released_by releasedBy,
-            released_time releasedTime,washed_time washedTime,end_reason endReason,create_by createdBy
+            released_time releasedTime,washed_time washedTime,end_reason endReason,create_by createdBy,sources_json sourcesJson,layout
             from engineering_screen_plate where plate_id=? and v2_registered=1
             """ + (lock ? " for update" : ""), id);
     }
@@ -95,16 +95,18 @@ class ScreenRepository {
     /** 状态和身份条件在此过滤；工艺参数由 ScreenService 的统一规则判断。 */
     List<Map<String,Object>> usablePlateCandidates(long versionId) {
         return db.queryForList("""
-            SELECT p.position,s.mesh,s.tension_n_cm
+            SELECT p.plate_id,p.version_id,p.sources_json,p.position,s.mesh,s.tension_n_cm
             FROM engineering_screen_plate p
             JOIN print_artwork_version v ON v.version_id=p.version_id AND v.status='RELEASED'
             JOIN engineering_screen_frame f ON f.frame_id=p.frame_id
             JOIN print_frame_stretch s ON s.stretch_id=p.stretch_id AND s.open_frame_id=f.frame_id
-            WHERE p.version_id=? AND p.v2_registered=1 AND p.status='RELEASED'
+            WHERE (p.version_id=? OR JSON_CONTAINS(p.sources_json,JSON_OBJECT('versionId',?), '$')) AND p.v2_registered=1 AND p.status='RELEASED'
               AND p.washed_time IS NULL AND p.occupied_frame_id=f.frame_id
               AND f.del_flag='0' AND f.v2_registered=1 AND f.status='READY'
               AND s.qualified=1 AND s.end_time IS NULL
-            """, versionId);
+              AND NOT EXISTS (SELECT 1 FROM JSON_TABLE(p.sources_json,'$[*]' COLUMNS(versionId BIGINT PATH '$.versionId')) src
+                LEFT JOIN print_artwork_version sv ON sv.version_id=src.versionId WHERE sv.version_id IS NULL OR sv.status<>'RELEASED')
+            """, versionId,versionId);
     }
 
     boolean occupied(long frame) {

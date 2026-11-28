@@ -15,7 +15,7 @@ class ScreenView {
         var result = frame ? repo.frame(id,false) : repo.plate(id,false);
         if (frame) {
             var stretches = repo.queryForList("""
-                select stretch_id stretchId,mesh,tension_n_cm tensionNcm,material,qualified,
+                select stretch_id stretchId,stretch_no stretchNo,mesh,tension_n_cm tensionNcm,material,qualified,
                 stretch_time stretchTime,end_time endTime from print_frame_stretch where frame_id=? order by stretch_id desc
                 """, id);
             result.put("stretches", stretches);

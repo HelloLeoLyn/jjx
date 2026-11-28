@@ -13,6 +13,8 @@ export interface PrintSearchRow {
   filmNo?: string
   filmStatus?: string
   plateId?: number
+  sourcesJson?: string | null
+  layout?: string | null
   plateNo?: string
   plateStatus?: string
   frameId?: number

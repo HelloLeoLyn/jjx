@@ -1046,9 +1046,11 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         if (versionId != null) {
             if (versionId <= 0) throw new BusinessException("图案版本无效");
         }
-        if (dto.getPrintRequirements() != null) screenService.validateRequirements(dto.getPrintRequirements());
+        if (dto.getPrintRequirements() != null && screenService.validateRequirements(dto.getPrintRequirements()).has("styles")
+                && dto.getDefaultPlateId()==null) throw new BusinessException("选择样式时必须明确实体网版");
         if (dto.getDefaultPlateId() != null) {
             if (versionId == null || dto.getDefaultPlateId() <= 0) throw new BusinessException("默认网版必须绑定图案版本");
+            dto.setPrintRequirements(screenService.normalizeStyleRequirements(dto.getDefaultPlateId(),dto.getPrintRequirements()));
             screenService.requireUsablePlate(versionId, dto.getDefaultPlateId(), dto.getPrintRequirements());
         }
         if (dto.getChildren() != null) {

@@ -206,6 +206,7 @@
               :rows="3"
               maxlength="2000"
           /></el-form-item>
+          <el-form-item label="版本样式"><VersionStylesEditor v-model="masterStyles" /></el-form-item>
           <p class="form-note">
             保存时自动建立初始草稿版本，图纸一并保存；也可先建档，稍后补充图纸。
           </p>
@@ -324,6 +325,7 @@
               <div class="technical">
                 <h3>技术要求</h3>
                 <p>{{ selectedVersion.technicalSpec || '未填写' }}</p>
+                <el-table :data="readStyles(selectedVersion.stylesJson)" size="small" border><el-table-column prop="styleNo" label="样式编号" /><el-table-column prop="name" label="样式名称" /><el-table-column prop="inkColor" label="油墨色号" /></el-table>
               </div>
               <div class="version-actions">
                 <el-button
@@ -665,7 +667,7 @@
             v-model="row.filmNo"
             maxlength="64"
             :aria-label="`第${index + 1}张编号`"
-            placeholder="例如 FL-003"
+            placeholder="留空自动编号，可手改"
           /><el-input
             v-model="row.location"
             maxlength="200"
@@ -701,7 +703,7 @@
             type="textarea"
             :rows="4"
             maxlength="2000" /></el-form-item
-        ><el-form-item label="图纸"
+        ><el-form-item label="版本样式"><VersionStylesEditor v-model="versionStyles" /></el-form-item><el-form-item label="图纸"
           ><template v-if="versionDraft.versionId"
             ><AttachmentCenter
               ref="versionDrawingCenter"
@@ -762,6 +764,8 @@
 </template>
 
 <script setup lang="ts">
+import VersionStylesEditor from '@/components/printing/VersionStylesEditor.vue'
+import { readStyles, type FilmStyle } from '@/components/printing/printStyles'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -928,6 +932,7 @@ async function openMaster(row?: ArtworkListRow) {
   masterVisible.value = true
   masterLoading.value = !!row
   masterDraftKey.value = `film-initial-${masterRequestId}`
+  masterStyles.value = []
   Object.assign(masterDraft, {
     id: undefined,
     no: `PW-${new Date().toISOString().slice(2, 7).replace('-', '')}-${String(Date.now() % 1000).padStart(3, '0')}`,
@@ -999,6 +1004,7 @@ async function saveMaster() {
     command.drawingFileId = drawings[0]?.attachmentId
     command.drawingDocumentType = drawings[0]?.documentType || undefined
     command.technicalSpec = masterDraft.technicalSpec.trim() || undefined
+    command.stylesJson = JSON.stringify(masterStyles.value)
   }
   try {
     if (masterDraft.id) await api.edit(masterDraft.id, command)
@@ -1120,26 +1126,12 @@ function resizeReceipt(count: number | undefined) {
   const request = receiptRequest.value
   if (!request) return
   const retained = receiptRows.value.slice(0, size)
-  const used = new Set([
-    ...(detail.value?.films || []).map(copy => copy.filmNo.trim().toUpperCase()),
-    ...retained.map(copy => copy.filmNo.trim().toUpperCase()),
-  ])
-  // 只预填可修改的表单建议；实物唯一性与并发仍由原回片接口校验。
-  const prefix = request.requestNo.length > 54 ? `CP-${request.requestId}` : request.requestNo
-  let serial = request.receivedQuantity + retained.length + 1
-  receiptRows.value = Array.from({ length: size }, (_, index) => {
-    if (retained[index]) return retained[index]
-    let filmNo: string
-    do { filmNo = `${prefix}-${String(serial++).padStart(3, '0')}` }
-    while (used.has(filmNo.toUpperCase()))
-    used.add(filmNo.toUpperCase())
-    return { filmNo, location: '' }
-  })
+  receiptRows.value = Array.from({ length: size }, (_, index) => retained[index] || { filmNo: '', location: '' })
 }
 async function saveReceipt() {
   if (saving.value || !receiptRequest.value) return
-  if (receiptRows.value.some((row) => !row.filmNo.trim() || !row.location.trim()))
-    return ElMessage.warning('请逐张填写编号和存放位置')
+  if (receiptRows.value.some((row) => !row.location.trim()))
+    return ElMessage.warning('请逐张填写存放位置，编号留空自动生成')
   saving.value = true
   try {
     await receiveRequest(receiptRequest.value.requestId, {
@@ -1159,6 +1151,8 @@ async function saveReceipt() {
   }
 }
 
+const masterStyles = ref<FilmStyle[]>([])
+const versionStyles = ref<FilmStyle[]>([])
 const versionFormVisible = ref(false)
 const versionDraft = reactive({
   versionId: undefined as number | undefined,
@@ -1175,6 +1169,7 @@ function openVersionForm(version?: ArtworkVersion) {
   if (!detail.value) return
   versionCommandId = newFilmRequestId()
   originalVersionDrawingFileId = version?.drawingFileId || undefined
+  versionStyles.value = readStyles(version?.stylesJson)
   Object.assign(versionDraft, {
     versionId: version?.versionId,
     versionNo: version?.versionNo || `V${(detail.value.versions?.length || 0) + 1}`,
@@ -1207,6 +1202,7 @@ async function saveVersion() {
         : versionDraft.artworkRevision,
       versionNo: versionDraft.versionNo.trim(),
       technicalSpec: versionDraft.technicalSpec || undefined,
+      stylesJson: JSON.stringify(versionStyles.value),
       drawingFileId: drawings[0]?.attachmentId ?? (versionDraft.drawingFileId ? originalVersionDrawingFileId : undefined),
       drawingDocumentType: drawings[0]?.documentType || undefined,
     }

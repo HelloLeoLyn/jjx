@@ -153,9 +153,18 @@ public class WorkSpecDocsetSnapshotService {
             item.set("drawingFileId",json.valueToTree(identity.get("drawing_file_id")));
             item.set("controlledContent",com.jjx.engineering.printing.artwork.ArtworkContentSnapshot.released(jdbc,json,versionId));
             if (row.hasNonNull("defaultPlateId")) {
-                var plate = jdbc.queryForMap("SELECT p.plate_no,f.frame_no FROM engineering_screen_plate p "
+                var plate = jdbc.queryForMap("SELECT p.plate_no,f.frame_no,p.sources_json,p.layout FROM engineering_screen_plate p "
                         + "JOIN engineering_screen_frame f ON f.frame_id=p.frame_id WHERE p.plate_id=? FOR SHARE",row.get("defaultPlateId").longValue());
                 item.set("defaultPlateNo",json.valueToTree(plate.get("plate_no")));
+                item.set("plateLayout",json.valueToTree(plate.get("layout")));
+                if (plate.get("sources_json")!=null) {
+                    try { item.set("plateSources",json.readTree(plate.get("sources_json").toString())); }
+                    catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new BusinessException("网版来源格式异常，不能发布"); }
+                    for (var source:item.path("plateSources")) {
+                        long sourceVersion=source.path("versionId").asLong();
+                        ((ObjectNode)source).set("controlledContent",com.jjx.engineering.printing.artwork.ArtworkContentSnapshot.released(jdbc,json,sourceVersion));
+                    }
+                }
                 item.set("defaultFrameNo",json.valueToTree(plate.get("frame_no")));
             }
             row.set("printingSnapshot",item.deepCopy());

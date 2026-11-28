@@ -38,6 +38,9 @@ class FilmRequestTest {
         db.execute("CREATE TABLE engineering_resource_maintenance(maintenance_id BIGINT AUTO_INCREMENT PRIMARY KEY,resource_type VARCHAR(20),resource_id BIGINT,action_type VARCHAR(20),operator VARCHAR(64),request_id VARCHAR(64) UNIQUE,request_hash VARCHAR(64),result_snapshot VARCHAR(16000),description VARCHAR(500),after_status VARCHAR(20))");
         db.update("INSERT INTO print_artwork VALUES(1),(2)");
         db.update("INSERT INTO print_artwork_version VALUES(11,1,'RELEASED',0),(21,2,'RELEASED',0),(12,1,'DRAFT',0)");
+        db.execute("ALTER TABLE print_artwork ADD number_series VARCHAR(64) DEFAULT 'GY'");
+        db.execute("CREATE TABLE sys_number_sequence(sequence_key VARCHAR(100),period_key VARCHAR(64),current_value BIGINT,create_time TIMESTAMP,update_time TIMESTAMP,UNIQUE(sequence_key,period_key))");
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"styles",new PrintStyleService(db,json));
     }
     FilmRequestCommands command(String rid,int revision,Map<String,Object> fields) {
         var body=new HashMap<>(fields);body.put("requestId",rid);body.put("expectedRevision",revision);
@@ -54,6 +57,17 @@ class FilmRequestTest {
         }
     }
     long apply(String rid,int quantity) {return ((Number)run(false,11,application(rid,quantity)).get("requestId")).longValue();}
+
+    @Test void automaticNumbersContinueAcrossPartialReceiptsAndSkipManualCollision() {
+        long id=apply("auto-application",3);
+        run(true,id,receipt("manual",0,"GY-FL-001"));
+        run(true,id,receipt("auto-one",1,""));
+        run(true,id,receipt("auto-two",2,""));
+        assertEquals(List.of("GY-FL-001","GY-FL-002","GY-FL-003"),db.queryForList("SELECT film_no FROM print_film_copy ORDER BY film_id",String.class));
+        assertEquals(3,received(id));
+        run(true,id,receipt("auto-two",2,""));
+        assertEquals(3,received(id));
+    }
 
     @Test void applicationAndTwoPartialReceiptsKeepSeparateFactsAndReplay() {
         var application=application("application",2);long id=((Number)run(false,11,application).get("requestId")).longValue();

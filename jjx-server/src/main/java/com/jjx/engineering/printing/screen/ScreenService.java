@@ -14,6 +14,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import static com.jjx.engineering.printing.screen.ScreenCommands.*;
 
 @Service
@@ -22,13 +23,91 @@ public class ScreenService {
 
     private final ScreenRepository repo;
     private final ObjectMapper json;
+    @org.springframework.beans.factory.annotation.Autowired private com.jjx.engineering.printing.artwork.PrintStyleService styles;
+
+    private void validateSelectedStyles(com.fasterxml.jackson.databind.JsonNode required) {
+        if (!required.has("styles")) return;
+        var selected=required.get("styles");
+        require(selected.isArray() && !selected.isEmpty() && selected.size()<=100,"工序必须选择1至100个样式");
+        var keys=new java.util.HashSet<String>();
+        for (var style:selected) {
+            require(style.isObject() && style.path("versionId").isIntegralNumber() && style.path("versionId").asLong()>0
+                && style.path("styleNo").isTextual() && !style.path("styleNo").asText().isBlank(),"工序样式缺少版本或编号");
+            style.fieldNames().forEachRemaining(k -> require(java.util.Set.of("versionId","styleNo","inkColor").contains(k),"未知工序样式字段："+k));
+            require(keys.add(style.path("versionId").asLong()+":"+style.path("styleNo").asText()),"工序样式重复");
+            require(!style.has("inkColor") || (style.path("inkColor").isTextual() && style.path("inkColor").asText().length()<=100),"油墨色号最多100字");
+        }
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode sources(Map<String,Object> plate) {
+        return readSources(Objects.toString(plate.get("sourcesJson"),null));
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode readSources(String raw) {
+        try { return raw==null ? json.createArrayNode() : json.readTree(raw); }
+        catch (JsonProcessingException e) { throw new BusinessException(422,"网版来源格式异常"); }
+    }
+
+    private void requireVersionInPlate(Map<String,Object> plate,long versionId) {
+        if (((Number)plate.get("versionId")).longValue()==versionId) return;
+        for (var source:sources(plate)) if (source.path("versionId").asLong()==versionId) return;
+        throw new BusinessException(422,"网版未包含指定菲林版本");
+    }
+
+    private void lockSourceVersions(Map<String,Object> plate) {
+        java.util.TreeSet<Long> ids=new java.util.TreeSet<>();
+        for(var source:sources(plate)) ids.add(source.path("versionId").asLong());
+        for(long id:ids) repo.one("SELECT status FROM print_artwork_version WHERE version_id=? FOR UPDATE",id);
+    }
+
+    private boolean selectedStylesMatch(com.fasterxml.jackson.databind.JsonNode required,String raw) {
+        var available=readSources(raw);
+        if (available.isEmpty()) return !required.has("styles");
+        if (!required.has("styles")) return false;
+        var keys=new java.util.HashSet<String>();
+        for (var source:available) for (var style:source.path("styles"))
+            keys.add(source.path("versionId").asLong()+":"+style.path("styleNo").asText());
+        for (var selected:required.path("styles")) if (!keys.contains(selected.path("versionId").asLong()+":"+selected.path("styleNo").asText())) return false;
+        return true;
+    }
+
+    private void requireSelectedStyles(com.fasterxml.jackson.databind.JsonNode required,Map<String,Object> plate) {
+        require(selectedStylesMatch(required,Objects.toString(plate.get("sourcesJson"),null)),"工序漏选样式，或所选样式不在该网版中");
+        for (var source:sources(plate)) {
+            var version=repo.one("SELECT status FROM print_artwork_version WHERE version_id=? FOR UPDATE",source.path("versionId").asLong());
+            require("RELEASED".equals(version.get("status")),"网版来源版本已停用");
+        }
+    }
+
+    /** 自动带出只填缺失项；工序显式填写的色号（含空串）始终保留。 */
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public String normalizeStyleRequirements(long plateId,String raw) {
+        var required=validateRequirements(raw);
+        var plate=repo.plate(plateId,false);
+        requireSelectedStyles(required,plate);
+        for (var selected:required.path("styles")) {
+            if (selected.has("inkColor")) continue;
+            for (var source:sources(plate)) if(source.path("versionId").asLong()==selected.path("versionId").asLong())
+                for (var style:source.path("styles")) if(style.path("styleNo").equals(selected.path("styleNo")))
+                    ((com.fasterxml.jackson.databind.node.ObjectNode)selected).put("inkColor",style.path("inkColor").asText());
+        }
+        return required.toString();
+    }
+
+    /** 调用方先通过requireUsablePlate持有框/版锁，跨生产与打样串行检查同一实物。 */
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void requireAvailableForUse(long plateId,Long executionId,Long sampleProcessId) {
+        conflict(repo.exists("SELECT segment_id FROM print_use_segment WHERE open_plate_id=? AND (? IS NULL OR execution_id<>?) FOR UPDATE",plateId,executionId,executionId)
+            || repo.exists("SELECT process_id FROM sales_sample_process WHERE actual_plate_id=? AND status=? AND (? IS NULL OR process_id<>?) FOR UPDATE",
+                plateId,com.jjx.sales.enums.SampleProcessStatusEnum.IN_PROGRESS.getValue(),sampleProcessId,sampleProcessId),"该实体网版正在其他工单或打样工序使用");
+    }
 
     /** 工程、齐套和生产共用要求口径；张力单位固定 N/cm，不接受自由单位换算。 */
     public com.fasterxml.jackson.databind.JsonNode validateRequirements(String raw) {
         try {
             var value = raw == null || raw.isBlank() ? json.createObjectNode() : json.readTree(raw);
             if (!value.isObject()) throw new BusinessException(422, "印刷要求必须是JSON对象");
-            var allowed = java.util.Set.of("position", "meshMin", "meshMax", "tensionMin", "tensionMax");
+            var allowed = java.util.Set.of("position", "meshMin", "meshMax", "tensionMin", "tensionMax", "styles");
             value.fieldNames().forEachRemaining(key -> {
                 if (!allowed.contains(key)) throw new BusinessException(422, "未知印刷要求：" + key);
             });
@@ -46,6 +125,7 @@ public class ScreenService {
                         && value.get(prefix + "Min").decimalValue().compareTo(value.get(prefix + "Max").decimalValue()) > 0)
                     throw new BusinessException(422, "印刷要求下限不能大于上限");
             }
+            validateSelectedStyles(value);
             return value;
         } catch (JsonProcessingException e) {
             throw new BusinessException(422, "印刷要求JSON格式无效");
@@ -63,6 +143,7 @@ public class ScreenService {
         var required = validateRequirements(requirements);
         return (int) repo.usablePlateCandidates(versionId).stream()
                 .filter(row -> matchesRequirements(required, row.get("position"), row.get("mesh"), row.get("tension_n_cm")))
+                .filter(row -> selectedStylesMatch(required,Objects.toString(row.get("sources_json"),null)))
                 .count();
     }
 
@@ -85,6 +166,7 @@ public class ScreenService {
         var required = validateRequirements(requirements);
         var locked=lockPlateIdentity(versionId,plateId);
         var frame=locked.frame();var plate=locked.plate();
+        requireSelectedStyles(required,plate);
         conflict(!PlateStatus.RELEASED.name().equals(plate.get("status")), "默认网版尚未放行或已经结束");
         conflict(!FrameStatus.READY.name().equals(frame.get("status")), "默认网版的网框不可用");
         var stretch = repo.one("select mesh,tension_n_cm,qualified,end_time from print_frame_stretch where stretch_id=? and frame_id=? for update",
@@ -102,10 +184,11 @@ public class ScreenService {
     private record PlateIdentity(Map<String,Object> frame,Map<String,Object> plate) {}
     private PlateIdentity lockPlateIdentity(long versionId,long plateId) {
         var identity = repo.plate(plateId, false);
-        conflict(((Number) identity.get("versionId")).longValue() != versionId, "默认网版不属于指定图案版本");
+        requireVersionInPlate(identity,versionId);
+        lockSourceVersions(identity);
         var frame = repo.frame(((Number) identity.get("frameId")).longValue(), true);
         var plate = repo.plate(plateId, true);
-        conflict(((Number) plate.get("versionId")).longValue() != versionId, "默认网版不属于指定图案版本");
+        requireVersionInPlate(plate,versionId);
         return new PlateIdentity(frame,plate);
     }
 
@@ -155,6 +238,9 @@ public class ScreenService {
         String type = frame ? "SCREEN_FRAME" : "SCREEN_PLATE";
         try {
             var payload=(com.fasterxml.jackson.databind.node.ObjectNode)json.valueToTree(cmd);
+            if (cmd.sourcesJson()==null) payload.remove("sourcesJson");
+            if (cmd.frameSeries()==null) payload.remove("frameSeries");
+            if (cmd.layout()==null) payload.remove("layout");
             if (cmd.remark()==null) payload.remove("remark"); // 保持部署前命令的摘要与重放能力。
             String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(
                     json.writeValueAsBytes(List.of(type,target,action,operator,payload))));
@@ -211,6 +297,10 @@ public class ScreenService {
                 insert into engineering_screen_frame(frame_no,frame_type,location,status,v2_registered,create_by)
                 values (?,?,?,'READY',1,?)
                 """,c.frameNo(),c.frameType(),c.location(),operator);
+            if (c.frameSeries()!=null) {
+                require(c.frameSeries().matches("[A-Za-z0-9_-]{1,64}"),"编码系列格式无效");
+                repo.update("UPDATE engineering_screen_frame SET frame_series=? WHERE frame_id=LAST_INSERT_ID()",c.frameSeries());
+            }
             id = repo.insertedId();
         } else {
             var row = repo.frame(id,true);
@@ -237,9 +327,9 @@ public class ScreenService {
                             && c.qualified()!=null,"请填写有效目数、张力及合格结论");
                     repo.update("update print_frame_stretch set end_time=now(3) where open_frame_id=?",id);
                     repo.update("""
-                        insert into print_frame_stretch(frame_id,mesh,tension_n_cm,material,qualified,stretch_time,create_by)
-                        values (?,?,?,?,?,now(3),?)
-                        """,id,c.mesh(),c.tensionNcm(),c.material(),c.qualified(),operator);
+                        insert into print_frame_stretch(frame_id,mesh,tension_n_cm,material,qualified,stretch_time,create_by,stretch_no)
+                        values (?,?,?,?,?,now(3),?,?)
+                        """,id,c.mesh(),c.tensionNcm(),c.material(),c.qualified(),operator,styles.next("BW",row.get("frameNo").toString()));
                 }
                 case "maintain", "resume", "scrap" -> {
                     required(c.reason(),500,"原因");
@@ -306,11 +396,16 @@ public class ScreenService {
     }
 
     private Change createPlate(ScreenCommands c,String operator) {
-        require(c.frameId()!=null && c.stretchId()!=null && c.versionId()!=null && c.filmId()!=null,"缺少网框、绷网、版本或底片");
+        require(c.frameId()!=null && c.stretchId()!=null,"缺少网框或绷网");
+        var sources=c.sourcesJson()==null ? null : styles.captureSources(c.sourcesJson());
+        Long versionId=sources==null ? c.versionId() : sources.get(0).path("versionId").asLong();
+        Long filmId=sources==null ? c.filmId() : sources.get(0).path("filmId").asLong();
+        require(versionId!=null && filmId!=null,"缺少确定版本或实体菲林");
         required(c.plateNo(),80,"版号");
         required(c.position(),100,"印刷位置");
-        var version=repo.one("select status from print_artwork_version where version_id=? for update",c.versionId());
-        boolean film=repo.exists("select film_id from print_film_copy where version_id=? and film_id=? and status='AVAILABLE' for update",c.versionId(),c.filmId());
+        var version=repo.one("select status,styles_json from print_artwork_version where version_id=? for update",versionId);
+        require(sources!=null || version.get("styles_json")==null,"该版本已定义样式，请明确制版来源和所选样式");
+        boolean film=repo.exists("select film_id from print_film_copy where version_id=? and film_id=? and status='AVAILABLE' for update",versionId,filmId);
         var frame=repo.frame(c.frameId(),true);
         checkRevision(c,((Number)frame.get("revision")).intValue());
         boolean stretch=repo.exists("select stretch_id from print_frame_stretch where open_frame_id=? and stretch_id=? and qualified=1 for update",c.frameId(),c.stretchId());
@@ -318,8 +413,9 @@ public class ScreenService {
         repo.update("""
             insert into engineering_screen_plate(frame_id,plate_no,version_id,film_copy_id,stretch_id,position,status,v2_registered,create_by)
             values (?,?,?,?,?,?,'PENDING',1,?)
-            """,c.frameId(),c.plateNo(),c.versionId(),c.filmId(),c.stretchId(),c.position(),operator);
+            """,c.frameId(),c.plateNo(),versionId,filmId,c.stretchId(),c.position(),operator);
         long id=repo.insertedId();
+        if (sources!=null) repo.update("UPDATE engineering_screen_plate SET sources_json=?,layout=? WHERE plate_id=?",sources.toString(),c.layout(),id);
         repo.update("update engineering_screen_frame set revision=revision+1 where frame_id=?",c.frameId());
         return new Change(id,null,c.reason(),Map.of("plateId",id,"status","PENDING","frameId",c.frameId(),"revision",0));
     }

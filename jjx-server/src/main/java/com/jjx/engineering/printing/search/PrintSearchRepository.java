@@ -39,7 +39,7 @@ public interface PrintSearchRepository {
             "LEFT JOIN (SELECT s1.* FROM print_frame_stretch s1 JOIN (SELECT frame_id, MAX(stretch_id) mid FROM print_frame_stretch GROUP BY frame_id) m ON m.mid=s1.stretch_id) st ON st.frame_id=f.frame_id ";
 
     // 实体网版场景按版面自身的 film_copy_id 关联，禁止把同版本其他底片拼到版面上。
-    String PLATE_ROWS = "SELECT p.plate_id,p.plate_no,p.status plate_status,p.position,p.version_id,p.frame_id, " +
+    String PLATE_ROWS = "SELECT p.sources_json,p.layout,p.plate_id,p.plate_no,p.status plate_status,p.position,p.version_id,p.frame_id, " +
             "p.stretch_id,st.stretch_time,st.material stretch_material, " +
             "v.version_no,v.status version_status,a.artwork_id,a.artwork_no,a.name,a.purpose, " +
             "f.film_id,f.film_no,f.status film_status,fr.frame_no,fr.status frame_status, " +
@@ -47,7 +47,9 @@ public interface PrintSearchRepository {
             "(p.status='RELEASED' AND v.status='RELEASED' AND fr.status='READY' " +
             "AND fr.del_flag='0' AND fr.v2_registered=1 AND p.washed_time IS NULL " +
             "AND p.occupied_frame_id=fr.frame_id AND st.open_frame_id=fr.frame_id " +
-            "AND st.qualified=1 AND st.end_time IS NULL) availability " +
+            "AND st.qualified=1 AND st.end_time IS NULL " +
+            "AND NOT EXISTS (SELECT 1 FROM JSON_TABLE(p.sources_json, '$[*]' COLUMNS(versionId BIGINT PATH '$.versionId')) src " +
+            "LEFT JOIN print_artwork_version sv ON sv.version_id=src.versionId WHERE sv.version_id IS NULL OR sv.status!='RELEASED')) availability " +
             "FROM engineering_screen_plate p " +
             "JOIN print_artwork_version v ON v.version_id=p.version_id " +
             "JOIN print_artwork a ON a.artwork_id=v.artwork_id " +
@@ -60,12 +62,15 @@ public interface PrintSearchRepository {
             "AND (p.plate_no LIKE CONCAT('%',#{t},'%') OR a.artwork_no LIKE CONCAT('%',#{t},'%') " +
             "OR a.name LIKE CONCAT('%',#{t},'%') OR v.version_no LIKE CONCAT('%',#{t},'%') " +
             "OR f.film_no LIKE CONCAT('%',#{t},'%') OR fr.frame_no LIKE CONCAT('%',#{t},'%') " +
+            "OR EXISTS (SELECT 1 FROM JSON_TABLE(p.sources_json, '$[*]' COLUMNS(filmId BIGINT PATH '$.filmId',versionId BIGINT PATH '$.versionId')) src " +
+            "JOIN print_film_copy sf ON sf.film_id=src.filmId JOIN print_artwork_version sv ON sv.version_id=src.versionId " +
+            "JOIN print_artwork sa ON sa.artwork_id=sv.artwork_id WHERE sf.film_no LIKE CONCAT('%',#{t},'%') OR sa.artwork_no LIKE CONCAT('%',#{t},'%') OR sa.name LIKE CONCAT('%',#{t},'%') OR EXISTS (SELECT 1 FROM engineering_resource_product_rel sr JOIN product sp ON sp.product_id=sr.product_id WHERE sr.resource_type='ARTWORK' AND sr.resource_id=sa.artwork_id AND sr.is_active=1 AND (sp.product_code LIKE CONCAT('%',#{t},'%') OR sp.product_name LIKE CONCAT('%',#{t},'%')))) " +
             "OR EXISTS (SELECT 1 FROM engineering_resource_product_rel rel JOIN product prod ON prod.product_id=rel.product_id " +
             "WHERE rel.resource_type='ARTWORK' AND rel.resource_id=a.artwork_id AND rel.is_active=1 " +
             "AND (prod.product_code LIKE CONCAT('%',#{t},'%') OR prod.product_name LIKE CONCAT('%',#{t},'%'))))",
             "</foreach>",
             "<if test='productId != null'>AND EXISTS (SELECT 1 FROM engineering_resource_product_rel rel " +
-            "WHERE rel.resource_type='ARTWORK' AND rel.resource_id=a.artwork_id AND rel.is_active=1 AND rel.product_id=#{productId})</if>",
+            "WHERE rel.resource_type='ARTWORK' AND rel.is_active=1 AND rel.product_id=#{productId} AND (rel.resource_id=a.artwork_id OR EXISTS (SELECT 1 FROM JSON_TABLE(p.sources_json,'$[*]' COLUMNS(versionId BIGINT PATH '$.versionId')) src JOIN print_artwork_version sv ON sv.version_id=src.versionId WHERE sv.artwork_id=rel.resource_id)))</if>",
             "ORDER BY CASE WHEN p.plate_no=#{q} OR a.artwork_no=#{q} OR f.film_no=#{q} OR fr.frame_no=#{q} THEN 0 ELSE 1 END,p.plate_id DESC",
             "</script>"})
     IPage<PrintSearchRow> searchPlates(Page<PrintSearchRow> page, @Param("tokens") List<String> tokens,

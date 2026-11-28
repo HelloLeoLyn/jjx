@@ -17,6 +17,8 @@ public class PrintSearchRow {
     private String filmStatus;
     private Long plateId;
     private String plateNo;
+    private String sourcesJson;
+    private String layout;
     private String plateStatus;
     private Long frameId;
     private String frameNo;

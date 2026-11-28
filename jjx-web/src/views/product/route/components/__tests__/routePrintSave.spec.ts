@@ -112,6 +112,27 @@ async function save(wrapper: ReturnType<typeof mount>, close = false) {
 const printInput = (wrapper: ReturnType<typeof mount>) =>
   wrapper.find('input[placeholder="如：丝印/移印/网印"]')
 describe('新增工艺路线印刷名称保存', () => {
+  it('多菲林工序部分样式及覆盖色号通过新增和编辑接口保存重开，同身份换版保留覆盖', async () => {
+    const wrapper = await open()
+    await addPrint(wrapper, '多菲林印刷')
+    const sourcesJson = JSON.stringify([{ filmId: 21, filmNo: 'FL-A', versionId: 3, styles: [{ styleNo: 'A', name: '正面', inkColor: 'RED' }] }, { filmId: 22, filmNo: 'FL-B', versionId: 5, styles: [{ styleNo: 'B', name: '背面', inkColor: 'BLACK' }] }])
+    await choosePlate(wrapper, { sourcesJson })
+    await save(wrapper)
+    expect(JSON.parse(stored.items[0].printRequirements).styles).toHaveLength(2)
+    const override = { meshMin: 100, styles: [{ versionId: 5, styleNo: 'B', inkColor: 'SPECIAL' }] }
+    wrapper.findComponent(PrintPlateDetails).vm.$emit('update:requirements', JSON.stringify(override))
+    await nextTick(); await save(wrapper)
+    await wrapper.setProps({ modelValue: false })
+    await wrapper.setProps({ routingId: 77, modelValue: true })
+    await flushPromises(); await save(wrapper)
+    expect(JSON.parse(stored.items[0].printRequirements)).toEqual(override)
+    await choosePlate(wrapper, { plateId: 8, sourcesJson })
+    await save(wrapper)
+    const requirements = JSON.parse(stored.items[0].printRequirements)
+    expect(requirements.meshMin).toBe(100)
+    expect(requirements.styles.find((style: any) => style.styleNo === 'B').inkColor).toBe('SPECIAL')
+    expect(productRouteApi.editProductRoute).toHaveBeenCalled()
+  })
   it('选择建议网版后保存并重开保留实体ID，工艺要求不从版面参数覆盖', async () => {
     const wrapper = await open()
     await addPrint(wrapper, '面板丝印')

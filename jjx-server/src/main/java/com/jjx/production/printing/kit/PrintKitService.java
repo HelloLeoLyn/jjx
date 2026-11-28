@@ -100,7 +100,8 @@ public class PrintKitService {
                         item.put("resourceType", "SCREEN_PLATE");
                         item.put("routingItemId", routingItemId);
                         item.put("processName", row.path("processName").asText(""));
-                        item.put("resourceKey", String.valueOf(versionId));
+                        item.put("resourceKey", String.valueOf(versionId) + (row.get("requirements").has("styles")
+                            ? ":"+com.jjx.common.utils.Sha256Utils.ofText(row.get("requirements").path("styles").toString()).substring(0,16) : ""));
                         item.put("resourceCode", row.path("artworkNo").asText(""));
                         item.put("resourceName", row.path("artworkVersionNo").asText(""));
                         item.put("need", 1);

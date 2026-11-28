@@ -18,7 +18,7 @@ export function printingRequirements(row: SpecProcessRow): string {
   let value = binding.requirements ?? binding.printRequirements
   if (typeof value === 'string') { try { value = JSON.parse(value) } catch { return '要求未核验' } }
   if (!value) return '要求未记录'
-  return [value.position && `位置 ${value.position}`,
+  return [value.styles?.length && `样式 ${value.styles.map((s: any) => `${s.styleNo} · ${s.inkColor ?? '未记色号'}`).join(' / ')}`, value.position && `位置 ${value.position}`,
     (value.meshMin != null || value.meshMax != null) && `目数 ${value.meshMin ?? '不限'}—${value.meshMax ?? '不限'}`,
     (value.tensionMin != null || value.tensionMax != null) && `张力 ${value.tensionMin ?? '不限'}—${value.tensionMax ?? '不限'} N/cm`,
   ].filter(Boolean).join('；') || '未限定参数'

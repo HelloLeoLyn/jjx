@@ -17,7 +17,7 @@ vi.mock('@/components/Selector/PrintResourceSelector.vue',()=>({default:{templat
 vi.mock('@/components/common-ui/TableActionColumn/index.vue',()=>({default:{template:'<div/>'}}))
 const frame={frameId:5,frameNo:'WK-001',revision:2,status:ScreenFrameStatusEnum.READY.value,stretchId:7,plateId:null,stretches:[]}
 const artwork={artworkId:11,artworkNo:'PW-001',name:'真实菲林',versions:[
- {versionId:21,versionNo:'V1',status:ArtworkVersionStatusEnum.RELEASED.value},
+ {versionId:21,versionNo:'V1',stylesJson:JSON.stringify([{styleNo:'A',name:'正面',inkColor:'RED'},{styleNo:'B',name:'背面',inkColor:'BLUE'}]),status:ArtworkVersionStatusEnum.RELEASED.value},
  {versionId:22,versionNo:'V2',status:ArtworkVersionStatusEnum.DRAFT.value},
 ],films:[
  {filmId:31,filmNo:'FL-001',versionId:21,status:FilmCopyStatusEnum.AVAILABLE.value},
@@ -61,8 +61,8 @@ describe('网版作业完整录入入口',()=>{
   expect(s.carriedVersion).toMatchObject({artworkId:11,versionId:21,versionNo:'V1'})
   await s.openPlate(frame)
   expect(s.picked.versionId).toBe(21);expect(s.filmOptions.map((f:any)=>f.filmId)).toEqual([31]);expect(s.plateForm.filmId).toBe(31)
-  await s.submitPlate()
-  expect(api.createPrintPlate).toHaveBeenCalledWith(expect.objectContaining({frameId:5,stretchId:7,versionId:21,filmId:31,expectedRevision:2}))
+  s.addPlateSource();s.plateSources[0].styleNos=['A'];await s.submitPlate()
+  expect(api.createPrintPlate).toHaveBeenCalledWith(expect.objectContaining({frameId:5,stretchId:7,sourcesJson:JSON.stringify([{filmId:31,versionId:21,styleNos:['A']}]),expectedRevision:2}))
   expect(api.releasePrintPlate).not.toHaveBeenCalled();expect(messages.success).toHaveBeenCalledWith(expect.stringContaining('待另一位'));w.unmount()
  })
  it('未绷网不能打开制版，绷网命令带实际数据及合格结论',async()=>{

@@ -46,17 +46,17 @@
             </el-table-column>
             <el-table-column label="图案版本 / 默认实体版" min-width="260">
               <template #default="{ row }">
-                <PrintResourceSelector :model-value="row.artworkVersionId ? { versionId: row.artworkVersionId, displayName: [row.artworkNo, row.artworkVersionNo || row.artworkVersionId].filter(Boolean).join(' / ') } : null" :disabled="readonly || row.status !== ProcessStatusEnum.TODO.value"
+                <PrintResourceSelector scene="PLATE" :model-value="row.artworkVersionId ? { versionId: row.artworkVersionId, displayName: [row.artworkNo, row.artworkVersionNo || row.artworkVersionId].filter(Boolean).join(' / ') } : null" :disabled="readonly || row.status !== ProcessStatusEnum.TODO.value"
                   :placeholder="row.artworkVersionId ? `${row.artworkNo || '图案'} / ${row.artworkVersionNo || row.artworkVersionId}` : '选择图案版本（未定稿可留空）'"
                   @select="resource => selectPlanVersion(row, resource)"
                   @clear="selectPlanVersion(row, null)" />
                 <span>建议网版：{{ row.defaultPlateNo || row.defaultPlateId || '未指定' }}</span>
-                <el-button v-if="!readonly && row.status === ProcessStatusEnum.TODO.value" link @click="row.defaultPlateId = null; row.defaultPlateNo = ''">清空建议版</el-button>
+                <el-button v-if="!readonly && row.status === ProcessStatusEnum.TODO.value" link @click="selectPlanVersion(row, null)">清空建议版</el-button>
               </template>
             </el-table-column>
             <el-table-column label="实际实体版" min-width="240">
               <template #default="{ row }">
-                <PrintResourceSelector v-if="row.status === ProcessStatusEnum.TODO.value" :disabled="readonly || row.advancing"
+                <PrintResourceSelector scene="PLATE" v-if="row.status === ProcessStatusEnum.TODO.value" :disabled="readonly || row.advancing"
                   :model-value="row.selectedActualResource ?? null"
                   @select="resource => selectActualPlate(row, resource)"
                   @clear="row.selectedActualResource = null; row.selectedActualPlateId = null" />
@@ -64,6 +64,10 @@
                 <div v-if="row.executionSnapshot">{{ executionSummary(row) }}</div>
               </template>
             </el-table-column>
+            <el-table-column label="工序样式" min-width="330"><template #default="{ row }">
+              <span>{{ requirementStyles(row) }}</span>
+              <PrintPlateDetails :row="row" :read-only="readonly || row.status !== ProcessStatusEnum.TODO.value" @update:requirements="v => row.printRequirements = v" />
+            </template></el-table-column>
             <el-table-column label="固定印刷要求" min-width="300">
               <template #default="{ row }">
                 <el-input :model-value="requirementValue(row, 'position')" :disabled="readonly || row.status !== ProcessStatusEnum.TODO.value" placeholder="印刷位置" @update:model-value="v => setRequirement(row, 'position', v)" />
@@ -271,6 +275,8 @@
 <script setup lang="ts">
 import type { PrintSearchRow } from '@/api/engineering/printingSearch'
 import PrintResourceSelector from '@/components/Selector/PrintResourceSelector.vue'
+import PrintPlateDetails from '@/components/printing/PrintPlateDetails.vue'
+import { readSources, selectPlateStyles } from '@/components/printing/printStyles'
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import MaterialSelector from '@/components/Selector/MaterialSelector.vue'
@@ -356,6 +362,9 @@ function isEmptyRow(r: any) {
   )
 }
 
+function requirementStyles(row: any) {
+  try { return (JSON.parse(row.printRequirements || '{}').styles || []).map((style: any) => style.styleNo + ' · ' + (style.inkColor || '')).join(' / ') || '未记录样式' } catch { return '样式格式异常' }
+}
 function selectPlanVersion(row: any, resource: PrintSearchRow | null) {
   if (resource && !resource.versionId) {
     ElMessage.warning('请选择带图案版本的候选')
@@ -371,10 +380,12 @@ function selectPlanVersion(row: any, resource: PrintSearchRow | null) {
   row.defaultPlateId = resource?.plateId ?? null
   row.defaultPlateNo = resource?.plateNo
   row.defaultFrameNo = resource?.frameNo
+  row.planSources = readSources(resource?.sourcesJson)
+  row.printRequirements = selectPlateStyles(row.printRequirements, row.planSources)
 }
 
 function selectActualPlate(row: any, resource: PrintSearchRow) {
-  if (!resource.plateId || !row.artworkVersionId || resource.versionId !== row.artworkVersionId) {
+  if (!resource.plateId || !row.artworkVersionId || (resource.versionId !== row.artworkVersionId && !readSources(resource.sourcesJson).some(source => source.versionId === row.artworkVersionId))) {
     ElMessage.warning('请选择当前计划版本的实体网版')
     return
   }

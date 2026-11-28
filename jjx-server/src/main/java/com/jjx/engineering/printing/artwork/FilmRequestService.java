@@ -23,6 +23,7 @@ public class FilmRequestService {
     private final ObjectMapper json;
     private final RedisSequenceService numbers;
     private final ArtworkService artworks;
+    @org.springframework.beans.factory.annotation.Autowired private PrintStyleService styles;
 
     static boolean schemaReady(JdbcTemplate jdbc) {
         return Integer.valueOf(2).equals(jdbc.queryForObject("""
@@ -101,6 +102,8 @@ public class FilmRequestService {
     private Map<String,Object> receive(long requestId,FilmRequestCommands command,String user) throws JsonProcessingException {
         command.validateReceipt();
         long versionId=((Number)one("SELECT version_id FROM print_film_request WHERE request_id=?",requestId).get("version_id")).longValue();
+        long artworkId=jdbc.queryForObject("SELECT artwork_id FROM print_artwork_version WHERE version_id=?",Long.class,versionId);
+        String prefix=styles.artworkSeries(artworkId);
         artworks.requireUsableVersion(versionId); // 与停用保持版本→申请→实物的锁顺序。
         var request=one("SELECT * FROM print_film_request WHERE request_id=? FOR UPDATE",requestId);
         int revision=((Number)request.get("lock_version")).intValue();
@@ -108,22 +111,31 @@ public class FilmRequestService {
         int total=((Number)request.get("requested_quantity")).intValue(), before=received(requestId);
         check(command.copies().size()<=total-before,"本次回片张数不能超过未回张数");
         Set<String> names=new HashSet<>();
-        for (var copy:command.copies()) check(names.add(copy.filmNo().trim().toUpperCase(Locale.ROOT)),"本次回片的菲林片编号不能重复");
+        for (var copy:command.copies()) if(copy.filmNo()!=null && !copy.filmNo().isBlank())
+            check(names.add(copy.filmNo().trim().toUpperCase(Locale.ROOT)),"本次回片的菲林片编号不能重复");
         List<Long> ids=new ArrayList<>();
         for (var copy:command.copies()) {
+            String filmNo=copy.filmNo()==null || copy.filmNo().isBlank() ? nextFilmNumber(prefix) : copy.filmNo().trim();
             jdbc.update("""
                 INSERT INTO print_film_copy(film_no,version_id,film_request_id,location,status,material,thickness_mm,size,output_time,create_by,create_time)
                 VALUES(?,?,?,?,'AVAILABLE',?,?,?,NOW(3),?,NOW(3))
-                """,copy.filmNo().trim(),versionId,requestId,copy.location().trim(),request.get("material"),request.get("thickness_mm"),request.get("size"),user);
+                """,filmNo,versionId,requestId,copy.location().trim(),request.get("material"),request.get("thickness_mm"),request.get("size"),user);
             long filmId=jdbc.queryForObject("SELECT LAST_INSERT_ID()",Long.class);ids.add(filmId);
             jdbc.update("""
                 INSERT INTO engineering_resource_maintenance(resource_type,resource_id,action_type,after_status,operator,result_snapshot)
                 VALUES('FILM_COPY',?,'receiveCopy','AVAILABLE',?,?)
-                """,filmId,user,json.writeValueAsString(Map.of("filmRequestId",requestId,"filmNo",copy.filmNo().trim(),"location",copy.location().trim())));
+                """,filmId,user,json.writeValueAsString(Map.of("filmRequestId",requestId,"filmNo",filmNo,"location",copy.location().trim())));
         }
         jdbc.update("UPDATE print_film_request SET lock_version=lock_version+1 WHERE request_id=?",requestId);
         int returned=before+ids.size();
         return Map.of("requestId",requestId,"versionId",versionId,"requestedQuantity",total,"receivedQuantity",returned,
                 "remainingQuantity",total-returned,"progress",FilmRequestView.Progress.from(total,returned).name(),"revision",revision+1,"filmIds",ids);
     }
+    private String nextFilmNumber(String prefix) {
+        String no;
+        do { no=styles.next("FL",prefix); }
+        while (!jdbc.queryForList("SELECT film_id FROM print_film_copy WHERE film_no=?",Long.class,no).isEmpty());
+        return no;
+    }
+
 }

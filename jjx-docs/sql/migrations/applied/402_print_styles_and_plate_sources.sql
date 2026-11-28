@@ -1,0 +1,30 @@
+-- risk: low
+-- dev-20261128-008: additive only; historical styles/sources remain NULL, never inferred.
+SET @ddl=IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='print_artwork' AND COLUMN_NAME='number_series')=0,'ALTER TABLE print_artwork ADD COLUMN number_series VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL','SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @ddl=IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='print_artwork_version' AND COLUMN_NAME='styles_json')=0,'ALTER TABLE print_artwork_version ADD COLUMN styles_json JSON NULL','SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @ddl=IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='engineering_screen_plate' AND COLUMN_NAME='sources_json')=0,'ALTER TABLE engineering_screen_plate ADD COLUMN sources_json JSON NULL','SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @ddl=IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='engineering_screen_plate' AND COLUMN_NAME='layout')=0,'ALTER TABLE engineering_screen_plate ADD COLUMN layout TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL','SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @ddl=IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='engineering_screen_frame' AND COLUMN_NAME='frame_series')=0,'ALTER TABLE engineering_screen_frame ADD COLUMN frame_series VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL','SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @ddl=IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='print_frame_stretch' AND COLUMN_NAME='stretch_no')=0,'ALTER TABLE print_frame_stretch ADD COLUMN stretch_no VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL','SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @ddl=IF((SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='print_frame_stretch' AND INDEX_NAME='uk_print_stretch_no')=0,'ALTER TABLE print_frame_stretch ADD UNIQUE INDEX uk_print_stretch_no(stretch_no)','SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

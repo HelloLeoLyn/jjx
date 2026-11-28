@@ -439,6 +439,7 @@ import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import PrintResourceSelector from '@/components/Selector/PrintResourceSelector.vue'
 import PrintPlateDetails from '@/components/printing/PrintPlateDetails.vue'
+import { readSources, selectPlateStyles } from '@/components/printing/printStyles'
 import type { StandardProcessOption } from '@/types/product'
 import type { EngineeringRoutingItemVO } from '@/types/product/routing'
 import { ProcessCategoryEnum } from '@/enums/product'
@@ -599,6 +600,7 @@ function onPickPlate(row: any, item: any) {
   row.defaultPlateId = Number(item.plateId)
   row.defaultPlateNo = item.plateNo || ''
   row.defaultFrameNo = item.frameNo || ''
+  row.printRequirements = selectPlateStyles(row.printRequirements, readSources(item.sourcesJson))
   clearLegacyResourceText(row)
   // 不从实测目数/张力推导固定工艺上下限，更换网版也保留已有要求。
   syncToParent()
@@ -619,6 +621,9 @@ function clearPlate(row: any) {
   row.defaultPlateId = null
   row.defaultPlateNo = ''
   row.defaultFrameNo = ''
+  const requirements = JSON.parse(row.printRequirements || '{}')
+  delete requirements.styles
+  row.printRequirements = JSON.stringify(requirements)
   clearLegacyResourceText(row)
   syncToParent()
 }

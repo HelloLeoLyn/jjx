@@ -21,8 +21,12 @@
         <el-descriptions-item label="目数">{{ source?.mesh != null ? `${source.mesh} 目` : '未记录' }}</el-descriptions-item>
         <el-descriptions-item label="登记张力">{{ source?.tensionNCm != null ? `${source.tensionNCm} N/cm` : '未记录' }}</el-descriptions-item>
         <el-descriptions-item label="网布材质">{{ source?.stretchMaterial || '未记录' }}</el-descriptions-item>
+        <el-descriptions-item label="实际制版排布">{{ source?.layout || (row.printingSnapshot as any)?.plateLayout || '未记录' }}</el-descriptions-item>
         <el-descriptions-item label="网版位置">{{ source?.position || '未记录' }}</el-descriptions-item>
       </el-descriptions>
+      <el-divider content-position="left">工序样式</el-divider>
+      <ProcessStylesPicker :sources="plateSources" :model-value="styleRequirements" :readonly="readOnly || !!row.printingSnapshot" @update:model-value="v => emit('update:requirements', v)" />
+      <p v-if="!plateSources.length">未记录样式，不从当前资料补推历史。</p>
       <el-divider content-position="left">固定印刷要求（当前工序）</el-divider>
       <template v-if="readOnly || row.printingSnapshot"><p>{{ printingRequirements(row) }}</p></template>
       <el-form v-else label-width="110px" size="small">
@@ -38,6 +42,8 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import ProcessStylesPicker from './ProcessStylesPicker.vue'
+import { readSources } from './printStyles'
 import { printingSearchApi, type PrintSearchRow } from '@/api/engineering/printingSearch'
 import { ScreenPlateStatusEnum } from '@/enums/engineering/resource'
 import { printingBinding, printingRequirements, type SpecProcessRow } from '@/views/engineering/product-spec/components/workSpecProcessRows'
@@ -48,6 +54,8 @@ const loading = ref(false)
 const error = ref('')
 const source = ref<PrintSearchRow>()
 const binding = computed(() => printingBinding(props.row))
+const plateSources = computed(() => props.row.printingSnapshot ? ((props.row.printingSnapshot as any).plateSources || []) : readSources(source.value?.sourcesJson))
+const styleRequirements = computed(() => props.row.printingSnapshot ? JSON.stringify((props.row.printingSnapshot as any).requirements || {}) : props.row.printRequirements)
 const legacy = computed(() => {
   if (props.row.printingSnapshot) return {}
   try { return JSON.parse(props.row.customProcessParams || '{}') || {} } catch { return {} }

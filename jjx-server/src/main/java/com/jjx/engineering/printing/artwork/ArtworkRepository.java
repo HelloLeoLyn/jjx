@@ -34,7 +34,7 @@ public class ArtworkRepository {
                    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(m.result_snapshot,'$.controlledContent.contentDigest')),'null') AS content_digest,
                    JSON_UNQUOTE(JSON_EXTRACT(m.result_snapshot,'$.controlledContent.algorithm')) AS content_algorithm,
                    NULLIF(JSON_UNQUOTE(JSON_EXTRACT(m.result_snapshot,'$.controlledContent.drawingSha256')),'null') AS drawing_sha256,
-                   att.file_name AS drawing_file_name,att.file_type AS drawing_file_type
+                   att.file_name AS drawing_file_name,att.file_type AS drawing_file_type,v.styles_json
             FROM print_artwork_version v
             LEFT JOIN sys_attachment att ON att.id=v.drawing_file_id
             LEFT JOIN engineering_resource_maintenance m ON m.maintenance_id=(

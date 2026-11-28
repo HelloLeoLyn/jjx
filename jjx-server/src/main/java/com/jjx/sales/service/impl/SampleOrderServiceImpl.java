@@ -2068,7 +2068,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
             for (Long versionId : versions) requireSamplePlanningVersion(versionId, current);
             for (var item:dto.getItems()) if (item.getDefaultPlateId()!=null && !unchangedExecutedBinding(item,oldProcessMap.get(item.getProcessId())))
-                screenService.requireUsablePlate(item.getArtworkVersionId(),item.getDefaultPlateId(),item.getPrintRequirements());
+                { item.setPrintRequirements(screenService.normalizeStyleRequirements(item.getDefaultPlateId(),item.getPrintRequirements()));
+                screenService.requireUsablePlate(item.getArtworkVersionId(),item.getDefaultPlateId(),item.getPrintRequirements()); }
             for (SalesSampleProcess old : oldPlan) {
                 if (!keptIds.contains(old.getProcessId())) {
                     if (hasSampleExecution(old)) throw new BusinessException("已执行工序不能删除，请保留本轮执行历史");
@@ -2174,6 +2175,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         for (Long id:versions) artworkService.requireUsableVersion(id);
         for (var row:pending) if (row.getDefaultPlateId()!=null) {
             if (row.getArtworkVersionId()==null) throw new BusinessException("建议网版必须关联图案版本");
+            row.setPrintRequirements(screenService.normalizeStyleRequirements(row.getDefaultPlateId(),row.getPrintRequirements()));
             screenService.requireUsablePlate(row.getArtworkVersionId(),row.getDefaultPlateId(),row.getPrintRequirements());
         }
     }
@@ -2217,9 +2219,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         artworkService.requireUsableVersion(record.getArtworkVersionId());
         var identity = requireSamplePlanningVersion(record.getArtworkVersionId(),order);
         screenService.requireUsablePlate(record.getArtworkVersionId(),dto.getActualPlateId(),record.getPrintRequirements());
-        if (!sampleProcessMapper.productionUses(dto.getActualPlateId()).isEmpty()
-                || !sampleProcessMapper.otherSampleUses(dto.getActualPlateId(),record.getProcessId(),SampleProcessStatusEnum.IN_PROGRESS.getValue()).isEmpty())
-            throw new BusinessException("该实体网版正在其他工单或打样工序使用");
+        screenService.requireAvailableForUse(dto.getActualPlateId(),null,record.getProcessId());
         var snapshot = new LinkedHashMap<String,Object>(sampleProcessMapper.executionPlate(dto.getActualPlateId()));
         snapshot.putAll(identity);
         snapshot.put("artworkVersionId",record.getArtworkVersionId()); snapshot.put("actualPlateId",dto.getActualPlateId());
@@ -2941,7 +2941,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         for (var pm:processMappings) if ("PRINT".equals(pm.getMajorCategory())) {
             if (pm.getArtworkVersionId()==null) throw new BusinessException("正式转产的印刷工序必须绑定已发布图案版本");
             screenService.validateRequirements(pm.getPrintRequirements());
-            if (pm.getDefaultPlateId()!=null) screenService.requireUsablePlate(pm.getArtworkVersionId(),pm.getDefaultPlateId(),pm.getPrintRequirements());
+            if (pm.getDefaultPlateId()!=null) {
+                pm.setPrintRequirements(screenService.normalizeStyleRequirements(pm.getDefaultPlateId(),pm.getPrintRequirements()));
+                screenService.requireUsablePlate(pm.getArtworkVersionId(),pm.getDefaultPlateId(),pm.getPrintRequirements());
+            }
         }
 
         String transferNo = redisSequenceService.generateBusinessNumberByType(
