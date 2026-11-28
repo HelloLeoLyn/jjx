@@ -30,11 +30,14 @@
         <el-form-item>
           <el-button type="primary" :icon="Search" @click="load(1)">查询</el-button>
           <el-button :icon="Refresh" @click="reset">重置</el-button>
+          <el-button v-hasPermi="['engineering:resource:edit']" type="success" @click="openFrameCreate">新增网框</el-button>
         </el-form-item>
       </el-form>
       <div class="tip">
-        网框与「网版管理」同一张表；这里管理已登记新模型的网框：绷网、制版、洗版、维护。
+        先新增网框，再登记绷网、制版并检验放行。网框可以洗版后重复使用。
       </div>
+      <el-alert v-if="carriedVersion" :title="`当前菲林：${carriedVersion.artworkNo} / ${carriedVersion.versionNo}，选择网框制版时将自动带入`" type="info" :closable="false" style="margin-top:12px" />
+      <el-alert v-if="contextError" :title="contextError" type="error" :closable="false" style="margin-top:12px" />
     </el-card>
 
     <el-card shadow="never">
@@ -77,6 +80,27 @@
         @size-change="() => load(1)"
       />
     </el-card>
+
+    <el-dialog v-model="frameCreateVisible" title="新增网框" width="520px" destroy-on-close :show-close="!submitting" :close-on-click-modal="!submitting" :close-on-press-escape="!submitting">
+      <el-alert v-if="frameCreateError" :title="frameCreateError" type="error" :closable="false" />
+      <el-form label-width="90px" :disabled="submitting" @submit.prevent="submitFrameCreate">
+        <el-form-item label="网框编号" required><el-input v-model="frameForm.frameNo" maxlength="50" aria-label="网框编号" placeholder="填写实物网框编号" /></el-form-item>
+        <el-form-item label="型号"><el-input v-model="frameForm.frameType" maxlength="30" /></el-form-item>
+        <el-form-item label="存放位置"><el-input v-model="frameForm.location" maxlength="200" /></el-form-item>
+      </el-form>
+      <template #footer><el-button :disabled="submitting" @click="frameCreateVisible=false">取消</el-button><el-button type="primary" :loading="submitting" @click="submitFrameCreate">保存网框</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="inspectionVisible" title="网版检验 / 放行" width="600px" destroy-on-close :show-close="!submitting" :close-on-click-modal="!submitting" :close-on-press-escape="!submitting">
+      <el-alert v-if="inspectionError" :title="inspectionError" type="error" :closable="false" />
+      <el-form label-width="90px" :disabled="submitting || !canInspect">
+        <el-form-item label="网版">{{ inspectionForm.plateNo }}（{{ ScreenPlateStatusEnum.getLabel(inspectionForm.status) }}）</el-form-item>
+        <el-form-item label="检验结果"><el-radio-group v-model="inspectionForm.passed"><el-radio :value="true">合格，放行</el-radio><el-radio :value="false">不合格</el-radio></el-radio-group></el-form-item>
+        <el-form-item label="检验记录" required><el-input v-model="inspectionForm.inspection" type="textarea" :rows="4" maxlength="500" placeholder="填写实际检验结果" /></el-form-item>
+      </el-form>
+      <p class="tip">放行须由具有检验放行权限的另一位操作员完成，制版人不能放行本人制版。</p>
+      <template #footer><el-button :disabled="submitting" @click="inspectionVisible=false">关闭</el-button><el-button type="primary" :disabled="!canInspect" :loading="submitting" @click="submitInspection">确认检验结果</el-button></template>
+    </el-dialog>
 
     <el-drawer v-model="detailVisible" size="760px" title="网框详情" destroy-on-close>
       <div v-loading="detailLoading">
@@ -191,7 +215,7 @@
       </el-form>
       <template #footer>
         <el-button @click="plateVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="submitPlate">确认制版</el-button>
+        <el-button type="primary" :loading="submitting" :disabled="versionLoading" @click="submitPlate">确认制版</el-button>
       </template>
     </el-dialog>
   </div>
@@ -199,11 +223,12 @@
 
 <script setup lang="ts">
 /** 网版作业列表页（dev-20261126-001）：网框分页 + 绷网/制版/洗版/维护。 */
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh } from '@element-plus/icons-vue'
-import { ScreenFrameStatusEnum } from '@/enums/engineering/resource'
-import { FilmCopyStatusEnum } from '@/enums/product/film'
+import { ScreenFrameStatusEnum, ScreenPlateStatusEnum } from '@/enums/engineering/resource'
+import { ArtworkVersionStatusEnum, FilmCopyStatusEnum } from '@/enums/product/film'
 import { engineeringResourceApi } from '@/api/engineering/resource'
 import { printingArtworkApi } from '@/api/product/film'
 import PrintResourceSelector from '@/components/Selector/PrintResourceSelector.vue'
@@ -212,15 +237,34 @@ import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vu
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
 defineOptions({ name: 'PrintResources' })
+const route = useRoute()
+const carriedVersion = ref<PrintSearchRow | null>(null)
+const contextError = ref('')
+let contextGeneration = 0
+watch(() => [route.query.artworkId, route.query.versionId], async () => {
+  const generation = ++contextGeneration
+  carriedVersion.value = null; contextError.value = ''
+  const artworkId = Number(route.query.artworkId), versionId = Number(route.query.versionId)
+  if (!artworkId || !versionId) return
+  try {
+    const result: any = await printingArtworkApi.detail(artworkId)
+    if (generation !== contextGeneration) return
+    const version = result.data?.versions?.find((item: any) => item.versionId === versionId)
+    if (!version) throw new Error('来源菲林版本不存在，请重新从菲林管理进入')
+    if (version.status !== ArtworkVersionStatusEnum.RELEASED.value) throw new Error('来源菲林版本尚未发布或已停用')
+    carriedVersion.value = { artworkId, artworkNo: result.data.artworkNo, name: result.data.name, versionId, versionNo: version.versionNo }
+  } catch (error: any) { if (generation === contextGeneration) contextError.value = error.message || '来源菲林加载失败' }
+}, { immediate: true })
 
 const frameActions: TableAction<any>[] = [
   { key: 'remark', label: '编辑备注', type: 'primary', permission: 'engineering:resource:edit' },
-  { key: 'stretch', label: '绷网', type: 'primary' },
-  { key: 'plate', label: '制版', type: 'success' },
-  { key: 'wash', label: '洗版', type: 'warning' },
-  { key: 'maintain', label: '送修', type: 'info' },
-  { key: 'resume', label: '恢复使用', type: 'info' },
-  { key: 'scrap', label: '报废', type: 'info' },
+  { key: 'stretch', label: '绷网', type: 'primary', permission: 'engineering:resource:maintain' },
+  { key: 'plate', label: '制版', type: 'success', permission: 'engineering:resource:edit' },
+  { key: 'inspect', label: '检验 / 放行', type: 'success', permission: 'engineering:screen-resource:release', visible: ({ row }) => !!row.plateId },
+  { key: 'wash', label: '洗版', type: 'warning', permission: 'engineering:screen-resource:wash' },
+  { key: 'maintain', label: '送修', type: 'info', permission: 'engineering:resource:maintain' },
+  { key: 'resume', label: '恢复使用', type: 'info', permission: 'engineering:resource:maintain' },
+  { key: 'scrap', label: '报废', type: 'info', permission: 'engineering:resource:maintain' },
 ]
 
 function handleFrameAction(key: string, row: any) {
@@ -228,6 +272,7 @@ function handleFrameAction(key: string, row: any) {
     case 'remark': return openRemark(row)
     case 'stretch': return openStretch(row)
     case 'plate': return openPlate(row)
+    case 'inspect': return openInspection(row)
     case 'wash': return wash(row)
     case 'maintain':
     case 'resume':
@@ -246,6 +291,51 @@ const rows = ref<any[]>([])
 const page = reactive({ pageNum: 1, pageSize: 20, total: 0 })
 const loading = ref(false)
 const submitting = ref(false)
+const frameCreateVisible = ref(false), frameCreateError = ref('')
+const frameForm = reactive({ frameNo: '', frameType: '', location: '' })
+let frameCreateRequestId = ''
+function openFrameCreate() {
+  if (submitting.value) return
+  Object.assign(frameForm, { frameNo: '', frameType: '', location: '' })
+  frameCreateError.value = ''; frameCreateRequestId = newRequestId(); frameCreateVisible.value = true
+}
+async function submitFrameCreate() {
+  if (submitting.value) return
+  if (!frameForm.frameNo.trim()) return ElMessage.warning('请填写实物网框编号')
+  submitting.value = true; frameCreateError.value = ''
+  try {
+    await engineeringResourceApi.createPrintFrame({ requestId: frameCreateRequestId, expectedRevision: 0, frameNo: frameForm.frameNo.trim(), frameType: frameForm.frameType.trim() || undefined, location: frameForm.location.trim() || undefined })
+    frameCreateVisible.value = false; query.keyword = frameForm.frameNo.trim(); query.status = ''
+    ElMessage.success('网框已新增，请在该网框行登记绷网'); await load(1)
+  } catch (error: any) { frameCreateError.value = error.response?.data?.message || error.message || '网框新增失败，输入已保留' }
+  finally { submitting.value = false }
+}
+
+const inspectionVisible = ref(false), inspectionError = ref('')
+const inspectionForm = reactive({ plateId: 0, plateNo: '', status: '', revision: 0, passed: true, inspection: '' })
+let inspectionRequestId = ''
+const canInspect = computed(() => [ScreenPlateStatusEnum.PENDING.value, ScreenPlateStatusEnum.FAILED.value].some(status => status === inspectionForm.status))
+async function openInspection(row: any) {
+  if (submitting.value || !row.plateId) return
+  try {
+    const result: any = await engineeringResourceApi.getPrintPlate(Number(row.plateId))
+    const plate = result.data
+    Object.assign(inspectionForm, { plateId: plate.plateId, plateNo: plate.plateNo, status: plate.status, revision: plate.revision, passed: true, inspection: '' })
+    inspectionError.value = ''; inspectionRequestId = newRequestId(); inspectionVisible.value = true
+  } catch { /* 拦截器已提示 */ }
+}
+async function submitInspection() {
+  if (submitting.value || !canInspect.value) return
+  if (!inspectionForm.inspection.trim()) return ElMessage.warning('请填写实际检验记录')
+  submitting.value = true; inspectionError.value = ''
+  const command = { requestId: inspectionRequestId, expectedRevision: inspectionForm.revision, inspection: inspectionForm.inspection.trim() }
+  try {
+    if (inspectionForm.passed) await engineeringResourceApi.releasePrintPlate(inspectionForm.plateId, command)
+    else await engineeringResourceApi.failPrintPlate(inspectionForm.plateId, command)
+    inspectionVisible.value = false; ElMessage.success(inspectionForm.passed ? '网版已检验放行' : '已登记检验不合格'); await load()
+  } catch (error: any) { inspectionError.value = error.response?.data?.message || error.message || '检验保存失败，输入已保留' }
+  finally { submitting.value = false }
+}
 
 const detailVisible = ref(false)
 const detailLoading = ref(false)
@@ -263,6 +353,8 @@ const plateVisible = ref(false)
 const plateForm = reactive<any>({ plateNo: '', position: '', filmId: undefined })
 const picked = ref<PrintSearchRow | null>(null)
 const filmOptions = ref<any[]>([])
+const versionLoading = ref(false)
+let versionGeneration = 0, stretchRequestId = '', plateRequestId = ''
 
 const remarkVisible = ref(false)
 const remarkForm = reactive({ frameId: 0, frameNo: '', revision: 0, remark: '' })
@@ -362,6 +454,7 @@ async function openDetail(row: any) {
 }
 
 async function openStretch(row: any) {
+  if (submitting.value) return
   try {
     await loadFrame(row)
   } catch {
@@ -372,11 +465,12 @@ async function openStretch(row: any) {
   stretchForm.tensionNcm = stretch?.tensionNcm ?? undefined
   stretchForm.material = stretch?.material || ''
   stretchForm.qualified = true
+  stretchRequestId = newRequestId()
   stretchVisible.value = true
 }
 
 async function submitStretch() {
-  if (!currentFrame) return
+  if (submitting.value || !currentFrame) return
   if (!stretchForm.mesh || !stretchForm.tensionNcm) {
     ElMessage.warning('请填写目数与张力')
     return
@@ -384,7 +478,7 @@ async function submitStretch() {
   submitting.value = true
   try {
     await engineeringResourceApi.stretchPrintFrame(Number(currentFrame.frameId), {
-      requestId: newRequestId(),
+      requestId: stretchRequestId,
       expectedRevision: Number(currentFrame.revision ?? 0),
       mesh: stretchForm.mesh,
       tensionNcm: stretchForm.tensionNcm,
@@ -402,6 +496,7 @@ async function submitStretch() {
 }
 
 async function openPlate(row: any) {
+  if (submitting.value) return
   try {
     await loadFrame(row)
   } catch {
@@ -421,6 +516,8 @@ async function openPlate(row: any) {
   plateForm.plateNo = row.frameNo + '-' + new Date().toISOString().slice(5, 10).replace('-', '')
   plateForm.position = '居中'
   plateVisible.value = true
+  plateRequestId = newRequestId()
+  if (carriedVersion.value) await onPickVersion(carriedVersion.value)
 }
 
 async function onPickVersion(item: PrintSearchRow) {
@@ -428,16 +525,24 @@ async function onPickVersion(item: PrintSearchRow) {
     ElMessage.warning('请选择菲林版本候选（网框候选不能制版）')
     return
   }
-  picked.value = item
-  const res: any = await printingArtworkApi.detail(Number(item.artworkId))
-  const films = (res?.data?.films || []).filter(
-    (f: any) => f.status === FilmCopyStatusEnum.AVAILABLE.value
-  )
-  filmOptions.value = films
-  plateForm.filmId = films.length === 1 ? films[0].filmId : undefined
+  const generation = ++versionGeneration
+  picked.value = null; filmOptions.value = []; plateForm.filmId = undefined; versionLoading.value = true
+  try {
+    const res: any = await printingArtworkApi.detail(Number(item.artworkId))
+    if (generation !== versionGeneration) return
+    const version = res.data?.versions?.find((v: any) => v.versionId === Number(item.versionId))
+    if (!version || version.status !== ArtworkVersionStatusEnum.RELEASED.value) return ElMessage.warning('请选择已发布且未停用的菲林版本')
+    picked.value = { ...item, versionNo: version.versionNo, artworkNo: res.data.artworkNo, name: res.data.name }
+    const films = (res.data.films || []).filter((f: any) => f.versionId === version.versionId && f.status === FilmCopyStatusEnum.AVAILABLE.value)
+    filmOptions.value = films
+    plateForm.filmId = films.length === 1 ? films[0].filmId : undefined
+  } catch (error: any) {
+    if (generation === versionGeneration) ElMessage.error(error.message || '菲林版本加载失败，请重试')
+  } finally { if (generation === versionGeneration) versionLoading.value = false }
 }
 
 async function submitPlate() {
+  if (submitting.value || versionLoading.value) return
   if (!currentFrame || !picked.value?.versionId) {
     ElMessage.warning('请先选择菲林版本')
     return
@@ -453,7 +558,7 @@ async function submitPlate() {
   submitting.value = true
   try {
     await engineeringResourceApi.createPrintPlate({
-      requestId: newRequestId(),
+      requestId: plateRequestId,
       expectedRevision: Number(currentFrame.revision ?? 0),
       frameId: Number(currentFrame.frameId),
       stretchId: Number(currentFrame.stretchId),
@@ -462,7 +567,7 @@ async function submitPlate() {
       plateNo: plateForm.plateNo,
       position: plateForm.position,
     })
-    ElMessage.success('制版完成')
+    ElMessage.success('制版已登记，待另一位有权限的操作员检验放行')
     plateVisible.value = false
     await load()
   } catch {

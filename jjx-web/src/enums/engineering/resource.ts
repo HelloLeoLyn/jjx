@@ -1,5 +1,17 @@
 import { createNamedEnum } from '@/enums/base'
 
+/** 实体网版状态，与 ScreenService.PlateStatus 一致。 */
+export const ScreenPlateStatusEnum = createNamedEnum(
+  {
+    PENDING: { value: 'PENDING', label: '待检验', tagProps: { type: 'warning' } },
+    FAILED: { value: 'FAILED', label: '检验不合格', tagProps: { type: 'danger' } },
+    RELEASED: { value: 'RELEASED', label: '已放行', tagProps: { type: 'success' } },
+    WASHED: { value: 'WASHED', label: '已洗版', tagProps: { type: 'info' } },
+    SCRAPPED: { value: 'SCRAPPED', label: '已报废', tagProps: { type: 'info' } },
+  },
+  { type: 'info' },
+)
+
 export const ScreenFrameStatusEnum = createNamedEnum(
   {
     READY: { value: 'READY', label: '可用', tagProps: { type: 'success' } },

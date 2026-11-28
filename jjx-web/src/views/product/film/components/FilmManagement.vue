@@ -368,7 +368,7 @@ async function showImpact() {
   try {const result:any=await api.impact(selectedVersion.value.versionId);impactText.value=`${impactSummary(result.data)}\n\n${JSON.stringify(result.data,null,2)}`;impactVisible.value=true}
   catch(error) {ElMessage.error(filmError(error,'影响范围加载失败'))}
 }
-function goPlate() {if(selectedVersion.value) router.push({path:'/engineering/print-resources',query:{versionId:String(selectedVersion.value.versionId)}})}
+function goPlate() {if(selectedVersion.value && detail.value) router.push({path:'/engineering/resource/print-resources',query:{artworkId:String(detail.value.artworkId),versionId:String(selectedVersion.value.versionId)}})}
 async function disposeCopy(copy:ArtworkFilm,action:'archive'|'destroy') {
   if(saving.value) return
   saving.value=true

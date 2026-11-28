@@ -8,7 +8,8 @@ vi.mock('@/api/product/film',()=>({printingArtworkApi:api}))
 vi.mock('@/api/product',()=>({listProductPage:vi.fn().mockResolvedValue({data:{records:[]}}),searchProduct:vi.fn().mockResolvedValue({data:[]}),getProductInfo:vi.fn()}))
 vi.mock('@/api/sales/sampleOrder',()=>({sampleOrderApi:{page:vi.fn().mockResolvedValue({data:{records:[]}})}}))
 vi.mock('@/api/engineering/printingSearch',()=>({printingSearchApi:{search:vi.fn()}}))
-vi.mock('vue-router',()=>({useRouter:()=>({push:vi.fn()})}))
+const routerPush=vi.hoisted(()=>vi.fn())
+vi.mock('vue-router',()=>({useRouter:()=>({push:routerPush})}))
 vi.mock('@/components/attachment/AttachmentCenter.vue',()=>({default:{template:'<div/>'}}))
 vi.mock('@/components/product/productFilePreviewUtils',()=>({fileKind:()=> 'other',renderFile:vi.fn().mockResolvedValue([]),downloadFile:vi.fn()}))
 const messages=vi.hoisted(()=>({success:vi.fn(),warning:vi.fn(),error:vi.fn()}))
@@ -33,6 +34,10 @@ describe('正式菲林主数据加载与归属',()=>{
  it('接口错误明确显示，不伪装成正常空列表',async()=>{const model=useFilmManagement();api.list.mockRejectedValueOnce(new Error('列表连接失败'));await model.loadRows();expect(model.listError.value).toBe('列表连接失败');await model.loadDetail(1);api.listRequests.mockRejectedValueOnce(new Error('请先完成迁移399'));await model.loadRequests();expect(model.requestsError.value).toContain('迁移399')})
 })
 describe('正式页面写入真实API载荷',()=>{
+ it('去制版跳转到实际菜单路径并携带所属菲林及所选版本',async()=>{
+  const w=render();await flushPromises();const s=(w.vm as any).$.setupState;await s.openVersions(master);s.goPlate()
+  expect(routerPush).toHaveBeenCalledWith({path:'/engineering/resource/print-resources',query:{artworkId:'1',versionId:'12'}});w.unmount()
+ })
  it('普通HTTP没有randomUUID时，新增按钮仍打开弹窗并可保存唯一请求号',async()=>{
   const getRandomValues=globalThis.crypto.getRandomValues.bind(globalThis.crypto)
   vi.stubGlobal('crypto',{getRandomValues})
