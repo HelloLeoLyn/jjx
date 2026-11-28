@@ -111,7 +111,7 @@
         <div class="copy-toolbar"><span>本次回片</span><el-input-number :model-value="receiptRows.length" :min="1" :max="remainingReceipt" :precision="0" aria-label="本次回片张数" @update:model-value="resizeReceipt" /><span>张</span></div>
         <div class="receipt-labels"><span>菲林片编号</span><span>存放位置</span></div>
         <div v-for="(row, index) in receiptRows" :key="index" class="receipt-row"><el-input v-model="row.filmNo" maxlength="64" :aria-label="`第${index + 1}张编号`" placeholder="例如 FL-003" /><el-input v-model="row.location" maxlength="200" :aria-label="`第${index + 1}张位置`" placeholder="例如 A架 · 02格" /></div>
-        <p class="form-note">可以分次回来。本次登记几张，就增加几张实物记录，剩余张数仍留在原申请里。</p>
+        <p class="form-note">编号已默认填写，可改为实物已有编号。可以分次回来，本次登记几张就增加几张实物记录。</p>
       </template>
       <template #footer><el-button @click="receiptVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="saveReceipt">确认本次回片</el-button></template>
     </el-dialog>
@@ -272,11 +272,28 @@ const remainingReceipt=computed(()=>receiptRequest.value?.remainingQuantity || 0
 let receiptCommandId=''
 function openReceipt(request:FilmRequest) {
   if(request.remainingQuantity<=0) return
-  receiptRequest.value={...request};receiptRows.value=[{filmNo:'',location:''}];receiptCommandId=newFilmRequestId();receiptVisible.value=true
+  receiptRequest.value={...request};receiptRows.value=[];resizeReceipt(1);receiptCommandId=newFilmRequestId();receiptVisible.value=true
 }
-function resizeReceipt(count:number|undefined) {
-  const size=Math.max(1,Math.min(remainingReceipt.value,count||1))
-  receiptRows.value=Array.from({length:size},(_,index)=>receiptRows.value[index] || {filmNo:'',location:''})
+function resizeReceipt(count: number | undefined) {
+  const size = Math.max(1, Math.min(remainingReceipt.value, count || 1))
+  const request = receiptRequest.value
+  if (!request) return
+  const retained = receiptRows.value.slice(0, size)
+  const used = new Set([
+    ...(detail.value?.films || []).map(copy => copy.filmNo.trim().toUpperCase()),
+    ...retained.map(copy => copy.filmNo.trim().toUpperCase()),
+  ])
+  // 只预填可修改的表单建议；实物唯一性与并发仍由原回片接口校验。
+  const prefix = request.requestNo.length > 54 ? `CP-${request.requestId}` : request.requestNo
+  let serial = request.receivedQuantity + retained.length + 1
+  receiptRows.value = Array.from({ length: size }, (_, index) => {
+    if (retained[index]) return retained[index]
+    let filmNo: string
+    do { filmNo = `${prefix}-${String(serial++).padStart(3, '0')}` }
+    while (used.has(filmNo.toUpperCase()))
+    used.add(filmNo.toUpperCase())
+    return { filmNo, location: '' }
+  })
 }
 async function saveReceipt() {
   if(saving.value || !receiptRequest.value) return
