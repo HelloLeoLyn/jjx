@@ -14,17 +14,17 @@ class ScreenView {
     public Map<String,Object> get(boolean frame, long id) {
         var result = frame ? repo.frame(id,false) : repo.plate(id,false);
         if (frame) {
-            var stretches = repo.db.queryForList("""
+            var stretches = repo.queryForList("""
                 select stretch_id stretchId,mesh,tension_n_cm tensionNcm,material,qualified,
                 stretch_time stretchTime,end_time endTime from print_frame_stretch where frame_id=? order by stretch_id desc
                 """, id);
             result.put("stretches", stretches);
             result.put("stretchId", stretches.isEmpty() || stretches.getFirst().get("endTime") != null
                     ? null : stretches.getFirst().get("stretchId"));
-            var plates = repo.db.queryForList("select plate_id from engineering_screen_plate where occupied_frame_id=?",Long.class,id);
+            var plates = repo.queryForList("select plate_id from engineering_screen_plate where occupied_frame_id=?",Long.class,id);
             result.put("plateId",plates.isEmpty() ? null : plates.getFirst());
         }
-        result.put("history",repo.db.queryForList("""
+        result.put("history",repo.queryForList("""
             select action_type actionType,before_status beforeStatus,after_status afterStatus,
             description,operator,operate_time operateTime from engineering_resource_maintenance
             where resource_type=? and resource_id=? order by maintenance_id

@@ -158,7 +158,7 @@ public class ScreenService {
             if (cmd.remark()==null) payload.remove("remark"); // 保持部署前命令的摘要与重放能力。
             String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(
                     json.writeValueAsBytes(List.of(type,target,action,operator,payload))));
-            repo.db.update("""
+            repo.update("""
                 insert into engineering_resource_maintenance(resource_type,resource_id,action_type,operator,request_id,request_hash)
                 values (?,?,?,?,?,?) on duplicate key update maintenance_id=maintenance_id
                 """,type,target,action,operator,cmd.requestId(),hash);
@@ -168,7 +168,7 @@ public class ScreenService {
                 return json.readValue(event.get("result_snapshot").toString(),new TypeReference<>() {});
             }
             var change = frame ? changeFrame(target,action,cmd,operator) : changePlate(target,action,cmd,operator);
-            repo.db.update("""
+            repo.update("""
                 update engineering_resource_maintenance set resource_id=?,before_status=?,after_status=?,description=?,
                 result_snapshot=? where request_id=?
                 """,change.id(),change.before(),change.result().get("status"),change.description(),
@@ -207,7 +207,7 @@ public class ScreenService {
         if (action.equals("create")) {
             checkRevision(c,0);
             required(c.frameNo(),50,"框号");
-            repo.db.update("""
+            repo.update("""
                 insert into engineering_screen_frame(frame_no,frame_type,location,status,v2_registered,create_by)
                 values (?,?,?,'READY',1,?)
                 """,c.frameNo(),c.frameType(),c.location(),operator);
@@ -222,11 +222,11 @@ public class ScreenService {
                 case "remark" -> {
                     beforeRemark = row.get("remark");
                     description = "修改网框备注（前后内容见动作快照）";
-                    repo.db.update("update engineering_screen_frame set remark=? where frame_id=?", c.remark(), id);
+                    repo.update("update engineering_screen_frame set remark=? where frame_id=?", c.remark(), id);
                 }
                 case "edit" -> {
                     required(c.frameNo(),50,"框号");
-                    repo.db.update("update engineering_screen_frame set frame_no=?,frame_type=?,location=? where frame_id=?",
+                    repo.update("update engineering_screen_frame set frame_no=?,frame_type=?,location=? where frame_id=?",
                             c.frameNo(),c.frameType(),c.location(),id);
                 }
                 case "clean" -> required(c.reason(),500,"清洁记录");
@@ -235,8 +235,8 @@ public class ScreenService {
                     require(c.mesh()!=null && c.mesh()>0 && c.tensionNcm()!=null && c.tensionNcm().signum()>0
                             && c.tensionNcm().scale()<=2 && c.tensionNcm().compareTo(new java.math.BigDecimal("1000000"))<0
                             && c.qualified()!=null,"请填写有效目数、张力及合格结论");
-                    repo.db.update("update print_frame_stretch set end_time=now(3) where open_frame_id=?",id);
-                    repo.db.update("""
+                    repo.update("update print_frame_stretch set end_time=now(3) where open_frame_id=?",id);
+                    repo.update("""
                         insert into print_frame_stretch(frame_id,mesh,tension_n_cm,material,qualified,stretch_time,create_by)
                         values (?,?,?,?,?,now(3),?)
                         """,id,c.mesh(),c.tensionNcm(),c.material(),c.qualified(),operator);
@@ -250,7 +250,7 @@ public class ScreenService {
                         conflict(repo.occupied(id),"请先结束占框版面");
                         if (action.equals("scrap")) {
                             after="SCRAPPED";
-                            repo.db.update("update print_frame_stretch set end_time=now(3) where open_frame_id=?",id);
+                            repo.update("update print_frame_stretch set end_time=now(3) where open_frame_id=?",id);
                         } else {
                             conflict(!before.equals("READY"),"网框已在维护中");
                             after="MAINTENANCE";
@@ -259,12 +259,12 @@ public class ScreenService {
                 }
                 default -> throw new BusinessException(422,"未知网框动作");
             }
-            repo.db.update("update engineering_screen_frame set status=?,revision=revision+1,update_by=? where frame_id=?",after,operator,id);
+            repo.update("update engineering_screen_frame set status=?,revision=revision+1,update_by=? where frame_id=?",after,operator,id);
         }
         var result=repo.frame(id,true);
         if (action.equals("remark")) result.put("beforeRemark", beforeRemark);
-        var stretch=repo.db.queryForList("select stretch_id from print_frame_stretch where open_frame_id=?",Long.class,id);
-        var active=repo.db.queryForList("select plate_id from engineering_screen_plate where occupied_frame_id=?",Long.class,id);
+        var stretch=repo.queryForList("select stretch_id from print_frame_stretch where open_frame_id=?",Long.class,id);
+        var active=repo.queryForList("select plate_id from engineering_screen_plate where occupied_frame_id=?",Long.class,id);
         result.put("stretchId",stretch.isEmpty()?null:stretch.getFirst());
         result.put("plateId",active.isEmpty()?null:active.getFirst());
         return new Change(id,before,description,result);
@@ -288,7 +288,7 @@ public class ScreenService {
             after=inspect(before,action.equals("release"));
             if (after==PlateStatus.RELEASED) {
                 if (operator.equals(plate.get("createdBy"))) throw new BusinessException(403,"制版人不能放行本人制版");
-                repo.db.update("update engineering_screen_plate set released_by=?,released_time=now(3) where plate_id=?",operator,id);
+                repo.update("update engineering_screen_plate set released_by=?,released_time=now(3) where plate_id=?",operator,id);
             }
         } else {
             require(action.equals("wash") || action.equals("scrap"),"未知网版动作");
@@ -298,10 +298,10 @@ public class ScreenService {
             used = used || repo.exists("select process_id from sales_sample_process where actual_plate_id=? and status=? for update",
                     id,com.jjx.sales.enums.SampleProcessStatusEnum.IN_PROGRESS.getValue());
             after=retire(before,action.equals("wash")?PlateStatus.WASHED:PlateStatus.SCRAPPED,used);
-            repo.db.update("update engineering_screen_plate set end_reason=?,washed_time=if(?='wash',now(),null) where plate_id=?",description,action,id);
-            repo.db.update("update engineering_screen_frame set revision=revision+1 where frame_id=?",frame);
+            repo.update("update engineering_screen_plate set end_reason=?,washed_time=if(?='wash',now(),null) where plate_id=?",description,action,id);
+            repo.update("update engineering_screen_frame set revision=revision+1 where frame_id=?",frame);
         }
-        repo.db.update("update engineering_screen_plate set status=?,revision=revision+1,update_by=? where plate_id=?",after.name(),operator,id);
+        repo.update("update engineering_screen_plate set status=?,revision=revision+1,update_by=? where plate_id=?",after.name(),operator,id);
         return new Change(id,before.name(),description,Map.of("plateId",id,"status",after.name(),"frameId",frame,"revision",revision+1));
     }
 
@@ -315,12 +315,12 @@ public class ScreenService {
         checkRevision(c,((Number)frame.get("revision")).intValue());
         boolean stretch=repo.exists("select stretch_id from print_frame_stretch where open_frame_id=? and stretch_id=? and qualified=1 for update",c.frameId(),c.stretchId());
         requirePlateCreation(FrameStatus.valueOf(frame.get("status").toString()),repo.occupied(c.frameId()),stretch,"RELEASED".equals(version.get("status")),film);
-        repo.db.update("""
+        repo.update("""
             insert into engineering_screen_plate(frame_id,plate_no,version_id,film_copy_id,stretch_id,position,status,v2_registered,create_by)
             values (?,?,?,?,?,?,'PENDING',1,?)
             """,c.frameId(),c.plateNo(),c.versionId(),c.filmId(),c.stretchId(),c.position(),operator);
         long id=repo.insertedId();
-        repo.db.update("update engineering_screen_frame set revision=revision+1 where frame_id=?",c.frameId());
+        repo.update("update engineering_screen_frame set revision=revision+1 where frame_id=?",c.frameId());
         return new Change(id,null,c.reason(),Map.of("plateId",id,"status","PENDING","frameId",c.frameId(),"revision",0));
     }
 }

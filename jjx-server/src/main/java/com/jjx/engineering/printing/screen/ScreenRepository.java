@@ -12,7 +12,20 @@ import java.util.Map;
 @Repository
 @RequiredArgsConstructor
 class ScreenRepository {
-    final JdbcTemplate db;
+    private final JdbcTemplate db;
+
+    // 调用方必须经仓储方法访问目标对象的依赖，不能读取Spring代理实例上的字段。
+    public int update(String sql, Object... args) {
+        return db.update(sql, args);
+    }
+
+    public List<Map<String,Object>> queryForList(String sql, Object... args) {
+        return db.queryForList(sql, args);
+    }
+
+    public <T> List<T> queryForList(String sql, Class<T> type, Object... args) {
+        return db.queryForList(sql, type, args);
+    }
 
     Map<String,Object> one(String sql, Object... args) {
         var rows = db.queryForList(sql, args);
