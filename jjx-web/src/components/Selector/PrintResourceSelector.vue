@@ -3,7 +3,7 @@
     :model-value="selectedId"
     :display-value="displayValue"
     :options="search.items.value"
-    option-key="versionId"
+    :option-key="scene === 'PLATE' ? 'plateId' : 'versionId'"
     :label-of="labelOf"
     :loading="search.loading.value"
     :loading-more="search.loadingMore.value"
@@ -21,6 +21,9 @@
   >
     <template #option="{ item }">
       <PrintResourceSearchOption :item="item" />
+      <div v-if="scene === 'PLATE'" class="plate-search-meta">
+        实物菲林：{{ item.filmNo || '未记录' }} · 张力：{{ item.tensionNCm ?? '未记录' }} N/cm
+      </div>
     </template>
     <template #footer>
       <div v-if="search.failed.value" class="search-failed">
@@ -34,6 +37,7 @@
 <script setup lang="ts">
 /** 印刷资源选择器（dev-20261125-011）：只维护选择，不保存未确认的输入文本。 */
 import { computed } from 'vue'
+import { ElMessage } from 'element-plus'
 import EditableSearchSelect from './EditableSearchSelect.vue'
 import PrintResourceSearchOption from './PrintResourceSearchOption.vue'
 import { usePrintResourceSearch } from './usePrintResourceSearch'
@@ -41,6 +45,7 @@ import type { PrintSearchRow } from '@/api/engineering/printingSearch'
 
 const props = withDefaults(
   defineProps<{
+    scene?: string
     modelValue?: PrintSearchRow | number | null
     placeholder?: string
     size?: 'large' | 'default' | 'small'
@@ -61,24 +66,28 @@ const emit = defineEmits<{
   (e: 'clear'): void
 }>()
 
-const search = usePrintResourceSearch()
+const search = usePrintResourceSearch({ scene: props.scene })
 
 const selectedId = computed<number | null>(() => {
   const mv = props.modelValue
   if (mv == null) return null
-  return typeof mv === 'object' ? Number(mv.versionId ?? 0) || null : Number(mv)
+  return typeof mv === 'object' ? Number((props.scene === 'PLATE' ? mv.plateId : mv.versionId) ?? 0) || null : Number(mv)
 })
 
 const displayValue = computed(() => {
   const mv = props.modelValue
   if (mv == null) return ''
-  if (typeof mv === 'object') return mv.displayName || mv.artworkNo || ''
+  if (typeof mv === 'object') return mv.displayName || mv.plateNo || mv.artworkNo || ''
   return String(mv)
 })
 
 const labelOf = (item: PrintSearchRow) => item.displayName || item.artworkNo || item.versionNo || ''
 
 function onSelect(item: PrintSearchRow) {
+  if (props.scene === 'PLATE' && (!item.plateId || !item.versionId || item.availability !== true)) {
+    ElMessage.warning('请选择已放行且关联资料可用的网版')
+    return
+  }
   emit('update:modelValue', item)
   emit('select', item)
 }
@@ -90,6 +99,7 @@ function onClear() {
 </script>
 
 <style scoped>
+.plate-search-meta { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 2px; }
 .search-failed {
   padding: 6px 10px;
   font-size: 12px;

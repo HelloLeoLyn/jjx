@@ -31,6 +31,9 @@ public class PrintSearchRow {
     private String productCode;
     private String productName;
     private String purpose;
+    private Long stretchId;
+    private java.time.LocalDateTime stretchTime;
+    private String stretchMaterial;
     private Integer mesh;
     private BigDecimal tensionNCm;
     private String position;

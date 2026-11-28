@@ -4,6 +4,9 @@ import { mount, flushPromises } from '@vue/test-utils'
 import RouteFormDialog from '../RouteFormDialog.vue'
 import { productRouteApi } from '@/api/product/routing'
 import PrintResourceSelector from '@/components/Selector/PrintResourceSelector.vue'
+import PrintPlateDetails from '@/components/printing/PrintPlateDetails.vue'
+
+vi.mock('@/api/engineering/printingSearch', () => ({ printingSearchApi: { search: vi.fn(), plate: vi.fn(async id => ({ data: { plateId: id, plateNo: `P${id}`, frameNo: 'F1', mesh: 200, tensionNCm: 22, availability: true } })) } }))
 
 vi.mock('@/api/product/routing', () => ({
   productRouteApi: {
@@ -88,6 +91,13 @@ async function addPrint(wrapper: ReturnType<typeof mount>, name: string) {
   expect(names.length).toBeGreaterThan(0)
   await names.at(-1)!.setValue(name)
 }
+async function choosePlate(wrapper: ReturnType<typeof mount>, overrides: Record<string, unknown> = {}) {
+  const selector = wrapper.findAllComponents(PrintResourceSelector).find(c => c.props('scene') === 'PLATE')!
+  expect(selector).toBeTruthy()
+  selector.vm.$emit('select', { versionId: 3, artworkNo: 'A1', versionNo: 'V2', plateId: 4, plateNo: 'P4', frameNo: 'F1', mesh: 200, availability: true, ...overrides })
+  await nextTick()
+  await flushPromises()
+}
 async function save(wrapper: ReturnType<typeof mount>, close = false) {
   const button = wrapper
     .findAll('button')
@@ -105,12 +115,9 @@ describe('新增工艺路线印刷名称保存', () => {
   it('选择建议网版后保存并重开保留实体ID，工艺要求不从版面参数覆盖', async () => {
     const wrapper = await open()
     await addPrint(wrapper, '面板丝印')
-    const artwork = wrapper.findAllComponents(PrintResourceSelector).find(c => c.props('placeholder') === '按图案/菲林号搜索')!
-    artwork.vm.$emit('select', { versionId: 3, artworkNo: 'A1', versionNo: 'V2' })
-    await nextTick()
-    const plate = wrapper.findAllComponents(PrintResourceSelector).find(c => c.props('placeholder') === '选择同版本实体网版')!
-    plate.vm.$emit('select', { versionId: 3, plateId: 4, plateNo: 'P4', frameNo: 'F1', mesh: 200 })
-    await nextTick()
+    await choosePlate(wrapper)
+    await wrapper.findComponent(PrintPlateDetails).find('button').trigger('click')
+    await flushPromises()
     await wrapper.find('input[placeholder="目数下限"]').setValue('100')
     await save(wrapper)
     expect(stored.items[0]).toMatchObject({ artworkVersionId: 3, defaultPlateId: 4 })
@@ -122,9 +129,39 @@ describe('新增工艺路线印刷名称保存', () => {
     expect(stored.items[0]).toMatchObject({ artworkVersionId: 3, defaultPlateId: 4 })
     expect(JSON.parse(stored.items[0].printRequirements)).toEqual({ meshMin: 100 })
   })
+  it('更换网版更新菲林版本，固定要求保留；清空选择移除关联身份但保留要求', async () => {
+    const wrapper = await open()
+    await addPrint(wrapper, '换版印刷')
+    await choosePlate(wrapper)
+    await wrapper.findComponent(PrintPlateDetails).find('button').trigger('click')
+    await flushPromises()
+    await wrapper.find('input[placeholder="目数下限"]').setValue('100')
+    await choosePlate(wrapper, { plateId: 8, versionId: 9, plateNo: 'P8' })
+    await save(wrapper)
+    expect(stored.items[0]).toMatchObject({ artworkVersionId: 9, defaultPlateId: 8 })
+    expect(JSON.parse(stored.items[0].printRequirements)).toEqual({ meshMin: 100 })
+    wrapper.findComponent(PrintResourceSelector).vm.$emit('clear')
+    await nextTick()
+    await save(wrapper)
+    expect(stored.items[0].defaultPlateId).toBeUndefined()
+    expect(stored.items[0].artworkVersionId).toBeUndefined()
+    expect(JSON.parse(stored.items[0].printRequirements)).toEqual({ meshMin: 100 })
+  })
+  it('不可用网版及非网版候选不改变已选身份', async () => {
+    const wrapper = await open()
+    await addPrint(wrapper, '面板丝印')
+    await choosePlate(wrapper)
+    await choosePlate(wrapper, { plateId: 88, versionId: 99, availability: false })
+    await choosePlate(wrapper, { plateId: null, versionId: 99 })
+    await save(wrapper)
+    expect(stored.items[0]).toMatchObject({ artworkVersionId: 3, defaultPlateId: 4 })
+  })
   it('真实编辑器输入后新增请求带名称，保存回读和关闭重开保持名称，再次编辑使用相同字段', async () => {
     const wrapper = await open()
     await addPrint(wrapper, '面板丝印')
+    await choosePlate(wrapper)
+    await wrapper.findComponent(PrintPlateDetails).find('button').trigger('click')
+    await flushPromises()
     await wrapper.find('input[placeholder="印刷位置"]').setValue('面板')
     await wrapper.find('input[placeholder="目数下限"]').setValue('100')
     await wrapper.find('input[placeholder="张力上限 N/cm"]').setValue('25')

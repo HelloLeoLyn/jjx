@@ -9,7 +9,7 @@ public class PrintSearchOption {
     private String q;
     private Integer pageNum = 1;
     private Integer pageSize = 10;
-    /** 场景：NEW_VERSION / RELEASE / PRODUCTION（受控场景需带上下文） */
+    /** 场景：NEW_VERSION / RELEASE / PLATE（仅实体网版） / PRODUCTION（受控场景需带上下文） */
     private String scene;
     private Long productId;
     private Long sampleOrderId;

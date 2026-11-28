@@ -38,6 +38,42 @@ public interface PrintSearchRepository {
             "FROM engineering_screen_frame f " +
             "LEFT JOIN (SELECT s1.* FROM print_frame_stretch s1 JOIN (SELECT frame_id, MAX(stretch_id) mid FROM print_frame_stretch GROUP BY frame_id) m ON m.mid=s1.stretch_id) st ON st.frame_id=f.frame_id ";
 
+    // 实体网版场景按版面自身的 film_copy_id 关联，禁止把同版本其他底片拼到版面上。
+    String PLATE_ROWS = "SELECT p.plate_id,p.plate_no,p.status plate_status,p.position,p.version_id,p.frame_id, " +
+            "p.stretch_id,st.stretch_time,st.material stretch_material, " +
+            "v.version_no,v.status version_status,a.artwork_id,a.artwork_no,a.name,a.purpose, " +
+            "f.film_id,f.film_no,f.status film_status,fr.frame_no,fr.status frame_status, " +
+            "st.mesh,st.tension_n_cm,st.qualified, " +
+            "(p.status='RELEASED' AND v.status='RELEASED' AND fr.status='READY' " +
+            "AND fr.del_flag='0' AND fr.v2_registered=1 AND p.washed_time IS NULL " +
+            "AND p.occupied_frame_id=fr.frame_id AND st.open_frame_id=fr.frame_id " +
+            "AND st.qualified=1 AND st.end_time IS NULL) availability " +
+            "FROM engineering_screen_plate p " +
+            "JOIN print_artwork_version v ON v.version_id=p.version_id " +
+            "JOIN print_artwork a ON a.artwork_id=v.artwork_id " +
+            "JOIN engineering_screen_frame fr ON fr.frame_id=p.frame_id " +
+            "JOIN print_frame_stretch st ON st.stretch_id=p.stretch_id AND st.frame_id=p.frame_id " +
+            "JOIN print_film_copy f ON f.film_id=p.film_copy_id AND f.version_id=p.version_id ";
+
+    @Select({"<script>", PLATE_ROWS, "WHERE p.v2_registered=1 ",
+            "<foreach collection='tokens' item='t'>",
+            "AND (p.plate_no LIKE CONCAT('%',#{t},'%') OR a.artwork_no LIKE CONCAT('%',#{t},'%') " +
+            "OR a.name LIKE CONCAT('%',#{t},'%') OR v.version_no LIKE CONCAT('%',#{t},'%') " +
+            "OR f.film_no LIKE CONCAT('%',#{t},'%') OR fr.frame_no LIKE CONCAT('%',#{t},'%') " +
+            "OR EXISTS (SELECT 1 FROM engineering_resource_product_rel rel JOIN product prod ON prod.product_id=rel.product_id " +
+            "WHERE rel.resource_type='ARTWORK' AND rel.resource_id=a.artwork_id AND rel.is_active=1 " +
+            "AND (prod.product_code LIKE CONCAT('%',#{t},'%') OR prod.product_name LIKE CONCAT('%',#{t},'%'))))",
+            "</foreach>",
+            "<if test='productId != null'>AND EXISTS (SELECT 1 FROM engineering_resource_product_rel rel " +
+            "WHERE rel.resource_type='ARTWORK' AND rel.resource_id=a.artwork_id AND rel.is_active=1 AND rel.product_id=#{productId})</if>",
+            "ORDER BY CASE WHEN p.plate_no=#{q} OR a.artwork_no=#{q} OR f.film_no=#{q} OR fr.frame_no=#{q} THEN 0 ELSE 1 END,p.plate_id DESC",
+            "</script>"})
+    IPage<PrintSearchRow> searchPlates(Page<PrintSearchRow> page, @Param("tokens") List<String> tokens,
+                                      @Param("q") String q, @Param("productId") Long productId);
+
+    @Select(PLATE_ROWS + "WHERE p.v2_registered=1 AND p.plate_id=#{plateId}")
+    PrintSearchRow plate(@Param("plateId") long plateId);
+
     @Select({"<script>",
             "SELECT * FROM (",
             "(", ARTWORK_ROWS, "WHERE 1=1 ",

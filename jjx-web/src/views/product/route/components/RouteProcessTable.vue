@@ -6,7 +6,7 @@
         <WorkSpecWorkflow :items="routeItems" />
       </el-tab-pane>
       <el-tab-pane :label="`🖨️ 印刷（${printCount}）`" name="PRINT">
-        <ProductPrintSpecPanel :routing-items="routeItems" read-only />
+        <ProductPrintSpecPanel :routing-items="routeItems" read-only compact-resources />
       </el-tab-pane>
     </el-tabs>
   </div>

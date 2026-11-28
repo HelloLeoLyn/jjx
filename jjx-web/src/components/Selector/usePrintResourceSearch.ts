@@ -1,11 +1,11 @@
-import { ref } from 'vue'
+import { onBeforeUnmount, ref } from 'vue'
 import { printingSearchApi, type PrintSearchRow } from '@/api/engineering/printingSearch'
 
 /**
  * 印刷资源搜索（dev-20261125-011）：防抖、分页、丢弃晚到结果、失败重试。
  * 交互语义对齐 useMaterialSearch，但不复用物料数据结构。
  */
-export function usePrintResourceSearch(options?: { debounceMs?: number; pageSize?: number }) {
+export function usePrintResourceSearch(options?: { debounceMs?: number; pageSize?: number; scene?: string }) {
   const debounceMs = options?.debounceMs ?? 300
   const pageSize = options?.pageSize ?? 10
   const keyword = ref('')
@@ -24,7 +24,7 @@ export function usePrintResourceSearch(options?: { debounceMs?: number; pageSize
     else loading.value = true
     failed.value = false
     try {
-      const res = await printingSearchApi.search({ q: kw, pageNum, pageSize })
+      const res = await printingSearchApi.search({ q: kw, pageNum, pageSize, ...(options?.scene ? { scene: options.scene } : {}) })
       if (current !== seq) return
       const page = res.data
       const records = page?.records || []
@@ -81,6 +81,8 @@ export function usePrintResourceSearch(options?: { debounceMs?: number; pageSize
     loading.value = false
     loadingMore.value = false
   }
+
+  onBeforeUnmount(reset)
 
   return { keyword, items, loading, loadingMore, failed, total, searched, search, loadMore, retry, reset }
 }

@@ -321,60 +321,22 @@
                     />
                   </template>
                 </el-table-column>
-                <el-table-column label="菲林" width="170">
+                <el-table-column label="网版" min-width="260">
                   <template #default="{ row }">
-                    <PrintFieldAutocomplete
-                      :model-value="getPrintParam(row, 'filmNo')"
-                      field="filmNo"
-                      width="160px"
-                      @update:model-value="(v: string) => setPrintParam(row, 'filmNo', v)"
-                    />
-                  </template>
-                </el-table-column>
-                <el-table-column label="菲林版本" width="210">
-                  <template #default="{ row }">
-                    <div v-if="row.artworkVersionId" class="artwork-version-cell">
-                      <span class="artwork-version-label">
-                        {{ row.artworkNo || '已选版本'
-                        }}{{ row.artworkVersionNo ? ' / ' + row.artworkVersionNo : '' }}
-                      </span>
-                      <el-button link type="danger" size="small" @click="clearArtworkVersion(row)"
-                        >清除</el-button
-                      >
-                    </div>
                     <PrintResourceSelector
-                      v-else
-                      :model-value="null"
+                      :model-value="row.defaultPlateId ? { plateId: row.defaultPlateId, plateNo: row.defaultPlateNo || `网版 #${row.defaultPlateId}` } : null"
+                      scene="PLATE"
                       size="small"
-                      placeholder="按菲林/菲林号搜索"
-                      @select="(item: any) => onPickArtworkVersion(row, item)"
+                      placeholder="按网版/菲林/网框搜索"
+                      @select="(item: any) => onPickPlate(row, item)"
+                      @clear="clearPlate(row)"
                     />
+                    <small v-if="!row.defaultPlateId && row.artworkVersionId">已有菲林版本，尚未选择网版</small>
                   </template>
                 </el-table-column>
-                <el-table-column label="建议网版（可不选）" width="230">
+                <el-table-column label="关联资料" width="110" align="center">
                   <template #default="{ row }">
-                    <span v-if="row.defaultPlateId">{{ row.defaultPlateNo || row.defaultPlateId }} / {{ row.defaultFrameNo || '—' }}</span>
-                    <el-button v-if="row.defaultPlateId" link @click="clearDefaultPlate(row)">清除</el-button>
-                    <PrintResourceSelector
-                      v-else
-                      :model-value="null"
-                      :disabled="!row.artworkVersionId"
-                      placeholder="选择同版本实体网版"
-                      @select="(item: any) => onPickDefaultPlate(row, item)"
-                    />
-                  </template>
-                </el-table-column>
-                <el-table-column label="固定印刷要求" width="280">
-                  <template #default="{ row }">
-                    <el-input :model-value="printRequirement(row, 'position')" placeholder="印刷位置" @update:model-value="(v: string) => setPrintRequirement(row, 'position', v)" />
-                    <div style="display:flex;gap:4px;margin-top:4px">
-                      <el-input :model-value="printRequirement(row, 'meshMin')" placeholder="目数下限" @update:model-value="(v: string) => setPrintRequirement(row, 'meshMin', v)" />
-                      <el-input :model-value="printRequirement(row, 'meshMax')" placeholder="目数上限" @update:model-value="(v: string) => setPrintRequirement(row, 'meshMax', v)" />
-                    </div>
-                    <div style="display:flex;gap:4px;margin-top:4px">
-                      <el-input :model-value="printRequirement(row, 'tensionMin')" placeholder="张力下限 N/cm" @update:model-value="(v: string) => setPrintRequirement(row, 'tensionMin', v)" />
-                      <el-input :model-value="printRequirement(row, 'tensionMax')" placeholder="张力上限 N/cm" @update:model-value="(v: string) => setPrintRequirement(row, 'tensionMax', v)" />
-                    </div>
+                    <PrintPlateDetails :row="row" :read-only="false" @update:requirements="(value: string) => { row.printRequirements = value; syncToParent() }" />
                   </template>
                 </el-table-column>
                 <el-table-column label="人工工时(h)" width="100" align="center">
@@ -476,6 +438,7 @@ import { moveWithinSubset, reorderSubset } from './routePrintOrder'
 import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import PrintResourceSelector from '@/components/Selector/PrintResourceSelector.vue'
+import PrintPlateDetails from '@/components/printing/PrintPlateDetails.vue'
 import type { StandardProcessOption } from '@/types/product'
 import type { EngineeringRoutingItemVO } from '@/types/product/routing'
 import { ProcessCategoryEnum } from '@/enums/product'
@@ -624,58 +587,39 @@ function setPrintParam(row: any, key: string, val: string) {
   }
 }
 
-/** P08（dev-20261125-014）：印刷工序绑定菲林版本；只接受带 versionId 的候选。 */
-function onPickArtworkVersion(row: any, item: any) {
-  if (!item?.versionId) {
-    ElMessage.warning('请选择带菲林版本的候选（网框候选不能直接绑定）')
+/** 选实体网版一次，保存层仍分别维护版本、网版和固定要求。 */
+function onPickPlate(row: any, item: any) {
+  if (!item?.plateId || !item.versionId || item.availability !== true) {
+    ElMessage.warning('请选择已放行且关联资料可用的网版')
     return
   }
   row.artworkVersionId = Number(item.versionId)
   row.artworkNo = item.artworkNo || ''
   row.artworkVersionNo = item.versionNo || ''
-  clearDefaultPlate(row)
-  syncToParent()
-}
-
-function clearArtworkVersion(row: any) {
-  row.artworkVersionId = null
-  row.artworkNo = ''
-  row.artworkVersionNo = ''
-  clearDefaultPlate(row)
-  syncToParent()
-}
-
-function clearDefaultPlate(row: any) {
-  row.defaultPlateId = null
-  row.defaultPlateNo = ''
-  row.defaultFrameNo = ''
-  syncToParent()
-}
-
-function onPickDefaultPlate(row: any, item: any) {
-  if (!item?.plateId || Number(item.versionId) !== Number(row.artworkVersionId)) {
-    ElMessage.warning('请选择当前菲林版本的实体网版')
-    return
-  }
   row.defaultPlateId = Number(item.plateId)
   row.defaultPlateNo = item.plateNo || ''
   row.defaultFrameNo = item.frameNo || ''
+  clearLegacyResourceText(row)
+  // 不从实测目数/张力推导固定工艺上下限，更换网版也保留已有要求。
   syncToParent()
 }
-
-function printRequirements(row: any): Record<string, string | number> {
-  try { return JSON.parse(row.printRequirements || '{}') } catch { return {} }
+function clearLegacyResourceText(row: any) {
+  try {
+    const params = JSON.parse(row.customProcessParams || '{}')
+    delete params.filmNo
+    delete params.screenNo
+    delete params.plateNo
+    row.customProcessParams = JSON.stringify(params)
+  } catch { /* 无法解析的旧参数保留，避免丢失其他工序内容。 */ }
 }
-function printRequirement(row: any, key: string): string {
-  return String(printRequirements(row)[key] ?? '')
-}
-function setPrintRequirement(row: any, key: string, value: string) {
-  const requirements = printRequirements(row)
-  if (!value.trim()) delete requirements[key]
-  else requirements[key] = key === 'position' ? value.trim() : value
-  // 数值合法性由后端统一校验；保留无效输入以明确报错，不静默清空。
-  if (key !== 'position' && value.trim() && Number.isFinite(Number(value))) requirements[key] = Number(value)
-  row.printRequirements = JSON.stringify(requirements)
+function clearPlate(row: any) {
+  row.artworkVersionId = null
+  row.artworkNo = ''
+  row.artworkVersionNo = ''
+  row.defaultPlateId = null
+  row.defaultPlateNo = ''
+  row.defaultFrameNo = ''
+  clearLegacyResourceText(row)
   syncToParent()
 }
 

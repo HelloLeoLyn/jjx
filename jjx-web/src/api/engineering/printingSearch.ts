@@ -25,6 +25,9 @@ export interface PrintSearchRow {
   productCode?: string
   productName?: string
   purpose?: string
+  stretchId?: number
+  stretchTime?: string
+  stretchMaterial?: string
   mesh?: number
   tensionNCm?: number
   position?: string
@@ -45,6 +48,9 @@ export interface PrintSearchParams {
 }
 
 export const printingSearchApi = {
+  plate(id: number) {
+    return request.get<R<PrintSearchRow>>(`/engineering/printing/search/plates/${id}`)
+  },
   search(params: PrintSearchParams) {
     return request.get<R<PageResult<PrintSearchRow>>>('/engineering/printing/search', { params })
   },

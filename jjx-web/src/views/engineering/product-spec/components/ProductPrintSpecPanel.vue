@@ -13,10 +13,16 @@
           <el-table-column :label="`${group.label}印序`" min-width="180"><template #default="{ row, $index }">{{ $index + 1 }}. {{ row.processName ?? printParams(row).printName ?? '' }}<div v-if="row.workInstruction" class="print-instruction">{{ row.workInstruction }}</div></template></el-table-column>
           <el-table-column label="色号" min-width="100"><template #default="{ row }">{{ printParams(row).colorNo ?? '-' }}</template></el-table-column>
           <el-table-column label="油墨编号" min-width="120"><template #default="{ row }">{{ printParams(row).inkNo ?? '-' }}</template></el-table-column>
-          <el-table-column v-if="showFilm" label="菲林" min-width="120"><template #default="{ row }">{{ printParams(row).filmNo ?? '-' }}</template></el-table-column>
-          <el-table-column label="图案版本" min-width="160"><template #default="{ row }">{{ printingIdentity(row) }}</template></el-table-column>
-          <el-table-column label="固定工艺要求" min-width="200"><template #default="{ row }">{{ printingRequirements(row) }}</template></el-table-column>
-          <el-table-column label="建议网版 / 网框" min-width="180"><template #default="{ row }">{{ printingPlate(row) }}</template></el-table-column>
+          <template v-if="compactResources">
+            <el-table-column label="网版" min-width="160"><template #default="{ row }">{{ printingBinding(row).defaultPlateNo || (printingBinding(row).defaultPlateId ? `网版 #${printingBinding(row).defaultPlateId}` : '未选择') }}</template></el-table-column>
+            <el-table-column label="关联资料" width="110" align="center"><template #default="{ row }"><PrintPlateDetails :row="row" /></template></el-table-column>
+          </template>
+          <template v-else>
+            <el-table-column v-if="showFilm" label="菲林" min-width="120"><template #default="{ row }">{{ printParams(row).filmNo ?? '-' }}</template></el-table-column>
+            <el-table-column label="图案版本" min-width="160"><template #default="{ row }">{{ printingIdentity(row) }}</template></el-table-column>
+            <el-table-column label="固定工艺要求" min-width="200"><template #default="{ row }">{{ printingRequirements(row) }}</template></el-table-column>
+            <el-table-column label="建议网版 / 网框" min-width="180"><template #default="{ row }">{{ printingPlate(row) }}</template></el-table-column>
+          </template>
           <el-table-column label="人工工时(h)" width="120" align="right">
             <template #default="{ row }">{{ row.customLaborHours ?? row.standardLaborHours ?? 0 }}</template>
           </el-table-column>
@@ -61,16 +67,17 @@
 </template>
 
 <script setup lang="ts">
+import PrintPlateDetails from '@/components/printing/PrintPlateDetails.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store/modules/user'
 import { normalizeWorkSpec, productWorkSpecApi, type ProductWorkSpec, type PrintRemarkHistory } from '@/api/product/workSpec'
 import { flowGroups, printParams } from './docset'
-import { processRowsForGroup, printingIdentity, printingRequirements, printingPlate, type SpecProcessRow } from './workSpecProcessRows'
+import { processRowsForGroup, printingBinding, printingIdentity, printingRequirements, printingPlate, type SpecProcessRow } from './workSpecProcessRows'
 
 /** 传入 routingItems 时直接展示，可附带 workSpec；仅传 productId 时自主取数。 */
-const props = defineProps<{ productId?: number; workSpec?: ProductWorkSpec; routingItems?: SpecProcessRow[]; loading?: boolean; readOnly?: boolean }>()
+const props = defineProps<{ productId?: number; workSpec?: ProductWorkSpec; routingItems?: SpecProcessRow[]; loading?: boolean; readOnly?: boolean; compactResources?: boolean }>()
 const emit = defineEmits<{ busy: [value: boolean]; updated: [workSpec: ProductWorkSpec] }>()
 const user = useUserStore()
 const fetchedSpec = ref<ProductWorkSpec>()

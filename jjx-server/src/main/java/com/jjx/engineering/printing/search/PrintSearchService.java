@@ -34,12 +34,33 @@ public class PrintSearchService {
             return new Page<>(safe(option.getPageNum(), 1), safe(option.getPageSize(), 10));
         }
         Page<PrintSearchRow> page = new Page<>(safe(option.getPageNum(), 1), safe(option.getPageSize(), 10));
-        IPage<PrintSearchRow> result = repository.search(page, tokens, option.getQ().trim(), option.getProductId());
+        boolean platesOnly = "PLATE".equalsIgnoreCase(option.getScene());
+        // 排名表达式含绑定参数，保留为子查询计数，避免分页优化器生成带 ORDER BY 的聚合。
+        if (platesOnly) page.setOptimizeCountSql(false);
+        IPage<PrintSearchRow> result = platesOnly
+                ? repository.searchPlates(page, tokens, option.getQ().trim(), option.getProductId())
+                : repository.search(page, tokens, option.getQ().trim(), option.getProductId());
         List<PrintSearchRow> rows = result.getRecords();
         for (PrintSearchRow row : rows) {
-            annotate(row, tokens, option.getQ().trim());
+            if (platesOnly) annotatePlate(row);
+            else annotate(row, tokens, option.getQ().trim());
         }
         return result;
+    }
+
+    public PrintSearchRow plate(long plateId) {
+        PrintSearchRow row = repository.plate(plateId);
+        if (row == null) throw new BusinessException(404, "网版关联资料不存在");
+        annotatePlate(row);
+        return row;
+    }
+
+    private void annotatePlate(PrintSearchRow row) {
+        row.setDisplayName(row.getPlateNo() + " / " + buildName(row)
+                + " / 网框 " + row.getFrameNo());
+        row.setMatchedType("PLATE");
+        row.setMatchedCode(row.getPlateNo());
+        row.setReasonCodes(Boolean.TRUE.equals(row.getAvailability()) ? List.of() : List.of("PLATE_NOT_USABLE"));
     }
 
     private void annotate(PrintSearchRow row, List<String> tokens, String q) {
